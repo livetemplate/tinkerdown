@@ -27,10 +27,14 @@ See [docs/plans/2025-11-12-livepage-design.md](docs/plans/2025-11-12-livepage-de
   - [x] Extract code blocks with metadata
   - [x] Identify block types (server, wasm, lvt)
   - [x] Parse block attributes (id, state reference)
-- [ ] Block type registry
-  - [ ] ServerBlock implementation
-  - [ ] WasmBlock implementation
-  - [ ] InteractiveBlock implementation
+- [x] Block type registry
+  - [x] ServerBlock implementation
+  - [x] WasmBlock implementation
+  - [x] InteractiveBlock implementation
+- [x] Page builder (ParseFile)
+  - [x] Convert code blocks to typed blocks
+  - [x] Block ID generation (explicit and auto)
+  - [x] Reference validation
 - [ ] Page state management
   - [ ] PageState struct
   - [ ] Code block state tracking
