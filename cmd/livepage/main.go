@@ -4,6 +4,8 @@ package main
 import (
 	"fmt"
 	"os"
+
+	"github.com/livetemplate/livepage/cmd/livepage/commands"
 )
 
 const version = "0.1.0-dev"
@@ -15,12 +17,12 @@ func main() {
 	}
 
 	command := os.Args[1]
+	args := os.Args[2:]
 
+	var err error
 	switch command {
 	case "serve":
-		fmt.Println("livepage serve: Not yet implemented")
-		fmt.Println("See PROGRESS.md for implementation status")
-		os.Exit(1)
+		err = commands.ServeCommand(args)
 	case "new":
 		fmt.Println("livepage new: Not yet implemented")
 		fmt.Println("See PROGRESS.md for implementation status")
@@ -32,6 +34,11 @@ func main() {
 	default:
 		fmt.Printf("Unknown command: %s\n\n", command)
 		printUsage()
+		os.Exit(1)
+	}
+
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 }
