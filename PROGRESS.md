@@ -48,17 +48,17 @@ See [docs/plans/2025-11-12-livepage-design.md](docs/plans/2025-11-12-livepage-de
   - [ ] State struct instantiation
   - [ ] WebSocket multiplexing
 
-### Phase 3: CLI Tool 📝
-- [ ] Command structure
-  - [ ] `serve` command
+### Phase 3: CLI Tool 🚧
+- [x] Command structure
+  - [x] `serve` command
   - [ ] `new` command (scaffold generator)
-  - [ ] `version` command
-- [ ] Dev server
-  - [ ] Auto-discovery (scan .md files)
-  - [ ] Route generation
-  - [ ] Static markdown → HTML conversion
-  - [ ] Hot reload (file watcher)
-  - [ ] Built-in theme serving
+  - [x] `version` command
+- [x] Dev server
+  - [x] Auto-discovery (scan .md files)
+  - [x] Route generation
+  - [x] Static markdown → HTML conversion
+  - [ ] Hot reload (file watcher) - deferred
+  - [x] Built-in theme serving
 - [ ] Config file support
   - [ ] Parse livepage.yaml
   - [ ] Apply configuration
