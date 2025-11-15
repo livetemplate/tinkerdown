@@ -234,6 +234,11 @@ func escapeHTML(s string) string {
 // parseCodeBlock parses a fenced code block and extracts livepage metadata.
 // Code block info string format: "go server readonly id=counter"
 func parseCodeBlock(fenced *ast.FencedCodeBlock, source []byte, lineOffset int) (*CodeBlock, error) {
+	// Handle fenced code blocks without language info
+	if fenced.Info == nil {
+		return nil, nil
+	}
+
 	info := string(fenced.Info.Text(source))
 	parts := strings.Fields(info)
 

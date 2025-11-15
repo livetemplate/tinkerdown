@@ -26,9 +26,7 @@ func main() {
 	case "validate":
 		err = commands.ValidateCommand(args)
 	case "new":
-		fmt.Println("livepage new: Not yet implemented")
-		fmt.Println("See PROGRESS.md for implementation status")
-		os.Exit(1)
+		err = commands.NewCommand(args)
 	case "version":
 		fmt.Printf("livepage version %s\n", version)
 	case "help", "-h", "--help":

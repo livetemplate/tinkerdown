@@ -630,40 +630,51 @@ livepage validate examples/counter
 
 ---
 
-#### A5. Scaffold Generator
+#### A5. Scaffold Generator ✅
 **Impact**: Medium-High - Faster getting started
 **Effort**: Medium (4-5 hours)
+**Status**: COMPLETED (2025-11-15)
 
 **Usage:**
 ```bash
 livepage new my-tutorial
 
-Created: my-tutorial/
-  ├── index.md
-  ├── counter.md
-  └── todo.md
+✨ Created new tutorial: my-tutorial
 
-Run: livepage serve my-tutorial
-```
+📁 Project structure:
+   my-tutorial/
+   ├── index.md
+   └── README.md
 
-**Templates:**
-```bash
-livepage new my-tutorial --template counter-basic
-livepage new my-tutorial --template form-handling
-livepage new my-tutorial --template todo-app
+🚀 Next steps:
+   cd my-tutorial
+   livepage serve
+
+📚 Your tutorial will be available at http://localhost:8080
 ```
 
 **What it creates:**
-- Pre-filled `index.md` with frontmatter
-- Example code blocks
-- Comments explaining syntax
-- README with next steps
+- Pre-filled `index.md` with frontmatter ✅
+- Example code blocks (server + lvt) ✅
+- Comments explaining syntax ✅
+- README with next steps ✅
 
 **Implementation:**
-- Embed templates in binary
-- Template variables for project name
-- Support custom template dir
-- Interactive prompts (optional)
+- Embed templates in binary ✅
+- Template variables for project name ✅
+- Support custom template dir (future)
+- Interactive prompts (future)
+
+**Changes:**
+- Created embedded template directory structure with basic tutorial template
+- Implemented NewCommand with directory creation and validation
+- Added template variable substitution for {{.Title}} and {{.ProjectName}}
+- Supports hyphen and underscore naming (converts to title case)
+- Error handling for missing names, existing directories, invalid names
+- Wired new command to main.go (removed "not yet implemented" stub)
+- Fixed parser nil pointer bug for fenced code blocks without language info
+- Validated generated projects parse correctly
+- Tested with multiple project names and error scenarios
 
 ---
 
