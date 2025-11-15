@@ -17,7 +17,7 @@ By the end of this tutorial, you'll have a working counter that updates in real-
 
 In LiveTemplate, application state is stored in Go structs. Here's our counter state:
 
-```go server readonly id="counter-state"
+```go server
 type CounterState struct {
     Counter int `json:"counter"`
 }
@@ -41,7 +41,7 @@ This code runs on the server and handles all state changes.
 
 The counter below is powered by the state above:
 
-```lvt interactive state="counter-state"
+```lvt
 <div class="counter-demo">
     <h2>Count: {{.Counter}}</h2>
     <div class="controls">

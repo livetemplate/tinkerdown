@@ -41,6 +41,9 @@ func ParseFile(path string) (*Page, error) {
 
 // buildBlocks converts parsed code blocks into typed block structures.
 func (p *Page) buildBlocks(codeBlocks []*CodeBlock) error {
+	// Track the most recent server block ID for auto-linking
+	var lastServerBlockID string
+
 	// First pass: build all blocks
 	for i, cb := range codeBlocks {
 		switch cb.Type {
@@ -52,6 +55,7 @@ func (p *Page) buildBlocks(codeBlocks []*CodeBlock) error {
 				Metadata: cb.Metadata,
 			}
 			p.ServerBlocks[block.ID] = block
+			lastServerBlockID = block.ID // Track for auto-linking
 
 		case "wasm":
 			block := &WasmBlock{
@@ -64,9 +68,15 @@ func (p *Page) buildBlocks(codeBlocks []*CodeBlock) error {
 			p.WasmBlocks[block.ID] = block
 
 		case "lvt":
+			// Auto-link to nearest previous server block if no explicit state ref
+			stateRef := cb.Metadata["state"]
+			if stateRef == "" {
+				stateRef = lastServerBlockID
+			}
+
 			block := &InteractiveBlock{
 				ID:       getBlockID(cb, i),
-				StateRef: cb.Metadata["state"],
+				StateRef: stateRef,
 				Content:  cb.Content,
 				Metadata: cb.Metadata,
 			}
@@ -80,7 +90,7 @@ func (p *Page) buildBlocks(codeBlocks []*CodeBlock) error {
 	// Second pass: validate references
 	for id, block := range p.InteractiveBlocks {
 		if block.StateRef == "" {
-			return fmt.Errorf("interactive block %s missing state reference", id)
+			return fmt.Errorf("interactive block %s has no state reference (no server block found before it)", id)
 		}
 
 		if _, ok := p.ServerBlocks[block.StateRef]; !ok {
