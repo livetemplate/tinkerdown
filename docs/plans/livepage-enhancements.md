@@ -923,7 +923,7 @@ ignore:
 - ✅ Live reload / watch mode (A3) - COMPLETED
 - ✅ Validation command (A4) - COMPLETED
 - ✅ Scaffold generator - `livepage new` (A5) - COMPLETED
-- Block inspector - `livepage blocks` (A6)
+- ✅ Block inspector - `livepage blocks` (A6) - COMPLETED
 
 **Tutorial:**
 - Multiple interactive demos (2.1)
