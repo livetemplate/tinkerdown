@@ -89,7 +89,7 @@ The counter below is powered by the state above. Notice how the template uses Go
 
 ## Step 3: See It In Action
 
-Click the buttons below to interact with the counter! Open the **State Inspector** (🔍 button in bottom-right) to watch the WebSocket messages and state updates in real-time.
+Click the buttons below to interact with the counter! Open your **browser's DevTools** (F12 or right-click → Inspect) and go to the **Console** or **Network** tab to watch the WebSocket messages and state updates in real-time.
 
 ## How It Works
 
@@ -102,7 +102,7 @@ Here's the complete flow when you click a button:
 5. **Update is pushed** → New HTML sent to browser via WebSocket
 6. **UI updates instantly** → Browser displays the new counter value
 
-> 🔍 **Try This**: Open the State Inspector and click the buttons. Watch the messages flow between client and server!
+> 🔍 **Try This**: Open browser DevTools (F12), go to the Network tab, filter by "WS" (WebSocket), and click the buttons. You'll see the action messages and state updates flowing between client and server in real-time!
 
 ## Key Takeaways
 
