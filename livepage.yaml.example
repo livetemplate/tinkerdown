@@ -1,0 +1,34 @@
+# Livepage Configuration Example
+# Copy this file to livepage.yaml in your project directory to customize settings
+
+# Tutorial metadata
+title: "LiveTemplate Tutorial"
+description: "Interactive tutorial powered by LiveTemplate"
+
+# Server configuration
+server:
+  port: 8080
+  host: localhost
+  debug: false
+
+# Styling configuration
+styling:
+  theme: clean              # Options: clean, dark, minimal
+  primary_color: "#007bff"  # Primary accent color
+  font: "system-ui"         # Font family
+
+# Block configuration
+blocks:
+  auto_id: true             # Automatically generate block IDs
+  id_format: "kebab-case"   # ID format: kebab-case, camelCase, snake_case
+  show_line_numbers: true   # Show line numbers in code blocks
+
+# Feature flags
+features:
+  hot_reload: true          # Enable hot reload / watch mode
+
+# Files and directories to ignore
+ignore:
+  - "drafts/**"
+  - "_*.md"
+  - "*.tmp"

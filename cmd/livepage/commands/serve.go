@@ -6,8 +6,10 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
+	"github.com/livetemplate/livepage/internal/config"
 	"github.com/livetemplate/livepage/internal/server"
 )
 
@@ -15,15 +17,17 @@ import (
 func ServeCommand(args []string) error {
 	// Parse arguments
 	dir := "."
-	port := "8080"
-	host := "localhost"
-	watch := false
+	var configPath string
+	var port string
+	var host string
+	var watch *bool
 
 	// Parse flags
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
 		if arg == "--watch" || arg == "-w" {
-			watch = true
+			watchVal := true
+			watch = &watchVal
 		} else if arg == "--port" || arg == "-p" {
 			if i+1 < len(args) {
 				port = args[i+1]
@@ -32,6 +36,11 @@ func ServeCommand(args []string) error {
 		} else if arg == "--host" {
 			if i+1 < len(args) {
 				host = args[i+1]
+				i++
+			}
+		} else if arg == "--config" || arg == "-c" {
+			if i+1 < len(args) {
+				configPath = args[i+1]
 				i++
 			}
 		} else if !strings.HasPrefix(arg, "-") {
@@ -49,6 +58,37 @@ func ServeCommand(args []string) error {
 	absDir, err := filepath.Abs(dir)
 	if err != nil {
 		return fmt.Errorf("failed to get absolute path: %w", err)
+	}
+
+	// Load configuration
+	var cfg *config.Config
+	if configPath != "" {
+		cfg, err = config.Load(configPath)
+		if err != nil {
+			return fmt.Errorf("failed to load config: %w", err)
+		}
+		fmt.Printf("📝 Using config: %s\n", configPath)
+	} else {
+		// Try to load from directory
+		cfg, err = config.LoadFromDir(absDir)
+		if err != nil {
+			return fmt.Errorf("failed to load config: %w", err)
+		}
+	}
+
+	// CLI flags override config
+	if port != "" {
+		portInt, err := strconv.Atoi(port)
+		if err != nil {
+			return fmt.Errorf("invalid port: %s", port)
+		}
+		cfg.Server.Port = portInt
+	}
+	if host != "" {
+		cfg.Server.Host = host
+	}
+	if watch != nil {
+		cfg.Features.HotReload = *watch
 	}
 
 	fmt.Printf("📚 Livepage Development Server\n\n")
@@ -69,7 +109,7 @@ func ServeCommand(args []string) error {
 	}
 
 	// Enable watch mode if requested
-	if watch {
+	if cfg.Features.HotReload {
 		if err := srv.EnableWatch(true); err != nil {
 			return fmt.Errorf("failed to enable watch mode: %w", err)
 		}
@@ -78,9 +118,9 @@ func ServeCommand(args []string) error {
 	}
 
 	// Start server
-	addr := fmt.Sprintf("%s:%s", host, port)
+	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
 	fmt.Printf("\n🌐 Server running at http://%s\n", addr)
-	if watch {
+	if cfg.Features.HotReload {
 		fmt.Printf("📝 Edit .md files and see changes instantly\n")
 	}
 	fmt.Printf("Press Ctrl+C to stop\n\n")
