@@ -320,6 +320,81 @@ func (s *ComparisonCounterState) Change(ctx *livetemplate.ActionContext) error {
 
 ---
 
+## Architecture Comparison
+
+Understanding the architectural differences helps explain why LiveTemplate is simpler and more secure:
+
+### React Architecture
+
+```mermaid
+flowchart TB
+    subgraph Browser["🌐 Browser"]
+        UI_R[React Components]
+        State_R[useState/Redux<br/>Client State]
+        Validation_R[Client Validation<br/>⚠️ Bypassable]
+    end
+
+    subgraph Server_R["🖥️ Backend Server"]
+        API[REST/GraphQL API]
+        ServerValidation[Server Validation<br/>⚠️ Must duplicate logic]
+        DB[Database]
+    end
+
+    UI_R <-->|Local updates| State_R
+    State_R -->|Check locally| Validation_R
+    State_R -->|HTTP Request| API
+    API -->|Validate again| ServerValidation
+    ServerValidation <-->|Persist| DB
+    API -->|JSON Response| State_R
+
+    style State_R fill:#FFB6C1
+    style Validation_R fill:#FFA07A
+    style ServerValidation fill:#FFA07A
+```
+
+### LiveTemplate Architecture
+
+```mermaid
+flowchart TB
+    subgraph Browser_LT["🌐 Browser"]
+        UI_LT[HTML/CSS UI]
+        WS_Client[WebSocket Client]
+    end
+
+    subgraph Server_LT["🖥️ Go Server"]
+        WS_Server[WebSocket Server]
+        State_LT[Go Struct State<br/>✅ Single source of truth]
+        Validation_LT[Server Validation<br/>✅ Secure & trusted]
+        Template[Template Rendering]
+    end
+
+    UI_LT -->|User action| WS_Client
+    WS_Client <-->|WebSocket| WS_Server
+    WS_Server -->|Update| State_LT
+    State_LT -->|Validate| Validation_LT
+    Validation_LT -->|Apply changes| State_LT
+    State_LT -->|Read state| Template
+    Template -->|Render HTML| WS_Server
+    WS_Server -->|Push update| WS_Client
+    WS_Client -->|Update DOM| UI_LT
+
+    style State_LT fill:#90EE90
+    style Validation_LT fill:#90EE90
+    style Template fill:#87CEEB
+```
+
+**Key Architectural Differences:**
+
+| Aspect | React | LiveTemplate |
+|--------|-------|--------------|
+| **State Location** | Browser (untrusted) | Server (trusted) |
+| **Validation** | Client + Server (duplicated) | Server only (single source) |
+| **Updates** | Local, then HTTP sync | Real-time WebSocket |
+| **Security** | Can be manipulated | Inherently secure |
+| **Complexity** | Manage state sync | Automatic sync |
+
+---
+
 ## Key Takeaways
 
 ### When to Choose React

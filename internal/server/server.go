@@ -1111,6 +1111,43 @@ func (s *Server) renderPage(page *livepage.Page) string {
             Prism.highlightAll();
         });
     </script>
+
+    <!-- Mermaid.js for diagrams -->
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <script>
+        // Initialize Mermaid for diagram rendering
+        mermaid.initialize({
+            startOnLoad: true,
+            theme: document.documentElement.classList.contains('theme-dark') ? 'dark' : 'default',
+            flowchart: {
+                useMaxWidth: true,
+                htmlLabels: true,
+                curve: 'basis'
+            },
+            sequence: {
+                diagramMarginX: 50,
+                diagramMarginY: 10,
+                actorMargin: 50,
+                width: 150,
+                height: 65,
+                boxMargin: 10,
+                boxTextMargin: 5,
+                noteMargin: 10,
+                messageMargin: 35,
+                mirrorActors: true,
+                useMaxWidth: true
+            }
+        });
+
+        // Re-initialize Mermaid when theme changes
+        document.addEventListener('themeChanged', function(e) {
+            mermaid.initialize({
+                theme: e.detail.theme === 'dark' ? 'dark' : 'default'
+            });
+            // Re-render all diagrams
+            mermaid.run();
+        });
+    </script>
 </body>
 </html>`, page.Title, content)
 

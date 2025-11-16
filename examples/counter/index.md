@@ -104,6 +104,100 @@ Here's the complete flow when you click a button:
 
 > 🔍 **Try This**: Open browser DevTools (F12), go to the Network tab, filter by "WS" (WebSocket), and click the buttons. You'll see the action messages and state updates flowing between client and server in real-time!
 
+### Visual Flow Diagram
+
+Here's how the client and server communicate when you click a button:
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Browser
+    participant WebSocket
+    participant Server
+    participant State
+
+    User->>Browser: Clicks "+1" button
+    Browser->>WebSocket: Send action: "increment"
+    WebSocket->>Server: Deliver message
+    Server->>State: Call Change("increment")
+    State->>State: Counter++
+    Server->>Server: Render template with new state
+    Server->>WebSocket: Push HTML update
+    WebSocket->>Browser: Receive update
+    Browser->>Browser: Replace DOM
+    Browser->>User: Display new counter value
+```
+
+### State Transition Diagram
+
+The counter can be in different states based on its value. Each action transitions the state:
+
+```mermaid
+stateDiagram-v2
+    [*] --> Zero: Initial state
+    Zero --> Positive: increment
+    Zero --> Negative: decrement
+    Positive --> Positive: increment
+    Positive --> Zero: decrement (when Counter=1)
+    Positive --> Positive: decrement (when Counter>1)
+    Negative --> Negative: decrement
+    Negative --> Zero: increment (when Counter=-1)
+    Negative --> Negative: increment (when Counter<-1)
+    Positive --> Zero: reset
+    Negative --> Zero: reset
+    Zero --> Zero: reset
+
+    note right of Positive
+        Counter > 0
+        Color: Green
+    end note
+
+    note right of Zero
+        Counter = 0
+        Color: Gray
+    end note
+
+    note right of Negative
+        Counter < 0
+        Color: Red
+    end note
+```
+
+### Architecture Overview
+
+LiveTemplate's architecture keeps your state secure on the server:
+
+```mermaid
+flowchart TB
+    subgraph Browser["🌐 Browser (Untrusted)"]
+        UI[HTML/CSS UI]
+        Client[LiveTemplate Client]
+        WS_Client[WebSocket Client]
+    end
+
+    subgraph Server["🖥️ Go Server (Trusted)"]
+        WS_Server[WebSocket Server]
+        Router[Action Router]
+        State[CounterState Struct]
+        Template[Go Template Engine]
+    end
+
+    UI -->|User clicks button| Client
+    Client -->|Send action: 'increment'| WS_Client
+    WS_Client <-->|WebSocket Connection| WS_Server
+    WS_Server -->|Route action| Router
+    Router -->|Call Change()| State
+    State -->|Read state| Template
+    Template -->|Render HTML| WS_Server
+    WS_Server -->|Push update| WS_Client
+    WS_Client -->|Update DOM| UI
+
+    style State fill:#90EE90
+    style Template fill:#87CEEB
+    style Browser fill:#FFE4B5
+    style Server fill:#E0E0E0
+```
+
 ## Key Takeaways
 
 ✅ **Server-side state** - Your data is secure and trusted
