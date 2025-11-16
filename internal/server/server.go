@@ -1117,7 +1117,7 @@ func (s *Server) renderPage(page *livepage.Page) string {
     <script>
         // Initialize Mermaid for diagram rendering
         mermaid.initialize({
-            startOnLoad: true,
+            startOnLoad: false, // We'll trigger manually after conversion
             theme: document.documentElement.classList.contains('theme-dark') ? 'dark' : 'default',
             flowchart: {
                 useMaxWidth: true,
@@ -1137,6 +1137,29 @@ func (s *Server) renderPage(page *livepage.Page) string {
                 mirrorActors: true,
                 useMaxWidth: true
             }
+        });
+
+        // Convert mermaid code blocks to rendered diagrams
+        document.addEventListener('DOMContentLoaded', function() {
+            // Find all code blocks with language-mermaid class
+            const mermaidBlocks = document.querySelectorAll('code.language-mermaid');
+
+            mermaidBlocks.forEach(function(codeBlock) {
+                // Get the mermaid code
+                const code = codeBlock.textContent;
+
+                // Create a new div for the rendered diagram
+                const mermaidDiv = document.createElement('div');
+                mermaidDiv.className = 'mermaid';
+                mermaidDiv.textContent = code;
+
+                // Replace the pre>code structure with just the mermaid div
+                const preBlock = codeBlock.parentElement;
+                preBlock.parentNode.replaceChild(mermaidDiv, preBlock);
+            });
+
+            // Now render all mermaid diagrams
+            mermaid.run();
         });
 
         // Re-initialize Mermaid when theme changes
