@@ -927,12 +927,14 @@ ignore:
 
 **Tutorial:**
 - ✅ Multiple interactive demos (2.1) - COMPLETED
-- Progressive tutorial steps (2.2)
-- Guided challenges (2.3)
+- Progressive tutorial steps (2.2) - DEFERRED (current tutorial is well-structured)
+- Guided challenges (2.3) - DEFERRED (requires challenge scoring system)
 - ✅ Step navigation controls - sidebar TOC + bottom nav (2.4) - COMPLETED
-- Presentation mode (2.5)
+- Presentation mode (2.5) - DEFERRED (requires fullscreen API integration)
 
-**Deliverable:** Smooth authoring workflow, engaging tutorial experience with full navigation
+**Deliverable:** ✅ Smooth authoring workflow, engaging tutorial experience with full navigation
+
+**Note:** Tasks 2.2, 2.3, and 2.5 are deferred to Phase 3 as they require significant additional infrastructure. Core navigation and multiple demos provide excellent tutorial experience.
 
 ---
 
