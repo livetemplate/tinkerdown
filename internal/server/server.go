@@ -989,7 +989,31 @@ func (s *Server) renderPage(page *livepage.Page) string {
             color: var(--text-secondary);
             font-style: italic;
         }
+
+        /* Prism.js syntax highlighting overrides */
+        pre[class*="language-"] {
+            margin: 1.5rem 0;
+            padding: 1rem;
+            border-radius: 8px;
+            overflow-x: auto;
+        }
+
+        code[class*="language-"],
+        pre[class*="language-"] {
+            font-family: 'Consolas', 'Monaco', 'Andale Mono', 'Ubuntu Mono', monospace;
+            font-size: 0.9rem;
+            line-height: 1.5;
+        }
+
+        /* Ensure code blocks are styled properly */
+        :not(pre) > code[class*="language-"] {
+            padding: 0.1em 0.3em;
+            border-radius: 0.3em;
+        }
     </style>
+
+    <!-- Prism.js for syntax highlighting -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" />
 </head>
 <body>
     <!-- Theme Toggle -->
@@ -1069,6 +1093,24 @@ func (s *Server) renderPage(page *livepage.Page) string {
     </script>
 
     <script src="/assets/livepage-client.js"></script>
+
+    <!-- Prism.js for syntax highlighting -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-go.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-jsx.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-markup.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-css.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-markdown.min.js"></script>
+    <script>
+        // Highlight all code blocks on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            Prism.highlightAll();
+        });
+    </script>
 </body>
 </html>`, page.Title, content)
 

@@ -67,6 +67,33 @@ All enhancements are prioritized by **impact** (user value) and **effort** (impl
 
 ---
 
+#### 1.1a Syntax Highlighting for Code Blocks
+**Impact**: HIGH - Essential for code readability
+**Effort**: Low (2-3 hours)
+**Status**: ✅ COMPLETED
+
+**What:**
+- Language-specific syntax highlighting for all code blocks
+- Support for Go, JavaScript, HTML, CSS, YAML, JSON, Shell, and more
+- Professional color themes matching the site design
+- Line number support (optional)
+- Copy-to-clipboard functionality
+
+**Implementation:**
+- Integrate Prism.js (lightweight, supports many languages)
+- Add Prism CSS and JS to server template
+- Automatic language detection from markdown code fence info
+- Theme: Use "Tomorrow Night" or similar professional theme
+- Load language grammars on demand
+
+**Why Critical:**
+- Code blocks without syntax highlighting look unprofessional
+- Harder to read and understand code examples
+- Essential for tutorial/documentation platform
+- Industry standard expectation
+
+---
+
 #### 1.2 Dark/Light Theme Toggle ✅
 **Impact**: High - Comfort, accessibility, reading experience
 **Effort**: Low (2-3 hours)

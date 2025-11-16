@@ -128,5 +128,37 @@ func TestComparisonDemo(t *testing.T) {
 		}
 	})
 
+	// Verify syntax highlighting
+	t.Run("Syntax Highlighting", func(t *testing.T) {
+		// Check that Prism.js is loaded
+		if !strings.Contains(pageHTML, "prism") {
+			t.Error("Prism.js not found in page")
+		}
+
+		// Check that code blocks have Prism language classes
+		if !strings.Contains(pageHTML, `class="language-javascript"`) {
+			t.Error("JavaScript syntax highlighting class not found")
+		}
+		if !strings.Contains(pageHTML, `class="language-go"`) {
+			t.Error("Go syntax highlighting class not found")
+		}
+
+		// Verify Prism CSS is loaded
+		if !strings.Contains(pageHTML, "prism-tomorrow.min.css") {
+			t.Error("Prism CSS theme not found")
+		}
+
+		// Verify Prism scripts are loaded
+		if !strings.Contains(pageHTML, "prism.min.js") {
+			t.Error("Prism core script not found")
+		}
+		if !strings.Contains(pageHTML, "prism-go.min.js") {
+			t.Error("Prism Go language component not found")
+		}
+		if !strings.Contains(pageHTML, "prism-javascript.min.js") {
+			t.Error("Prism JavaScript language component not found")
+		}
+	})
+
 	t.Log("✅ All comparison demo tests passed!")
 }
