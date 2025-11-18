@@ -4,6 +4,7 @@
 
 import { LivepageClient } from "./livepage-client";
 import { TutorialNavigation } from "./core/navigation";
+import { hasEditableBlocks, preloadMonaco } from "./editor/monaco-loader";
 
 /**
  * Auto-initialization function
@@ -22,6 +23,12 @@ function initializeLivepage(): void {
   // Get debug flag from meta tag
   const debugMeta = document.querySelector<HTMLMetaElement>('meta[name="livepage-debug"]');
   const debug = debugMeta?.content === "true";
+
+  // Preload Monaco if page has WASM blocks (lazy load in background)
+  if (hasEditableBlocks()) {
+    console.log("[Livepage] Preloading Monaco Editor for WASM blocks...");
+    preloadMonaco();
+  }
 
   // Create and initialize client
   const client = new LivepageClient({

@@ -220,6 +220,8 @@ func (s *Server) renderPage(page *livepage.Page) string {
     <meta name="livepage-ws-url" content="ws://localhost:8080/ws">
     <meta name="livepage-debug" content="true">
     <title>%s</title>
+    <!-- Tailwind CSS Play CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="/assets/livepage-client.css">
     <style>
         /* Theme Variables */
@@ -274,7 +276,7 @@ func (s *Server) renderPage(page *livepage.Page) string {
         body {
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
             line-height: 1.6;
-            max-width: 900px;
+            max-width: 1200px;
             margin: 0 auto;
             padding: 2rem;
             color: var(--text-primary);
@@ -538,7 +540,7 @@ func (s *Server) renderPage(page *livepage.Page) string {
             left: 0;
             top: 0;
             bottom: 0;
-            width: 280px;
+            width: 220px;
             background: var(--card-bg);
             border-right: 1px solid var(--card-border);
             box-shadow: 2px 0 8px var(--card-shadow);
@@ -625,7 +627,7 @@ func (s *Server) renderPage(page *livepage.Page) string {
         .livepage-nav-bottom {
             position: fixed;
             bottom: 0;
-            left: 280px;
+            left: 220px;
             right: 0;
             height: 70px;
             background: var(--card-bg);
@@ -691,7 +693,7 @@ func (s *Server) renderPage(page *livepage.Page) string {
 
         /* Adjust main content to make room for navigation */
         body:has(.livepage-nav-sidebar) {
-            margin-left: 280px;
+            margin-left: 220px;
             margin-bottom: 70px;
         }
 

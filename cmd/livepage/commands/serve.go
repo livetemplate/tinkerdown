@@ -123,9 +123,13 @@ func ServeCommand(args []string) error {
 	if cfg.Features.HotReload {
 		fmt.Printf("📝 Edit .md files and see changes instantly\n")
 	}
+	fmt.Printf("⚡ Gzip compression enabled\n")
 	fmt.Printf("Press Ctrl+C to stop\n\n")
 
-	if err := http.ListenAndServe(addr, srv); err != nil {
+	// Wrap server with compression middleware
+	handler := server.WithCompression(srv)
+
+	if err := http.ListenAndServe(addr, handler); err != nil {
 		return fmt.Errorf("server error: %w", err)
 	}
 
