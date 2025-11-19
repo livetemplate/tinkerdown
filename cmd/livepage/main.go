@@ -25,6 +25,8 @@ func main() {
 		err = commands.ServeCommand(args)
 	case "validate":
 		err = commands.ValidateCommand(args)
+	case "fix":
+		err = commands.FixCommand(args)
 	case "new":
 		err = commands.NewCommand(args)
 	case "blocks":
@@ -51,6 +53,7 @@ func printUsage() {
 	fmt.Println("Usage:")
 	fmt.Println("  livepage serve [directory]     Start development server")
 	fmt.Println("  livepage validate [directory]  Validate markdown files")
+	fmt.Println("  livepage fix [directory]       Auto-fix common issues")
 	fmt.Println("  livepage blocks [directory]    Inspect code blocks")
 	fmt.Println("  livepage new <name>            Create new tutorial")
 	fmt.Println("  livepage version               Show version")
@@ -62,6 +65,8 @@ func printUsage() {
 	fmt.Println("  livepage serve --watch         # Serve with live reload")
 	fmt.Println("  livepage validate              # Validate current directory")
 	fmt.Println("  livepage validate examples/    # Validate specific directory")
+	fmt.Println("  livepage fix                   # Auto-fix issues in current directory")
+	fmt.Println("  livepage fix --dry-run         # Preview fixes without applying")
 	fmt.Println("  livepage blocks examples/      # Inspect blocks in examples/")
 	fmt.Println("  livepage blocks . --verbose    # Show detailed block info")
 	fmt.Println("  livepage new my-tutorial       # Create new tutorial")

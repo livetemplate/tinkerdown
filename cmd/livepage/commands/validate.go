@@ -44,10 +44,17 @@ func ValidateCommand(args []string) error {
 
 		// Skip directories
 		if d.IsDir() {
-			// Skip directories starting with _ or .
 			name := d.Name()
+			// Skip hidden directories (starting with . or _)
 			if strings.HasPrefix(name, "_") || strings.HasPrefix(name, ".") {
 				return filepath.SkipDir
+			}
+			// Skip common non-documentation directories
+			skipDirs := []string{"node_modules", "vendor", "dist", "build", "target", ".git"}
+			for _, skip := range skipDirs {
+				if name == skip {
+					return filepath.SkipDir
+				}
 			}
 			return nil
 		}
