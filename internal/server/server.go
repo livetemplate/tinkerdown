@@ -284,6 +284,12 @@ func (s *Server) renderPage(page *livepage.Page) string {
             min-height: 100vh;
         }
 
+        /* Content wrapper for readable line lengths */
+        .content-wrapper {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
         /* Typography */
         h1, h2, h3 {
             color: var(--text-heading);
@@ -324,7 +330,8 @@ func (s *Server) renderPage(page *livepage.Page) string {
             padding: 1.25rem 1rem;
             border-radius: 8px;
             overflow-x: auto;
-            margin: 1.5rem -0.5rem;
+            margin: 1.5rem calc((800px - 100%%) / 2 * -1);
+            max-width: 1000px;
             box-shadow: 0 4px 12px rgba(0,0,0,0.15);
             border: 1px solid var(--border-color);
         }
@@ -339,7 +346,8 @@ func (s *Server) renderPage(page *livepage.Page) string {
         /* Interactive blocks */
         .livepage-wasm-block,
         .livepage-interactive-block {
-            margin: 2rem 0;
+            margin: 2rem calc((800px - 100%%) / 2 * -1);
+            max-width: 1000px;
             padding: 1.5rem;
             background: var(--card-bg);
             border-radius: 16px;
@@ -1187,7 +1195,11 @@ func (s *Server) renderContent(page *livepage.Page) string {
 	// For now, the client will need to discover blocks by parsing the HTML
 	// In Phase 4.5, we'll improve this to inject proper data attributes during parsing
 
-	return content
+	// Wrap content in a readable-width container for better typography
+	// Navigation elements (sidebar, bottom nav) are outside this wrapper
+	wrappedContent := fmt.Sprintf(`<div class="content-wrapper">%s</div>`, content)
+
+	return wrappedContent
 }
 
 // mdToPattern converts a markdown file path to a URL pattern.
