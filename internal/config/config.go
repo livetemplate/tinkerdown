@@ -10,13 +10,37 @@ import (
 
 // Config represents the livepage configuration
 type Config struct {
-	Title       string       `yaml:"title"`
-	Description string       `yaml:"description"`
-	Server      ServerConfig `yaml:"server"`
-	Styling     StylingConfig `yaml:"styling"`
-	Blocks      BlocksConfig `yaml:"blocks"`
+	Title       string         `yaml:"title"`
+	Description string         `yaml:"description"`
+	Type        string         `yaml:"type"` // "tutorial" or "site"
+	Site        *SiteConfig    `yaml:"site,omitempty"`
+	Navigation  []NavSection   `yaml:"navigation,omitempty"`
+	Server      ServerConfig   `yaml:"server"`
+	Styling     StylingConfig  `yaml:"styling"`
+	Blocks      BlocksConfig   `yaml:"blocks"`
 	Features    FeaturesConfig `yaml:"features"`
-	Ignore      []string     `yaml:"ignore"`
+	Ignore      []string       `yaml:"ignore"`
+}
+
+// SiteConfig holds site-level configuration
+type SiteConfig struct {
+	Home       string `yaml:"home"`        // Homepage markdown file (e.g., "index.md")
+	Logo       string `yaml:"logo"`        // Logo path (e.g., "/assets/logo.svg")
+	Repository string `yaml:"repository"`  // GitHub repository URL
+}
+
+// NavSection represents a navigation section with pages
+type NavSection struct {
+	Title     string    `yaml:"title"`              // Section title (e.g., "Getting Started")
+	Path      string    `yaml:"path"`               // Section path (e.g., "getting-started")
+	Collapsed bool      `yaml:"collapsed"`          // Whether section is collapsed by default
+	Pages     []NavPage `yaml:"pages,omitempty"`    // Pages in this section
+}
+
+// NavPage represents a single page in navigation
+type NavPage struct {
+	Title string `yaml:"title"` // Page title (e.g., "Installation")
+	Path  string `yaml:"path"`  // Page path (e.g., "getting-started/installation.md")
 }
 
 // ServerConfig holds server-related configuration
@@ -50,6 +74,7 @@ func DefaultConfig() *Config {
 	return &Config{
 		Title:       "LiveTemplate Tutorial",
 		Description: "Interactive tutorial powered by LiveTemplate",
+		Type:        "tutorial", // Default to tutorial mode
 		Server: ServerConfig{
 			Port:  8080,
 			Host:  "localhost",
@@ -73,6 +98,16 @@ func DefaultConfig() *Config {
 			"_*.md",
 		},
 	}
+}
+
+// IsSiteMode returns true if the config is for a multi-page site
+func (c *Config) IsSiteMode() bool {
+	return c.Type == "site"
+}
+
+// IsTutorialMode returns true if the config is for a single tutorial
+func (c *Config) IsTutorialMode() bool {
+	return c.Type == "tutorial" || c.Type == ""
 }
 
 // Load loads configuration from a YAML file

@@ -13,6 +13,8 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/livetemplate/livepage"
 	"github.com/livetemplate/livepage/internal/assets"
+	"github.com/livetemplate/livepage/internal/config"
+	"github.com/livetemplate/livepage/internal/site"
 )
 
 // Route represents a discovered page route.
@@ -25,7 +27,9 @@ type Route struct {
 // Server is the livepage development server.
 type Server struct {
 	rootDir     string
+	config      *config.Config
 	routes      []*Route
+	siteManager *site.Manager             // For multi-page documentation sites
 	mu          sync.RWMutex
 	connections map[*websocket.Conn]bool // Track connected WebSocket clients
 	connMu      sync.RWMutex              // Separate mutex for connections
@@ -36,9 +40,27 @@ type Server struct {
 func New(rootDir string) *Server {
 	return &Server{
 		rootDir:     rootDir,
+		config:      config.DefaultConfig(),
 		routes:      make([]*Route, 0),
 		connections: make(map[*websocket.Conn]bool),
 	}
+}
+
+// NewWithConfig creates a new server with a specific configuration.
+func NewWithConfig(rootDir string, cfg *config.Config) *Server {
+	srv := &Server{
+		rootDir:     rootDir,
+		config:      cfg,
+		routes:      make([]*Route, 0),
+		connections: make(map[*websocket.Conn]bool),
+	}
+
+	// Initialize site manager if in site mode
+	if cfg.IsSiteMode() {
+		srv.siteManager = site.New(rootDir, cfg)
+	}
+
+	return srv
 }
 
 // Discover scans the directory for .md files and creates routes.
@@ -48,6 +70,28 @@ func (s *Server) Discover() error {
 
 	s.routes = make([]*Route, 0)
 
+	// Use site manager for site mode
+	if s.siteManager != nil {
+		if err := s.siteManager.Discover(); err != nil {
+			return err
+		}
+
+		// Convert PageNodes to Routes
+		for _, pageNode := range s.siteManager.AllPages() {
+			route := &Route{
+				Pattern:  pageNode.Path,
+				FilePath: pageNode.FilePath,
+				Page:     pageNode.Page,
+			}
+			s.routes = append(s.routes, route)
+		}
+
+		// Sort routes
+		sortRoutes(s.routes)
+		return nil
+	}
+
+	// Legacy tutorial mode discovery
 	err := filepath.WalkDir(s.rootDir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err

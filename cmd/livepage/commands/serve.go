@@ -93,9 +93,14 @@ func ServeCommand(args []string) error {
 
 	fmt.Printf("📚 Livepage Development Server\n\n")
 	fmt.Printf("Serving: %s\n", absDir)
+	if cfg.IsSiteMode() {
+		fmt.Printf("Mode: 📖 Multi-page documentation site\n")
+	} else {
+		fmt.Printf("Mode: 📝 Single tutorial\n")
+	}
 
 	// Create server
-	srv := server.New(absDir)
+	srv := server.NewWithConfig(absDir, cfg)
 
 	// Discover pages
 	if err := srv.Discover(); err != nil {
