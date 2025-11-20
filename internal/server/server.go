@@ -1243,6 +1243,22 @@ func (s *Server) renderPage(page *livepage.Page) string {
                     el.classList.add('presentation-current-section');
                 });
 
+                // Update step counter in bottom navigation
+                const currentStepEl = document.querySelector('.current-step');
+                if (currentStepEl) {
+                    currentStepEl.textContent = currentSectionIndex + 1;
+                }
+
+                // Update button disabled states
+                const prevBtn = document.querySelector('.nav-prev');
+                const nextBtn = document.querySelector('.nav-next');
+                if (prevBtn) {
+                    prevBtn.disabled = currentSectionIndex === 0;
+                }
+                if (nextBtn) {
+                    nextBtn.disabled = currentSectionIndex === sections.length - 1;
+                }
+
                 // Scroll to section
                 section.heading.scrollIntoView({ behavior: 'smooth', block: 'start' });
             }
