@@ -1,12 +1,16 @@
 package commands
 
 import (
+	"context"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
+	"time"
 
+	"github.com/chromedp/chromedp"
 	"github.com/livetemplate/livepage"
 )
 
@@ -82,8 +86,25 @@ func ValidateCommand(args []string) error {
 			})
 			totalErrors++
 		} else {
-			validFiles++
-			fmt.Printf("✓ %s\n", relPath)
+			// Also validate Mermaid diagrams
+			mermaidErrors, err := validateMermaidDiagrams(path)
+			if err != nil {
+				fileErrors = append(fileErrors, fileValidationError{
+					file:  relPath,
+					error: fmt.Sprintf("Mermaid validation failed: %v", err),
+				})
+				totalErrors++
+			} else if len(mermaidErrors) > 0 {
+				errorMsg := strings.Join(mermaidErrors, "\n  ")
+				fileErrors = append(fileErrors, fileValidationError{
+					file:  relPath,
+					error: fmt.Sprintf("Mermaid errors:\n  %s", errorMsg),
+				})
+				totalErrors += len(mermaidErrors)
+			} else {
+				validFiles++
+				fmt.Printf("✓ %s\n", relPath)
+			}
 		}
 
 		return nil
@@ -129,4 +150,87 @@ func ValidateCommand(args []string) error {
 type fileValidationError struct {
 	file  string
 	error string
+}
+
+// validateMermaidDiagrams validates Mermaid diagrams in a markdown file
+func validateMermaidDiagrams(filePath string) ([]string, error) {
+	// Read file content
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read file: %w", err)
+	}
+
+	// Extract Mermaid code blocks
+	mermaidRegex := regexp.MustCompile("(?s)```mermaid\\n(.+?)\\n```")
+	matches := mermaidRegex.FindAllStringSubmatch(string(content), -1)
+
+	if len(matches) == 0 {
+		return nil, nil // No Mermaid diagrams found
+	}
+
+	var errors []string
+
+	// Create chrome context
+	opts := append(chromedp.DefaultExecAllocatorOptions[:],
+		chromedp.Flag("headless", true),
+		chromedp.Flag("disable-gpu", true),
+		chromedp.Flag("no-sandbox", true),
+	)
+
+	allocCtx, cancel := chromedp.NewExecAllocator(context.Background(), opts...)
+	defer cancel()
+
+	ctx, cancel := chromedp.NewContext(allocCtx)
+	defer cancel()
+
+	ctx, cancel = context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+
+	// Create a simple HTML page with Mermaid
+	for i, match := range matches {
+		mermaidCode := match[1]
+
+		html := fmt.Sprintf(`
+<!DOCTYPE html>
+<html>
+<head>
+	<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.5/dist/mermaid.min.js"></script>
+	<script>
+		mermaid.initialize({ startOnLoad: true });
+	</script>
+</head>
+<body>
+	<div class="mermaid">
+%s
+	</div>
+</body>
+</html>
+`, mermaidCode)
+
+		// Write temporary HTML file
+		tmpFile := fmt.Sprintf("/tmp/mermaid-validate-%d.html", i)
+		if err := os.WriteFile(tmpFile, []byte(html), 0644); err != nil {
+			return nil, fmt.Errorf("failed to write temp file: %w", err)
+		}
+		defer os.Remove(tmpFile)
+
+		// Check for errors
+		var hasError bool
+		err = chromedp.Run(ctx,
+			chromedp.Navigate("file://"+tmpFile),
+			chromedp.Sleep(2*time.Second),
+			chromedp.Evaluate(`
+				document.body.textContent.includes('Syntax error') ||
+				document.body.textContent.includes('Parse error')
+			`, &hasError),
+		)
+
+		if err != nil {
+			errors = append(errors, fmt.Sprintf("Diagram %d: Failed to validate (%v)", i+1, err))
+		} else if hasError {
+			errors = append(errors, fmt.Sprintf("Diagram %d: Mermaid syntax error detected", i+1))
+		}
+	}
+
+	return errors, nil
 }
