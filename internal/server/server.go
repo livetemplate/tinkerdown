@@ -1197,6 +1197,11 @@ func (s *Server) renderPage(page *livepage.Page) string {
             let currentSectionIndex = 0;
             let sections = [];
 
+            // Expose presentation mode state globally so other scripts can check it
+            window.livepagePresentationMode = {
+                isActive: () => presentationMode
+            };
+
             function getSections() {
                 // Get all H2 elements (tutorial sections)
                 const h2Elements = document.querySelectorAll('.content-wrapper > h2');
@@ -1285,7 +1290,7 @@ func (s *Server) renderPage(page *livepage.Page) string {
                     btn.addEventListener('click', togglePresentationMode);
                 }
 
-                // Keyboard shortcuts
+                // Keyboard shortcuts - use capture phase to intercept before TutorialNavigation
                 document.addEventListener('keydown', (e) => {
                     // 'f' key to toggle presentation mode
                     if (e.key === 'f' && !e.ctrlKey && !e.metaKey && !e.altKey) {
@@ -1293,6 +1298,7 @@ func (s *Server) renderPage(page *livepage.Page) string {
                         if (document.activeElement.tagName !== 'INPUT' &&
                             document.activeElement.tagName !== 'TEXTAREA') {
                             e.preventDefault();
+                            e.stopImmediatePropagation(); // Prevent other handlers
                             togglePresentationMode();
                         }
                     }
@@ -1301,36 +1307,41 @@ func (s *Server) renderPage(page *livepage.Page) string {
                     if (presentationMode) {
                         if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
                             e.preventDefault();
+                            e.stopImmediatePropagation(); // Prevent TutorialNavigation
                             nextSection();
                         } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
                             e.preventDefault();
+                            e.stopImmediatePropagation(); // Prevent TutorialNavigation
                             previousSection();
                         } else if (e.key === 'Escape') {
                             e.preventDefault();
+                            e.stopImmediatePropagation(); // Prevent other handlers
                             togglePresentationMode();
                         }
                     }
-                });
+                }, true); // Use capture phase
 
-                // Hook into navigation buttons if they exist
-                const navNext = document.getElementById('nav-next');
-                const navPrev = document.getElementById('nav-prev');
+                // Hook into navigation buttons (use class selectors, not IDs)
+                // Use capture phase to intercept before TutorialNavigation handles it
+                document.addEventListener('click', (e) => {
+                    if (!presentationMode) return;
 
-                if (navNext) {
-                    navNext.addEventListener('click', () => {
-                        if (presentationMode) {
-                            nextSection();
-                        }
-                    });
-                }
+                    const target = e.target;
+                    // Check if clicked element or its parent is a nav button
+                    const navBtn = target.closest('.nav-next, .nav-prev');
+                    if (!navBtn) return;
 
-                if (navPrev) {
-                    navPrev.addEventListener('click', () => {
-                        if (presentationMode) {
-                            previousSection();
-                        }
-                    });
-                }
+                    // Prevent the default navigation
+                    e.preventDefault();
+                    e.stopPropagation();
+
+                    // Handle presentation mode navigation
+                    if (navBtn.classList.contains('nav-next')) {
+                        nextSection();
+                    } else if (navBtn.classList.contains('nav-prev')) {
+                        previousSection();
+                    }
+                }, true); // Use capture phase
             });
         })();
     </script>
