@@ -1,280 +1,346 @@
-package livepage
+package livepage_test
 
 import (
 	"context"
+	"fmt"
+	"net/http"
 	"os"
-	"os/exec"
 	"testing"
 	"time"
 
 	"github.com/chromedp/chromedp"
+	"github.com/livetemplate/livepage/internal/config"
+	"github.com/livetemplate/livepage/internal/server"
 )
 
-// TestNavigationSystem verifies that the navigation system works correctly
-func TestNavigationSystem(t *testing.T) {
-	// Start the server
-	serverCmd := exec.Command("./livepage", "serve", "examples/counter", "--port", "8090")
-	serverCmd.Stdout = os.Stdout
-	serverCmd.Stderr = os.Stderr
-
-	if err := serverCmd.Start(); err != nil {
-		t.Fatalf("Failed to start server: %v", err)
+func TestMultiPageNavigation(t *testing.T) {
+	// Setup: Start server with docs-site example
+	docsDir := "examples/docs-site"
+	if _, err := os.Stat(docsDir); os.IsNotExist(err) {
+		t.Skipf("Skipping test: %s directory not found", docsDir)
 	}
-	defer func() {
-		if serverCmd.Process != nil {
-			serverCmd.Process.Kill()
+
+	// Load config
+	cfg, err := config.LoadFromDir(docsDir)
+	if err != nil {
+		t.Fatalf("Failed to load config: %v", err)
+	}
+
+	// Verify site mode
+	if !cfg.IsSiteMode() {
+		t.Fatal("Expected site mode, got tutorial mode")
+	}
+
+	// Create server
+	srv := server.NewWithConfig(docsDir, cfg)
+	if err := srv.Discover(); err != nil {
+		t.Fatalf("Failed to discover pages: %v", err)
+	}
+
+	// Start HTTP server
+	port := 9191
+	addr := fmt.Sprintf("localhost:%d", port)
+	httpServer := &http.Server{
+		Addr:    addr,
+		Handler: srv,
+	}
+
+	go func() {
+		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			t.Errorf("Server error: %v", err)
 		}
 	}()
 
 	// Wait for server to start
-	time.Sleep(3 * time.Second)
+	time.Sleep(500 * time.Millisecond)
 
-	// Create chrome context
+	// Ensure server cleanup
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		httpServer.Shutdown(ctx)
+	}()
+
+	// Create Chrome context
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
 		chromedp.Flag("headless", true),
 		chromedp.Flag("disable-gpu", true),
 		chromedp.Flag("no-sandbox", true),
 	)
 
-	allocCtx, cancel := chromedp.NewExecAllocator(context.Background(), opts...)
-	defer cancel()
+	allocCtx, allocCancel := chromedp.NewExecAllocator(context.Background(), opts...)
+	defer allocCancel()
 
-	ctx, cancel := chromedp.NewContext(allocCtx)
-	defer cancel()
+	baseURL := fmt.Sprintf("http://%s", addr)
 
-	// Set timeout
-	ctx, cancel = context.WithTimeout(ctx, 45*time.Second)
-	defer cancel()
-
-	var sidebarExists bool
-	var navBottomExists bool
-	var tocItemCount int
-	var currentStepText string
-	var totalStepsText string
-	var prevBtnDisabled bool
-	var nextBtnDisabled bool
-	var html string
-
-	err := chromedp.Run(ctx,
-		// Navigate to page
-		chromedp.Navigate("http://localhost:8090/"),
-		chromedp.Sleep(2*time.Second), // Wait for page to load
-
-		// Get the HTML for debugging
-		chromedp.OuterHTML("html", &html),
-
-		// 1. Verify sidebar exists
-		chromedp.Evaluate(`document.querySelector('#tutorial-sidebar') !== null`, &sidebarExists),
-
-		// 2. Verify bottom navigation exists
-		chromedp.Evaluate(`document.querySelector('#tutorial-nav-bottom') !== null`, &navBottomExists),
-
-		// 3. Count TOC items (should be 8 H2 sections in counter tutorial)
-		chromedp.Evaluate(`document.querySelectorAll('.toc-item').length`, &tocItemCount),
-
-		// 4. Check progress indicator
-		chromedp.Text("#current-step", &currentStepText),
-		chromedp.Text("#total-steps", &totalStepsText),
-
-		// 5. Check prev button is disabled (we're on first section)
-		chromedp.Evaluate(`document.querySelector('#nav-prev').disabled`, &prevBtnDisabled),
-
-		// 6. Check next button is enabled
-		chromedp.Evaluate(`document.querySelector('#nav-next').disabled`, &nextBtnDisabled),
-	)
-
-	if err != nil {
-		t.Fatalf("Failed to run chromedp: %v", err)
+	// Helper function to create a new context for each test
+	newTestContext := func() (context.Context, context.CancelFunc) {
+		ctx, cancel := chromedp.NewContext(allocCtx)
+		ctx, cancel2 := context.WithTimeout(ctx, 10*time.Second)
+		return ctx, func() {
+			cancel2()
+			cancel()
+		}
 	}
 
-	// Save HTML for debugging
-	if err := os.WriteFile("/tmp/navigation-test.html", []byte(html), 0644); err != nil {
-		t.Logf("Warning: Could not save HTML: %v", err)
-	}
+	// Test 1: Home page loads
+	t.Run("HomePage", func(t *testing.T) {
+		ctx, cancel := newTestContext()
+		defer cancel()
 
-	// Assertions
-	t.Logf("Sidebar exists: %v", sidebarExists)
-	t.Logf("Bottom nav exists: %v", navBottomExists)
-	t.Logf("TOC items: %d", tocItemCount)
-	t.Logf("Current step: %s", currentStepText)
-	t.Logf("Total steps: %s", totalStepsText)
-	t.Logf("Prev button disabled: %v", prevBtnDisabled)
-	t.Logf("Next button disabled: %v", nextBtnDisabled)
+		var title string
+		err := chromedp.Run(ctx,
+			chromedp.Navigate(baseURL+"/"),
+			chromedp.Sleep(1*time.Second),
+			chromedp.Title(&title),
+		)
+		if err != nil {
+			t.Fatalf("Failed to load home page: %v", err)
+		}
 
-	if !sidebarExists {
-		t.Error("Sidebar does not exist")
-	}
+		if title == "" {
+			t.Error("Page title is empty")
+		}
+		t.Logf("Home page title: %s", title)
+	})
 
-	if !navBottomExists {
-		t.Error("Bottom navigation does not exist")
-	}
+	// Test 2: Navigation sidebar exists
+	t.Run("SidebarExists", func(t *testing.T) {
+		ctx, cancel := newTestContext()
+		defer cancel()
 
-	if tocItemCount != 8 {
-		t.Errorf("Expected 8 TOC items, got %d", tocItemCount)
-	}
+		var sidebarExists bool
+		err := chromedp.Run(ctx,
+			chromedp.Navigate(baseURL+"/"),
+			chromedp.Sleep(1*time.Second),
+			chromedp.Evaluate(`document.querySelector('.livepage-nav-sidebar') !== null`, &sidebarExists),
+		)
+		if err != nil {
+			t.Fatalf("Failed to check sidebar: %v", err)
+		}
 
-	if currentStepText != "1" {
-		t.Errorf("Expected current step to be 1, got %s", currentStepText)
-	}
+		if !sidebarExists {
+			t.Error("Navigation sidebar does not exist")
+		}
+	})
 
-	if totalStepsText != "8" {
-		t.Errorf("Expected total steps to be 8, got %s", totalStepsText)
-	}
+	// Test 3: Navigation sections are present
+	t.Run("NavigationSections", func(t *testing.T) {
+		ctx, cancel := newTestContext()
+		defer cancel()
 
-	if !prevBtnDisabled {
-		t.Error("Prev button should be disabled on first section")
-	}
+		var sectionCount int
+		err := chromedp.Run(ctx,
+			chromedp.Navigate(baseURL+"/"),
+			chromedp.Sleep(1*time.Second),
+			chromedp.Evaluate(`document.querySelectorAll('.nav-section').length`, &sectionCount),
+		)
+		if err != nil {
+			t.Fatalf("Failed to count nav sections: %v", err)
+		}
 
-	if nextBtnDisabled {
-		t.Error("Next button should be enabled when not on last section")
-	}
+		if sectionCount == 0 {
+			t.Error("No navigation sections found")
+		}
+		t.Logf("Found %d navigation sections", sectionCount)
+	})
 
-	// Test navigation interactions
-	var currentStep2 int
-	var prevBtnDisabled2 bool
-	var firstTocActive bool
-	var secondTocActive bool
+	// Test 5: Active page is highlighted in sidebar
+	t.Run("ActivePageHighlight", func(t *testing.T) {
+		ctx, cancel := newTestContext()
+		defer cancel()
 
-	err = chromedp.Run(ctx,
-		// Click next button
-		chromedp.Click("#nav-next"),
-		chromedp.Sleep(2*time.Second), // Wait for navigation and smooth scroll
+		var hasActiveClass bool
+		err := chromedp.Run(ctx,
+			chromedp.Navigate(baseURL+"/getting-started/intro"),
+			chromedp.Sleep(1*time.Second),
+			chromedp.Evaluate(`document.querySelector('.nav-pages li a.active') !== null`, &hasActiveClass),
+		)
+		if err != nil {
+			t.Fatalf("Failed to check active page: %v", err)
+		}
 
-		// Check that we moved to step 2
-		chromedp.Evaluate(`parseInt(document.querySelector('#current-step').textContent)`, &currentStep2),
+		if !hasActiveClass {
+			t.Error("Active page is not highlighted in navigation")
+		}
+	})
 
-		// Check prev button is now enabled
-		chromedp.Evaluate(`document.querySelector('#nav-prev').disabled`, &prevBtnDisabled2),
+	// Test 6: Breadcrumbs exist on non-home pages
+	t.Run("Breadcrumbs", func(t *testing.T) {
+		ctx, cancel := newTestContext()
+		defer cancel()
 
-		// Check TOC active states
-		chromedp.Evaluate(`document.querySelectorAll('.toc-link')[0].classList.contains('active')`, &firstTocActive),
-		chromedp.Evaluate(`document.querySelectorAll('.toc-link')[1].classList.contains('active')`, &secondTocActive),
-	)
+		var breadcrumbsExist bool
+		var breadcrumbCount int
 
-	if err != nil {
-		t.Fatalf("Failed to test navigation: %v", err)
-	}
+		err := chromedp.Run(ctx,
+			chromedp.Navigate(baseURL+"/getting-started/intro"),
+			chromedp.Sleep(1*time.Second),
+			chromedp.Evaluate(`document.querySelector('.breadcrumbs') !== null`, &breadcrumbsExist),
+			chromedp.Evaluate(`document.querySelectorAll('.breadcrumbs li').length`, &breadcrumbCount),
+		)
+		if err != nil {
+			t.Fatalf("Failed to check breadcrumbs: %v", err)
+		}
 
-	t.Logf("After clicking next - Current step: %d", currentStep2)
-	t.Logf("Prev button disabled: %v", prevBtnDisabled2)
-	t.Logf("First TOC active: %v", firstTocActive)
-	t.Logf("Second TOC active: %v", secondTocActive)
+		if !breadcrumbsExist {
+			t.Error("Breadcrumbs do not exist on page")
+		}
 
-	if currentStep2 != 2 {
-		t.Errorf("Expected step 2 after clicking next, got %d", currentStep2)
-	}
+		if breadcrumbCount == 0 {
+			t.Error("No breadcrumb items found")
+		}
+		t.Logf("Found %d breadcrumb items", breadcrumbCount)
+	})
 
-	if prevBtnDisabled2 {
-		t.Error("Prev button should be enabled after moving to step 2")
-	}
+	// Test 7: Prev/Next navigation exists
+	t.Run("PrevNextNavigation", func(t *testing.T) {
+		ctx, cancel := newTestContext()
+		defer cancel()
 
-	if firstTocActive {
-		t.Error("First TOC item should not be active after moving to step 2")
-	}
+		var pageNavExists bool
+		err := chromedp.Run(ctx,
+			chromedp.Navigate(baseURL+"/getting-started/intro"),
+			chromedp.Sleep(1*time.Second),
+			chromedp.Evaluate(`document.querySelector('.page-nav') !== null`, &pageNavExists),
+		)
+		if err != nil {
+			t.Fatalf("Failed to check prev/next nav: %v", err)
+		}
 
-	if !secondTocActive {
-		t.Error("Second TOC item should be active after moving to step 2")
-	}
+		if !pageNavExists {
+			t.Error("Prev/Next navigation does not exist")
+		}
+	})
 
-	// Test keyboard navigation
-	var currentStep3 int
+	// Test 8: Next button has correct href
+	t.Run("NextButtonHref", func(t *testing.T) {
+		ctx, cancel := newTestContext()
+		defer cancel()
 
-	err = chromedp.Run(ctx,
-		// Press right arrow key
-		chromedp.SendKeys("body", "\ue014"), // Right arrow key code
-		chromedp.Sleep(1*time.Second),
+		var nextButtonExists bool
+		var href string
 
-		// Check we moved to step 3
-		chromedp.Evaluate(`parseInt(document.querySelector('#current-step').textContent)`, &currentStep3),
-	)
+		err := chromedp.Run(ctx,
+			chromedp.Navigate(baseURL+"/getting-started/intro"),
+			chromedp.Sleep(500*time.Millisecond),
+			chromedp.Evaluate(`document.querySelector('.page-nav-next') !== null`, &nextButtonExists),
+		)
+		if err != nil {
+			t.Fatalf("Failed to check next button: %v", err)
+		}
 
-	if err != nil {
-		t.Fatalf("Failed to test keyboard navigation: %v", err)
-	}
+		if !nextButtonExists {
+			t.Log("No next button on this page (might be last page)")
+			return
+		}
 
-	t.Logf("After right arrow - Current step: %d", currentStep3)
+		err = chromedp.Run(ctx,
+			chromedp.AttributeValue(`.page-nav-next`, "href", &href, nil),
+		)
+		if err != nil {
+			t.Fatalf("Failed to get next button href: %v", err)
+		}
 
-	if currentStep3 != 3 {
-		t.Errorf("Expected step 3 after pressing right arrow, got %d", currentStep3)
-	}
+		if href == "" {
+			t.Error("Next button href is empty")
+		}
+		t.Logf("Next button href: %s", href)
 
-	// Test TOC click navigation
-	var currentStep1Again int
-	var urlHash string
+		// Verify the target page loads
+		var pageTitle string
+		err = chromedp.Run(ctx,
+			chromedp.Navigate(baseURL+href),
+			chromedp.Sleep(500*time.Millisecond),
+			chromedp.Title(&pageTitle),
+		)
+		if err != nil {
+			t.Fatalf("Failed to navigate to next page %s: %v", href, err)
+		}
 
-	err = chromedp.Run(ctx,
-		// Click on first TOC item
-		chromedp.Click(".toc-link:first-child"),
-		chromedp.Sleep(1*time.Second),
+		if pageTitle == "" {
+			t.Error("Next page has empty title")
+		}
+		t.Logf("Successfully navigated to next page (title: %s)", pageTitle)
+	})
 
-		// Check we're back at step 1
-		chromedp.Evaluate(`parseInt(document.querySelector('#current-step').textContent)`, &currentStep1Again),
+	// Test 10: All configured pages are accessible
+	t.Run("AllPagesAccessible", func(t *testing.T) {
+		ctx, cancel := newTestContext()
+		defer cancel()
 
-		// Check URL hash is updated
-		chromedp.Evaluate(`window.location.hash`, &urlHash),
-	)
+		pages := []string{
+			"/",
+			"/getting-started/intro",
+			"/getting-started/installation",
+			"/guides/creating-pages",
+			"/guides/configuration",
+		}
 
-	if err != nil {
-		t.Fatalf("Failed to test TOC click: %v", err)
-	}
+		for _, page := range pages {
+			var pageTitle string
+			err := chromedp.Run(ctx,
+				chromedp.Navigate(baseURL+page),
+				chromedp.Sleep(500*time.Millisecond),
+				chromedp.Title(&pageTitle),
+			)
+			if err != nil {
+				t.Errorf("Failed to load page %s: %v", page, err)
+				continue
+			}
 
-	t.Logf("After TOC click - Current step: %d", currentStep1Again)
-	t.Logf("URL hash: %s", urlHash)
+			if pageTitle == "" {
+				t.Errorf("Page %s has empty title", page)
+			}
+			t.Logf("✓ Page %s loaded successfully (title: %s)", page, pageTitle)
+		}
+	})
 
-	if currentStep1Again != 1 {
-		t.Errorf("Expected step 1 after clicking first TOC item, got %d", currentStep1Again)
-	}
+	// Test 11: Site title appears in sidebar
+	t.Run("SiteTitleInSidebar", func(t *testing.T) {
+		ctx, cancel := newTestContext()
+		defer cancel()
 
-	if urlHash == "" {
-		t.Error("URL hash should be set after navigation")
-	}
+		var hasSiteTitle bool
+		err := chromedp.Run(ctx,
+			chromedp.Navigate(baseURL+"/"),
+			chromedp.Sleep(1*time.Second),
+			chromedp.Evaluate(`document.querySelector('.nav-header h2') !== null`, &hasSiteTitle),
+		)
+		if err != nil {
+			t.Fatalf("Failed to check site title: %v", err)
+		}
 
-	// Test visited tracking
-	var firstVisited bool
-	var secondVisited bool
-	var thirdVisited bool
+		if !hasSiteTitle {
+			t.Error("Site title not found in sidebar header")
+		}
+	})
 
-	err = chromedp.Run(ctx,
-		// Check visited states (we've been to steps 1, 2, 3)
-		chromedp.Evaluate(`document.querySelectorAll('.toc-link')[0].classList.contains('visited')`, &firstVisited),
-		chromedp.Evaluate(`document.querySelectorAll('.toc-link')[1].classList.contains('visited')`, &secondVisited),
-		chromedp.Evaluate(`document.querySelectorAll('.toc-link')[2].classList.contains('visited')`, &thirdVisited),
-	)
+	// Test 12: Theme toggle works (should not break navigation)
+	t.Run("ThemeToggleCompatibility", func(t *testing.T) {
+		ctx, cancel := newTestContext()
+		defer cancel()
 
-	if err != nil {
-		t.Fatalf("Failed to test visited tracking: %v", err)
-	}
+		var sidebarVisibleAfterThemeChange bool
 
-	t.Logf("Visited states - 1:%v, 2:%v, 3:%v", firstVisited, secondVisited, thirdVisited)
+		err := chromedp.Run(ctx,
+			chromedp.Navigate(baseURL+"/"),
+			chromedp.Sleep(1*time.Second),
+			// Toggle theme
+			chromedp.Click(`#theme-dark`, chromedp.NodeVisible),
+			chromedp.Sleep(500*time.Millisecond),
+			// Check sidebar still visible
+			chromedp.Evaluate(`
+				const sidebar = document.querySelector('.livepage-nav-sidebar');
+				sidebar !== null && window.getComputedStyle(sidebar).display !== 'none'
+			`, &sidebarVisibleAfterThemeChange),
+		)
+		if err != nil {
+			t.Fatalf("Failed theme toggle test: %v", err)
+		}
 
-	if !firstVisited {
-		t.Error("First section should be marked as visited")
-	}
-
-	if !secondVisited {
-		t.Error("Second section should be marked as visited")
-	}
-
-	if !thirdVisited {
-		t.Error("Third section should be marked as visited")
-	}
-
-	// Test localStorage persistence
-	var localStorageData string
-
-	err = chromedp.Run(ctx,
-		chromedp.Evaluate(`localStorage.getItem('livepage-tutorial-progress')`, &localStorageData),
-	)
-
-	if err != nil {
-		t.Fatalf("Failed to check localStorage: %v", err)
-	}
-
-	t.Logf("localStorage data: %s", localStorageData)
-
-	if localStorageData == "" || localStorageData == "null" {
-		t.Error("Progress should be saved to localStorage")
-	}
-
-	t.Logf("✓ Navigation system working correctly!")
+		if !sidebarVisibleAfterThemeChange {
+			t.Error("Sidebar not visible after theme change")
+		}
+	})
 }
