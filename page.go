@@ -93,7 +93,7 @@ func (p *Page) buildBlocks(codeBlocks []*CodeBlock, sourceFile string) error {
 
 		default:
 			return NewParseError(sourceFile, cb.Line, fmt.Sprintf("Unknown block type: %s", cb.Type)).
-				WithHint(fmt.Sprintf("Valid block types are: server, wasm, lvt"))
+				WithHint("Valid block types are: server, wasm, lvt")
 		}
 	}
 

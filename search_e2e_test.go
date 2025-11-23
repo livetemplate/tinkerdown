@@ -344,7 +344,7 @@ func TestSearchFunctionality(t *testing.T) {
 	// Test 13: Verify search doesn't appear in non-site mode
 	var searchButtonInNonSiteMode bool
 
-	err = chromedp.Run(ctx,
+	_ = chromedp.Run(ctx,
 		chromedp.Navigate("http://localhost:8080/"), // Counter example (non-site mode)
 		chromedp.Sleep(500*time.Millisecond),
 		chromedp.Evaluate(`document.querySelector('.search-button') !== null`, &searchButtonInNonSiteMode),
