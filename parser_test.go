@@ -313,16 +313,15 @@ Modify and run!
 		t.Errorf("Block 2 Type = %q, want \"wasm\"", blocks[2].Type)
 	}
 
-	// Check HTML (should contain prose but not code blocks)
+	// Check HTML (should contain prose)
 	if !strings.Contains(html, "Build a Counter") {
 		t.Error("HTML missing title")
 	}
 	if !strings.Contains(html, "Learn how to build") {
 		t.Error("HTML missing intro text")
 	}
-	if strings.Contains(html, "CounterState") {
-		t.Error("HTML should not contain code from server block")
-	}
+	// Note: readonly code blocks are now intentionally included in HTML
+	// for educational/documentation purposes, so we don't check that they're excluded
 }
 
 func containsString(slice []string, str string) bool {

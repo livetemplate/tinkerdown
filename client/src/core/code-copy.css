@@ -1,0 +1,126 @@
+/**
+ * Code Copy Button Styles
+ */
+
+/* Code block wrapper for positioning */
+.code-block-wrapper {
+  position: relative;
+  margin: 1.5rem 0;
+}
+
+.code-block-wrapper pre {
+  margin: 0;
+  position: relative;
+}
+
+/* Copy button */
+.code-copy-btn {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  padding: 0.5rem;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.7);
+  z-index: 10;
+}
+
+.code-copy-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.3);
+  color: rgba(255, 255, 255, 0.9);
+  transform: scale(1.05);
+}
+
+.code-copy-btn:active {
+  transform: scale(0.95);
+}
+
+/* Copied state */
+.code-copy-btn.copied {
+  background: rgba(34, 197, 94, 0.2);
+  border-color: rgba(34, 197, 94, 0.4);
+  color: rgb(34, 197, 94);
+}
+
+.code-copy-btn.copied:hover {
+  background: rgba(34, 197, 94, 0.25);
+  border-color: rgba(34, 197, 94, 0.5);
+}
+
+/* Icon styling */
+.code-copy-btn svg {
+  width: 16px;
+  height: 16px;
+  display: block;
+}
+
+/* Focus states for accessibility */
+.code-copy-btn:focus {
+  outline: 2px solid rgba(59, 130, 246, 0.5);
+  outline-offset: 2px;
+}
+
+.code-copy-btn:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* Dark mode adjustments */
+@media (prefers-color-scheme: dark) {
+  .code-copy-btn {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.15);
+    color: rgba(255, 255, 255, 0.6);
+  }
+
+  .code-copy-btn:hover {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(255, 255, 255, 0.25);
+    color: rgba(255, 255, 255, 0.9);
+  }
+
+  .code-copy-btn.copied {
+    background: rgba(34, 197, 94, 0.15);
+    border-color: rgba(34, 197, 94, 0.3);
+    color: rgb(74, 222, 128);
+  }
+}
+
+/* Light theme (when explicitly set) */
+[data-theme="light"] .code-copy-btn {
+  background: rgba(0, 0, 0, 0.05);
+  border-color: rgba(0, 0, 0, 0.1);
+  color: rgba(0, 0, 0, 0.6);
+}
+
+[data-theme="light"] .code-copy-btn:hover {
+  background: rgba(0, 0, 0, 0.08);
+  border-color: rgba(0, 0, 0, 0.15);
+  color: rgba(0, 0, 0, 0.9);
+}
+
+[data-theme="light"] .code-copy-btn.copied {
+  background: rgba(34, 197, 94, 0.15);
+  border-color: rgba(34, 197, 94, 0.3);
+  color: rgb(22, 163, 74);
+}
+
+/* Responsive: smaller button on mobile */
+@media (max-width: 768px) {
+  .code-copy-btn {
+    padding: 0.4rem;
+    top: 0.5rem;
+    right: 0.5rem;
+  }
+
+  .code-copy-btn svg {
+    width: 14px;
+    height: 14px;
+  }
+}

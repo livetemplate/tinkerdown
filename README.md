@@ -81,6 +81,47 @@ And get a fully interactive tutorial website!
 - **Hybrid rendering**: Static markdown cached, code blocks dynamic
 - **Multiplexed WebSocket**: Single connection for all interactive elements
 
+## Configuration
+
+Livepage can be customized using a `livepage.yaml` file in your project directory:
+
+```yaml
+# livepage.yaml
+title: "My Tutorial"
+description: "Learn something awesome"
+
+server:
+  port: 8080
+  host: localhost
+  debug: false
+
+styling:
+  theme: clean              # Options: clean, dark, minimal
+  primary_color: "#007bff"
+  font: "system-ui"
+
+blocks:
+  auto_id: true
+  id_format: "kebab-case"   # Options: kebab-case, camelCase, snake_case
+  show_line_numbers: true
+
+features:
+  hot_reload: true
+
+ignore:
+  - "drafts/**"
+  - "_*.md"
+```
+
+CLI flags override configuration file values:
+
+```bash
+livepage serve --port 3000 --watch     # Override port and enable watch
+livepage serve --config custom.yaml    # Use custom config file
+```
+
+See `livepage.yaml.example` for all available options.
+
 ## Development
 
 ```bash

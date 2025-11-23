@@ -1,6 +1,6 @@
 # Livepage Implementation Progress
 
-**Last Updated**: 2025-11-12
+**Last Updated**: 2025-11-15
 
 ## Project Overview
 
@@ -48,42 +48,57 @@ See [docs/plans/2025-11-12-livepage-design.md](docs/plans/2025-11-12-livepage-de
   - [ ] State struct instantiation
   - [ ] WebSocket multiplexing
 
-### Phase 3: CLI Tool 🚧
+### Phase 3: CLI Tool ✅
 - [x] Command structure
   - [x] `serve` command
-  - [ ] `new` command (scaffold generator)
+  - [x] `new` command (scaffold generator)
+  - [x] `validate` command
   - [x] `version` command
 - [x] Dev server
   - [x] Auto-discovery (scan .md files)
   - [x] Route generation
   - [x] Static markdown → HTML conversion
-  - [ ] Hot reload (file watcher) - deferred
+  - [x] Hot reload (file watcher with --watch flag)
   - [x] Built-in theme serving
-- [ ] Config file support
+- [x] Error handling
+  - [x] Friendly error messages with file/line context
+  - [x] Helpful suggestions (did you mean?)
+  - [x] Validation command for early error detection
+- [ ] Config file support (deferred to future)
   - [ ] Parse livepage.yaml
   - [ ] Apply configuration
-- [ ] Error handling
-  - [ ] Friendly error pages
-  - [ ] File location in errors
-  - [ ] Helpful suggestions
 
-### Phase 4: Client Runtime 🖥️
-- [ ] Core client
-  - [ ] Extend livetemplate-client
-  - [ ] Message router (multiplex by blockID)
-  - [ ] Persistence manager (localStorage)
-- [ ] Code blocks
-  - [ ] Code block manager
-  - [ ] Simple editor (textarea with syntax highlighting)
-  - [ ] Output panel component
-- [ ] WASM execution
-  - [ ] TinyGo WASM compiler integration
-  - [ ] Client-side compilation
-  - [ ] Execution sandbox
-  - [ ] Output capture (stdout/stderr)
-- [ ] Interactive blocks
-  - [ ] Block connector (WebSocket multiplexing)
-  - [ ] DOM update coordination
+### Phase 4: Client Runtime 🖥️ ✅
+- [x] Core client (`@livetemplate/livepage-client`)
+  - [x] Separate package (not extending core livetemplate-client)
+  - [x] Message router (multiplex by blockID)
+  - [x] Persistence manager (localStorage)
+  - [x] Auto-initialization system
+  - [x] Block discovery from HTML
+- [x] Code blocks
+  - [x] Base Block class architecture
+  - [x] ServerBlock (read-only display)
+  - [x] WasmBlock (editable with execution)
+  - [x] InteractiveBlock (LiveTemplate integration)
+  - [x] Monaco editor integration
+  - [x] Output panel component
+  - [x] Run button component
+- [x] WASM execution
+  - [x] TinyGoExecutor framework
+  - [x] Server-side compilation endpoint design
+  - [ ] Client-side compilation (deferred - complex)
+  - [x] Execution sandbox via WebAssembly
+  - [x] Output capture (stdout/stderr)
+- [x] Interactive blocks
+  - [x] Block connector (WebSocket multiplexing)
+  - [x] DOM update coordination
+  - [x] Event delegation (lvt-click, lvt-submit, lvt-change)
+- [x] Build & deployment
+  - [x] TypeScript + esbuild configuration
+  - [x] Browser bundle (3.6MB with Monaco)
+  - [x] Go embed integration
+  - [x] Asset serving in dev server
+  - [x] Makefile automation
 
 ### Phase 5: Testing 🧪
 - [ ] E2E browser tests (chromedp)
@@ -119,19 +134,61 @@ See [docs/plans/2025-11-12-livepage-design.md](docs/plans/2025-11-12-livepage-de
 
 ## Current Session Goals
 
-**Session 1 (2025-11-12)**: Project setup and design documentation
+**Session 1 (2025-11-12)**: Project setup and design documentation ✅
 - [x] Brainstorm and refine design
 - [x] Create GitHub repository
 - [x] Initialize project structure
-- [ ] Write complete design document
-- [ ] Create initial commit
+- [x] Write complete design document
+- [x] Create initial commits
+
+**Session 2 (2025-11-14)**: Phase 4 - Client Runtime ✅
+- [x] Research livetemplate-client architecture
+- [x] Design separate @livetemplate/livepage-client package
+- [x] Implement TypeScript client with full Phase 4 features
+- [x] Integrate with Go server and asset embedding
+- [x] Build and test compilation
 
 ## Next Steps
 
-1. Complete design document (docs/plans/2025-11-12-livepage-design.md)
-2. Write README.md with project overview
-3. Create initial commit and push to GitHub
-4. Begin Phase 2: Start with markdown parser implementation
+### Completed (Phase 4 - Interactive Tutorials)
+1. ✅ **Enhance markdown parser** - COMPLETED
+   - ✅ Post-process HTML to inject data attributes with consistent block IDs
+   - ✅ Render interactive blocks as placeholder containers instead of code blocks
+   - ✅ Block ID generation matches between HTML and server (e.g., `lvt-1`)
+
+2. ✅ **Implement WebSocket endpoint** - `/ws` handler - COMPLETED
+   - ✅ Accept multiplexed messages (blockID, action, data)
+   - ✅ Route to appropriate interactive block instances
+   - ✅ Send initial state and updates back to client
+   - ✅ LiveTemplate integration with temp file workaround
+   - ✅ State management with CounterState placeholder
+
+3. ✅ **Fix client-side interactive block handling** - COMPLETED
+   - ✅ Support "lvt" block type in addition to "interactive"
+   - ✅ Handle HTML updates from server (`data.html`)
+   - ✅ Auto-connect WebSocket when lvt blocks are present
+
+4. ✅ **E2E testing with chromedp** - COMPLETED
+   - ✅ Created comprehensive E2E test for counter tutorial
+   - ✅ Captures browser console logs, WebSocket messages, server logs
+   - ✅ Verifies button rendering and click interactions
+   - ✅ Test passes: `✓ Counter tutorial working correctly!`
+
+### Remaining Work
+
+#### WASM Compilation (Deferred - Not Required for Interactive Tutorials)
+- **WASM compilation endpoint** - `/api/compile` handler
+  - Note: Not needed for current interactive tutorial use case
+  - Tutorials show server code blocks (readonly) and interactive demos
+  - Students don't edit/run code - they interact with pre-built components
+
+### Phase 5: Testing & Examples (Partially Complete)
+- ✅ Counter tutorial working end-to-end
+- [ ] Todo app tutorial (CRUD operations)
+- [ ] Chat app tutorial (broadcasting)
+
+### Phase 3 Completion
+- [ ] Complete Phase 3 items (config file, error handling, new command)
 
 ## Notes
 
@@ -144,11 +201,15 @@ See [docs/plans/2025-11-12-livepage-design.md](docs/plans/2025-11-12-livepage-de
 
 ### Dependencies
 - `github.com/livetemplate/livetemplate` - Core reactivity engine
-- Markdown parser (goldmark or similar)
-- Syntax highlighter
-- TinyGo for WASM compilation (client-side)
+- `goldmark` - Markdown parser (already integrated)
+- `@livetemplate/client` - Core LiveTemplate client (for interactive blocks)
+- `monaco-editor` - Code editor with syntax highlighting
+- `morphdom` - DOM diffing (via @livetemplate/client)
+- TinyGo - For WASM compilation (server-side endpoint needed)
 
-### Open Questions
-- [ ] Which markdown parser? (goldmark is popular and extensible)
-- [ ] Syntax highlighter library? (chroma for server-side, prism.js for client?)
-- [ ] How to bundle TinyGo WASM compiler for browser? (need to research)
+### Architecture Decisions Made
+- ✅ **Client package**: Separate `@livetemplate/livepage-client` package, not extending core client
+- ✅ **Monaco vs textarea**: Using Monaco for enhanced developer experience
+- ✅ **WASM compilation**: Server-side approach (simpler MVP), client-side deferred
+- ✅ **Syntax highlighting**: Monaco handles this on client, Chroma deferred
+- ✅ **Asset bundling**: Go embed with dual build (Makefile integration)

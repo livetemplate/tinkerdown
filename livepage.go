@@ -7,6 +7,7 @@ type Page struct {
 	ID                string
 	Title             string
 	Type              string // tutorial, guide, reference, playground
+	SourceFile        string // Absolute path to source .md file (for error messages)
 	Config            PageConfig
 	StaticHTML        string
 	ServerBlocks      map[string]*ServerBlock

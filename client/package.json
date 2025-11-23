@@ -1,0 +1,42 @@
+{
+  "name": "@livetemplate/livepage-client",
+  "version": "0.1.0",
+  "description": "Client runtime for interactive Livepage documentation",
+  "main": "dist/livepage-client.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "npm run build:lib && npm run build:browser",
+    "build:lib": "tsc",
+    "build:browser": "esbuild src/browser.ts --bundle --minify --sourcemap --outfile=dist/livepage-client.browser.js --global-name=LivepageClient --format=iife --loader:.ttf=file --loader:.woff=file --loader:.woff2=file --external:*.ttf --external:*.woff --external:*.woff2 --external:monaco-editor --splitting=false --metafile=dist/meta.json",
+    "build:esm": "esbuild src/browser.ts --bundle --minify --sourcemap --outdir=dist/esm --format=esm --splitting --loader:.ttf=file --loader:.woff=file --loader:.woff2=file --external:*.ttf --external:*.woff --external:*.woff2 --metafile=dist/esm/meta.json",
+    "dev": "tsc --watch",
+    "test": "jest",
+    "clean": "rm -rf dist",
+    "analyze": "node -e \"const fs=require('fs');const m=JSON.parse(fs.readFileSync('dist/meta.json'));Object.entries(m.outputs).forEach(([k,v])=>console.log(k,Math.round(v.bytes/1024)+'KB'));\""
+  },
+  "dependencies": {
+    "@livetemplate/client": "^0.3.0",
+    "monaco-editor": "^0.45.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "esbuild": "^0.19.0",
+    "typescript": "^5.3.0",
+    "jest": "^29.0.0",
+    "@types/jest": "^29.0.0",
+    "ts-jest": "^29.0.0"
+  },
+  "peerDependencies": {
+    "monaco-editor": "^0.45.0"
+  },
+  "keywords": [
+    "livetemplate",
+    "livepage",
+    "interactive",
+    "documentation",
+    "wasm",
+    "tutorial"
+  ],
+  "author": "LiveTemplate Team",
+  "license": "MIT"
+}

@@ -3,6 +3,7 @@ package livepage
 import (
 	"bytes"
 	"fmt"
+	"html"
 	"strings"
 
 	"github.com/yuin/goldmark"
@@ -50,12 +51,12 @@ func ParseMarkdown(content []byte) (*Frontmatter, []*CodeBlock, string, error) {
 	reader := text.NewReader(remaining)
 	doc := md.Parser().Parse(reader)
 
-	// Extract code blocks and remove livepage blocks from AST
+	// Extract and collect livepage code blocks (but don't remove from AST)
 	var codeBlocks []*CodeBlock
+	blockMap := make(map[ast.Node]*CodeBlock) // Map AST nodes to CodeBlocks
 	lineOffset := bytes.Count(content[:len(content)-len(remaining)], []byte("\n"))
 
-	// First pass: identify and collect livepage code blocks
-	var toRemove []ast.Node
+	// Walk AST and identify livepage code blocks
 	err = ast.Walk(doc, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
 		if !entering {
 			return ast.WalkContinue, nil
@@ -67,9 +68,9 @@ func ParseMarkdown(content []byte) (*Frontmatter, []*CodeBlock, string, error) {
 				return ast.WalkStop, parseErr
 			}
 			if block != nil {
-				// This is a livepage block - collect it and mark for removal
+				// This is a livepage block - collect it and map it to AST node
 				codeBlocks = append(codeBlocks, block)
-				toRemove = append(toRemove, n)
+				blockMap[n] = block
 			}
 		}
 
@@ -80,21 +81,17 @@ func ParseMarkdown(content []byte) (*Frontmatter, []*CodeBlock, string, error) {
 		return nil, nil, "", fmt.Errorf("failed to walk AST: %w", err)
 	}
 
-	// Second pass: remove livepage code blocks from AST
-	for _, node := range toRemove {
-		parent := node.Parent()
-		if parent != nil {
-			parent.RemoveChild(parent, node)
-		}
-	}
-
-	// Generate static HTML for prose (livepage code blocks removed)
+	// Generate HTML (basic rendering first)
 	var htmlBuf bytes.Buffer
 	if err := md.Renderer().Render(&htmlBuf, remaining, doc); err != nil {
 		return nil, nil, "", fmt.Errorf("failed to render HTML: %w", err)
 	}
 
-	return frontmatter, codeBlocks, htmlBuf.String(), nil
+	// Post-process HTML to add data attributes to livepage blocks
+	html := htmlBuf.String()
+	html = injectBlockAttributes(html, codeBlocks)
+
+	return frontmatter, codeBlocks, html, nil
 }
 
 // extractFrontmatter extracts YAML frontmatter from the beginning of content.
@@ -133,9 +130,115 @@ func extractFrontmatter(content []byte) (*Frontmatter, []byte, error) {
 	return &fm, remaining, nil
 }
 
+// injectBlockAttributes post-processes HTML to wrap livepage code blocks with data attributes.
+func injectBlockAttributes(html string, blocks []*CodeBlock) string {
+	// For each livepage block, find its HTML representation and wrap it
+	for i, block := range blocks {
+		// Determine readonly/editable
+		readonly := containsFlag(block.Flags, "readonly")
+		editable := containsFlag(block.Flags, "editable")
+		if !readonly && !editable {
+			if block.Type == "server" {
+				readonly = true
+			} else if block.Type == "wasm" {
+				editable = true
+			}
+		}
+
+		// Get block ID (use same logic as page.go getBlockID)
+		blockID := block.Metadata["id"]
+		if blockID == "" {
+			// Auto-generate: type-index (e.g., "server-0", "lvt-1")
+			// Must match the index used in buildBlocks()
+			blockID = fmt.Sprintf("%s-%d", block.Type, i)
+		}
+
+		// For interactive (lvt) blocks, replace with a container div instead of code block
+		if block.Type == "lvt" {
+			// Build container div with data attributes
+			container := fmt.Sprintf(
+				`<div class="livepage-interactive-block" data-livepage-block data-block-id="%s" data-block-type="lvt" data-language="lvt"`,
+				escapeHTML(blockID),
+			)
+
+			if stateRef, ok := block.Metadata["state"]; ok {
+				container += fmt.Sprintf(` data-state-ref="%s"`, escapeHTML(stateRef))
+			}
+
+			// Add a placeholder that will be replaced by WebSocket initial state
+			container += ` data-interactive-content><div class="loading">Connecting...</div></div>`
+
+			// Find and replace the <pre><code> block with our container
+			oldPre := fmt.Sprintf(`<pre><code class="language-%s">`, block.Language)
+
+			// Find the closing tags
+			preStart := strings.Index(html, oldPre)
+			if preStart != -1 {
+				// Find the end of this code block
+				codeEnd := strings.Index(html[preStart:], "</code></pre>")
+				if codeEnd != -1 {
+					// Replace the entire <pre><code>...</code></pre> with our container
+					before := html[:preStart]
+					after := html[preStart+codeEnd+len("</code></pre>"):]
+					html = before + container + after
+				}
+			}
+			continue
+		}
+
+		// For server/wasm blocks, wrap the existing <pre><code> with attributes
+		wrapper := fmt.Sprintf(
+			`<div data-livepage-block data-block-id="%s" data-block-type="%s" data-language="%s"`,
+			escapeHTML(blockID),
+			escapeHTML(block.Type),
+			escapeHTML(block.Language),
+		)
+
+		if readonly {
+			wrapper += ` data-readonly="true"`
+		}
+		if editable {
+			wrapper += ` data-editable="true"`
+		}
+		wrapper += ">"
+
+		// Find <pre><code> blocks and wrap the first match
+		oldPre := fmt.Sprintf(`<pre><code class="language-%s">`, block.Language)
+		newPre := wrapper + oldPre
+
+		// Only replace the first occurrence (to handle multiple blocks)
+		html = strings.Replace(html, oldPre, newPre, 1)
+
+		// Close the wrapper after </pre>
+		html = strings.Replace(html, "</pre>", "</pre></div>", 1)
+	}
+
+	return html
+}
+
+// containsFlag checks if a flag is in the flags slice.
+func containsFlag(flags []string, flag string) bool {
+	for _, f := range flags {
+		if f == flag {
+			return true
+		}
+	}
+	return false
+}
+
+// escapeHTML escapes HTML special characters.
+func escapeHTML(s string) string {
+	return html.EscapeString(s)
+}
+
 // parseCodeBlock parses a fenced code block and extracts livepage metadata.
 // Code block info string format: "go server readonly id=counter"
 func parseCodeBlock(fenced *ast.FencedCodeBlock, source []byte, lineOffset int) (*CodeBlock, error) {
+	// Handle fenced code blocks without language info
+	if fenced.Info == nil {
+		return nil, nil
+	}
+
 	info := string(fenced.Info.Text(source))
 	parts := strings.Fields(info)
 

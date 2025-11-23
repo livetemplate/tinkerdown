@@ -1,0 +1,45 @@
+title: "LivePage Documentation"
+description: "Multi-page documentation site for LivePage"
+type: "site"
+
+site:
+  home: "index.md"
+  logo: "/assets/logo.svg"
+  repository: "https://github.com/livetemplate/livepage"
+
+navigation:
+  - title: "Getting Started"
+    path: "getting-started"
+    collapsed: false
+    pages:
+      - title: "Introduction"
+        path: "getting-started/intro.md"
+      - title: "Installation"
+        path: "getting-started/installation.md"
+
+  - title: "Guides"
+    path: "guides"
+    collapsed: false
+    pages:
+      - title: "Creating Pages"
+        path: "guides/creating-pages.md"
+      - title: "Configuration"
+        path: "guides/configuration.md"
+
+server:
+  port: 8080
+  host: "localhost"
+  debug: true
+
+styling:
+  theme: "clean"
+  primary_color: "#007bff"
+  font: "system-ui"
+
+blocks:
+  auto_id: true
+  id_format: "kebab-case"
+  show_line_numbers: true
+
+features:
+  hot_reload: true

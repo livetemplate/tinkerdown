@@ -1,0 +1,80 @@
+/**
+ * Page Table of Contents Styles
+ * For on-page section navigation nested under current page in sidebar
+ */
+
+/* Nested sub-navigation list */
+.page-toc-list {
+  list-style: none;
+  margin: 0.25rem 0 0.5rem 0;
+  padding: 0;
+  background: rgba(0, 0, 0, 0.02);
+  border-left: 2px solid rgba(0, 102, 204, 0.2);
+}
+
+[data-theme="dark"] .page-toc-list {
+  background: rgba(255, 255, 255, 0.02);
+  border-left-color: rgba(77, 166, 255, 0.2);
+}
+
+.page-toc-item {
+  position: relative;
+}
+
+.page-toc-link {
+  display: block;
+  padding: 0.5rem 1rem 0.5rem 2rem;
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+/* Small dash/bullet before sub-nav items */
+.page-toc-link::before {
+  content: '–';
+  position: absolute;
+  left: 0.8rem;
+  color: var(--text-secondary);
+  opacity: 0.5;
+}
+
+.page-toc-link:hover {
+  background: rgba(0, 102, 204, 0.08);
+  color: var(--text-primary);
+}
+
+[data-theme="dark"] .page-toc-link:hover {
+  background: rgba(77, 166, 255, 0.1);
+}
+
+.page-toc-item.active .page-toc-link {
+  background: rgba(0, 102, 204, 0.12);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+[data-theme="dark"] .page-toc-item.active .page-toc-link {
+  background: rgba(77, 166, 255, 0.15);
+}
+
+/* Replace dash with bullet for active item */
+.page-toc-item.active .page-toc-link::before {
+  content: '•';
+  color: var(--accent);
+  opacity: 1;
+}
+
+/* Parent page item styling when it has sub-navigation */
+.nav-pages li.has-subnav > a {
+  font-weight: 600;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .page-toc-list {
+    display: none; /* Hide on mobile - takes too much space */
+  }
+}

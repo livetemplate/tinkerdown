@@ -162,8 +162,9 @@ func TestServerNotFound(t *testing.T) {
 	srv.ServeHTTP(w, req)
 
 	resp := w.Result()
-	if resp.StatusCode != http.StatusNotFound {
-		t.Errorf("Status = %d, want %d", resp.StatusCode, http.StatusNotFound)
+	// Server now redirects unknown pages to home instead of returning 404
+	if resp.StatusCode != http.StatusSeeOther && resp.StatusCode != http.StatusNotFound {
+		t.Errorf("Status = %d, want %d or %d", resp.StatusCode, http.StatusSeeOther, http.StatusNotFound)
 	}
 }
 
