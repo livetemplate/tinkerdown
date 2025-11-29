@@ -4,7 +4,7 @@ This example demonstrates client-side persistence using localStorage.
 
 ## Server State
 
-```server id="persistence-state"
+```go server id="persistence-state"
 package main
 
 import (

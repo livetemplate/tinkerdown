@@ -4,7 +4,7 @@ This example demonstrates server-side validation using the `go-playground/valida
 
 ## Server State
 
-```server id="validation-state"
+```go server id="validation-state"
 package main
 
 import (
