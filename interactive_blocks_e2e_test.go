@@ -29,7 +29,7 @@ func TestInteractiveBlocksE2E(t *testing.T) {
 
 	// Start the server
 	serverCmd := exec.Command("/Users/adnaan/code/livetemplate/livepage/livepage-test", "serve", "examples/todos-workshop", "--debug")
-	serverCmd.Dir = "/Users/adnaan/code/livetemplate/livepage/.worktrees/todos-workshop"
+	serverCmd.Dir = "/Users/adnaan/code/livetemplate/livepage"
 
 	// Capture server output
 	serverOut := &strings.Builder{}
