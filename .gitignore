@@ -32,3 +32,6 @@ build/
 
 # Local test data
 testdata/tmp/
+
+# Git worktrees
+.worktrees/
