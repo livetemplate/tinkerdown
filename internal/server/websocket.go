@@ -8,11 +8,11 @@ import (
 	"net/http"
 	"os"
 	"sync"
-	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/livetemplate/livetemplate"
 	"github.com/livetemplate/livepage"
+	"github.com/livetemplate/livepage/internal/compiler"
 )
 
 var upgrader = websocket.Upgrader{
@@ -35,6 +35,8 @@ type WebSocketHandler struct {
 	instances  map[string]*BlockInstance // blockID -> instance
 	debug      bool
 	server     *Server // Reference to server for connection tracking
+	compiler   *compiler.ServerBlockCompiler
+	stateFactories map[string]func() livetemplate.Store // Compiled state factories
 }
 
 // BlockInstance represents a running LiveTemplate instance for an interactive block.
@@ -48,11 +50,45 @@ type BlockInstance struct {
 
 // NewWebSocketHandler creates a new WebSocket handler for a page.
 func NewWebSocketHandler(page *livepage.Page, server *Server, debug bool) *WebSocketHandler {
-	return &WebSocketHandler{
-		page:      page,
-		instances: make(map[string]*BlockInstance),
-		debug:     debug,
-		server:    server,
+	if debug {
+		log.Printf("[WS] Creating WebSocket handler for page: %s", page.ID)
+		log.Printf("[WS] Page has %d server blocks", len(page.ServerBlocks))
+		log.Printf("[WS] Page has %d interactive blocks", len(page.InteractiveBlocks))
+	}
+
+	h := &WebSocketHandler{
+		page:           page,
+		instances:      make(map[string]*BlockInstance),
+		debug:          debug,
+		server:         server,
+		compiler:       compiler.NewServerBlockCompiler(debug),
+		stateFactories: make(map[string]func() livetemplate.Store),
+	}
+
+	// Compile all server blocks
+	h.compileServerBlocks()
+
+	return h
+}
+
+// compileServerBlocks compiles all server blocks into loadable plugins
+func (h *WebSocketHandler) compileServerBlocks() {
+	for blockID, block := range h.page.ServerBlocks {
+		if h.debug {
+			log.Printf("[WS] Compiling server block: %s", blockID)
+		}
+
+		factory, err := h.compiler.CompileServerBlock(block)
+		if err != nil {
+			log.Printf("[WS] Failed to compile block %s: %v", blockID, err)
+			continue
+		}
+
+		h.stateFactories[blockID] = factory
+
+		if h.debug {
+			log.Printf("[WS] Successfully compiled block: %s", blockID)
+		}
 	}
 }
 
@@ -119,12 +155,15 @@ func (h *WebSocketHandler) initializeInstances(conn *websocket.Conn) {
 			continue
 		}
 
-		// Create state instance
-		// TODO: This needs to parse and instantiate the actual Go struct
-		// For now, we'll use a simple counter state as a placeholder
-		state := &CounterState{
-			Counter: 0,
+		// Get the compiled state factory
+		factory, ok := h.stateFactories[block.StateRef]
+		if !ok {
+			log.Printf("[WS] No compiled factory for state %s", block.StateRef)
+			continue
 		}
+
+		// Create state instance using the compiled factory
+		state := factory()
 
 		// Create template from inline content
 		// Since livetemplate.New() requires template files, we use a workaround:
@@ -167,9 +206,36 @@ func (h *WebSocketHandler) sendInitialState(instance *BlockInstance) {
 	instance.mu.Lock()
 	defer instance.mu.Unlock()
 
+	// Get state data for rendering
+	var stateData interface{}
+
+	// Check if this is an RPC adapter with GetStateAsInterface method
+	type StateGetter interface {
+		GetStateAsInterface() (interface{}, error)
+	}
+
+	if getter, ok := instance.state.(StateGetter); ok {
+		// RPC plugin - fetch state via RPC
+		var err error
+		stateData, err = getter.GetStateAsInterface()
+		if err != nil {
+			log.Printf("[WS] Failed to get state for %s: %v", instance.blockID, err)
+			return
+		}
+		if h.debug {
+			log.Printf("[WS] RPC state for %s: %+v (type: %T)", instance.blockID, stateData, stateData)
+		}
+	} else {
+		// Regular in-process state
+		stateData = instance.state
+		if h.debug {
+			log.Printf("[WS] Direct state for %s: %+v (type: %T)", instance.blockID, stateData, stateData)
+		}
+	}
+
 	// Render initial HTML using Execute
 	var buf bytes.Buffer
-	if err := instance.template.Execute(&buf, instance.state); err != nil {
+	if err := instance.template.Execute(&buf, stateData); err != nil {
 		log.Printf("[WS] Failed to render initial state for %s: %v", instance.blockID, err)
 		return
 	}
@@ -227,10 +293,20 @@ func (h *WebSocketHandler) handleAction(instance *BlockInstance, action string, 
 	instance.mu.Lock()
 	defer instance.mu.Unlock()
 
-	// Create action context
+	// Parse data into map
+	var dataMap map[string]interface{}
+	if len(data) > 0 {
+		if err := json.Unmarshal(data, &dataMap); err != nil {
+			return fmt.Errorf("failed to parse action data: %w", err)
+		}
+	} else {
+		dataMap = make(map[string]interface{})
+	}
+
+	// Create action context with data
 	ctx := &livetemplate.ActionContext{
 		Action: action,
-		// TODO: Parse data into Params map
+		Data:   livetemplate.NewActionData(dataMap),
 	}
 
 	// Execute state change
@@ -250,10 +326,31 @@ func (h *WebSocketHandler) sendUpdate(instance *BlockInstance) {
 	instance.mu.Lock()
 	defer instance.mu.Unlock()
 
+	// Get state data for rendering
+	var stateData interface{}
+
+	// Check if this is an RPC adapter with GetStateAsInterface method
+	type StateGetter interface {
+		GetStateAsInterface() (interface{}, error)
+	}
+
+	if getter, ok := instance.state.(StateGetter); ok {
+		// RPC plugin - fetch state via RPC
+		var err error
+		stateData, err = getter.GetStateAsInterface()
+		if err != nil {
+			log.Printf("[WS] Failed to get state for %s: %v", instance.blockID, err)
+			return
+		}
+	} else {
+		// Regular in-process state
+		stateData = instance.state
+	}
+
 	// For now, use Execute to get full HTML (ExecuteUpdates not yet implemented)
 	// TODO: Use ExecuteUpdates when tree diffing is available
 	var buf bytes.Buffer
-	if err := instance.template.Execute(&buf, instance.state); err != nil {
+	if err := instance.template.Execute(&buf, stateData); err != nil {
 		log.Printf("[WS] Failed to render update for %s: %v", instance.blockID, err)
 		return
 	}
@@ -297,26 +394,5 @@ func (h *WebSocketHandler) sendMessage(conn *websocket.Conn, envelope MessageEnv
 	}
 }
 
-// CounterState is a temporary placeholder for state management.
-// TODO: This should be dynamically created based on the server block code.
-type CounterState struct {
-	Counter int `json:"counter"`
-}
-
-func (s *CounterState) Change(ctx *livetemplate.ActionContext) error {
-	switch ctx.Action {
-	case "increment":
-		s.Counter++
-	case "decrement":
-		s.Counter--
-	case "reset":
-		s.Counter = 0
-	default:
-		log.Printf("[State] Unknown action: %s", ctx.Action)
-	}
-	return nil
-}
-
-func (s *CounterState) Session() string {
-	return fmt.Sprintf("session-%d", time.Now().Unix())
-}
+// Note: State types are now dynamically compiled from server blocks
+// No need for hardcoded placeholder states
