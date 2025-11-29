@@ -549,15 +549,29 @@ func capitalizeMapKeys(m map[string]interface{}) map[string]interface{} {
 				if itemMap, ok := item.(map[string]interface{}); ok {
 					newSlice[i] = capitalizeMapKeys(itemMap)
 				} else {
-					newSlice[i] = item
+					newSlice[i] = convertNumber(item)
 				}
 			}
 			result[newKey] = newSlice
+		case float64:
+			// JSON unmarshaling converts all numbers to float64
+			// Convert whole numbers back to int for template compatibility
+			result[newKey] = convertNumber(val)
 		default:
 			result[newKey] = v
 		}
 	}
 	return result
+}
+
+// convertNumber converts float64 values that are whole numbers to int
+func convertNumber(v interface{}) interface{} {
+	if f, ok := v.(float64); ok {
+		if f == float64(int(f)) {
+			return int(f)
+		}
+	}
+	return v
 }
 
 // errorStore is a stub Store that always returns an error
