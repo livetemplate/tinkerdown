@@ -307,8 +307,8 @@ func (c *ServerBlockCompiler) generatePluginCode(block *livepage.ServerBlock) st
 	code.WriteString(strings.Join(bodyLines, "\n"))
 	code.WriteString("\n\n")
 
-	// Try to detect the state type name from NewXxxState function
-	stateTypeName := c.detectStateTypeName(block.Content)
+	// Detect state initialization code
+	stateInit := c.detectStateInitialization(block.Content)
 
 	// Generate RPC plugin wrapper
 	code.WriteString(fmt.Sprintf(`// StatePluginImpl implements the plugin.StatePlugin interface
@@ -318,7 +318,7 @@ type StatePluginImpl struct {
 
 func NewStatePluginImpl() *StatePluginImpl {
 	return &StatePluginImpl{
-		state: %s(),
+		state: %s,
 	}
 }
 
@@ -342,28 +342,45 @@ func main() {
 		},
 	})
 }
-`, stateTypeName))
+`, stateInit))
 
 	return code.String()
 }
 
-// detectStateTypeName tries to find the NewXxxState function name
-func (c *ServerBlockCompiler) detectStateTypeName(content string) string {
+// detectStateInitialization tries to find how to initialize the state
+// It looks for either a NewXxxState() constructor function or generates an inline constructor
+func (c *ServerBlockCompiler) detectStateInitialization(content string) string {
 	lines := strings.Split(content, "\n")
+
+	// First, try to find a NewXxxState() constructor function
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
-		// Look for func NewXxxState()
+		// Look for func NewXxxState() patterns
 		if strings.HasPrefix(trimmed, "func New") && strings.Contains(trimmed, "State()") {
 			// Extract function name
 			parts := strings.Fields(trimmed)
 			if len(parts) >= 2 {
 				funcName := strings.TrimSuffix(parts[1], "()")
-				return funcName
+				return funcName + "()"
 			}
 		}
 	}
-	// Default fallback
-	return "NewTodoState"
+
+	// If no constructor found, look for the state type and create inline constructor
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		// Look for type XxxState struct
+		if strings.HasPrefix(trimmed, "type ") && strings.HasSuffix(trimmed, "State struct {") {
+			parts := strings.Fields(trimmed)
+			if len(parts) >= 2 {
+				typeName := parts[1]
+				return "&" + typeName + "{}"
+			}
+		}
+	}
+
+	// Fallback - this should rarely happen
+	return "&TodoState{}"
 }
 
 // findGoWorkspace searches upward from current directory for go.work file
