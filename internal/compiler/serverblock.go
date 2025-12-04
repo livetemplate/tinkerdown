@@ -14,6 +14,14 @@ import (
 	livepageplugin "github.com/livetemplate/livepage/plugin"
 )
 
+// Store is a local interface for state objects that can handle actions.
+// User state types implement this implicitly through method dispatch:
+// - Action methods like Increment(), Decrement() are called via livetemplate.Dispatch()
+// - The HandleAction method is used by adapters to forward actions
+type Store interface {
+	HandleAction(ctx *livetemplate.ActionContext) error
+}
+
 // ServerBlockCompiler compiles server blocks into loadable Go plugins
 type ServerBlockCompiler struct {
 	buildDir string
@@ -33,7 +41,7 @@ func NewServerBlockCompiler(debug bool) *ServerBlockCompiler {
 }
 
 // CompileServerBlock compiles a server block to a Go plugin and returns a state factory function
-func (c *ServerBlockCompiler) CompileServerBlock(block *livepage.ServerBlock) (func() livetemplate.Store, error) {
+func (c *ServerBlockCompiler) CompileServerBlock(block *livepage.ServerBlock) (func() Store, error) {
 	if c.debug {
 		fmt.Printf("[Compiler] Compiling server block: %s\n", block.ID)
 		fmt.Printf("[Compiler] Block content length: %d bytes\n", len(block.Content))
@@ -214,7 +222,7 @@ func (c *ServerBlockCompiler) CompileServerBlock(block *livepage.ServerBlock) (f
 	}
 
 	// Return a factory function that creates a new RPC client for each instance
-	factory := func() livetemplate.Store {
+	factory := func() Store {
 		return c.createRPCClient(pluginFile, block.ID)
 	}
 
@@ -313,7 +321,7 @@ func (c *ServerBlockCompiler) generatePluginCode(block *livepage.ServerBlock) st
 	// Generate RPC plugin wrapper
 	code.WriteString(fmt.Sprintf(`// StatePluginImpl implements the plugin.StatePlugin interface
 type StatePluginImpl struct {
-	state livetemplate.Store
+	state interface{}
 }
 
 func NewStatePluginImpl() *StatePluginImpl {
@@ -327,7 +335,8 @@ func (s *StatePluginImpl) Change(action string, data map[string]interface{}) err
 		Action: action,
 		Data:   livetemplate.NewActionData(data),
 	}
-	return s.state.Change(ctx)
+	// Use method dispatch - routes action to method by name
+	return livetemplate.Dispatch(s.state, ctx)
 }
 
 func (s *StatePluginImpl) GetState() (json.RawMessage, error) {
@@ -451,8 +460,8 @@ func (c *ServerBlockCompiler) findLivepageModule() string {
 	return "."
 }
 
-// createRPCClient creates an RPC client wrapper that implements livetemplate.Store
-func (c *ServerBlockCompiler) createRPCClient(pluginPath string, blockID string) livetemplate.Store {
+// createRPCClient creates an RPC client wrapper that implements Store interface
+func (c *ServerBlockCompiler) createRPCClient(pluginPath string, blockID string) Store {
 	// Create an exec.Command to start the plugin
 	client := plugin.NewClient(&plugin.ClientConfig{
 		HandshakeConfig: livepageplugin.Handshake,
@@ -486,7 +495,7 @@ func (c *ServerBlockCompiler) createRPCClient(pluginPath string, blockID string)
 	// Cast to StatePlugin interface
 	statePlugin := raw.(livepageplugin.StatePlugin)
 
-	// Return an adapter that implements livetemplate.Store
+	// Return an adapter that implements Store interface
 	return &rpcStoreAdapter{
 		plugin: statePlugin,
 		client: client,
@@ -494,14 +503,15 @@ func (c *ServerBlockCompiler) createRPCClient(pluginPath string, blockID string)
 	}
 }
 
-// rpcStoreAdapter adapts the RPC plugin to livetemplate.Store interface
+// rpcStoreAdapter adapts the RPC plugin to be used with livetemplate's method dispatch
 type rpcStoreAdapter struct {
 	plugin livepageplugin.StatePlugin
 	client *plugin.Client
 	debug  bool
 }
 
-func (a *rpcStoreAdapter) Change(ctx *livetemplate.ActionContext) error {
+// HandleAction forwards action to the RPC plugin
+func (a *rpcStoreAdapter) HandleAction(ctx *livetemplate.ActionContext) error {
 	// Extract data map from ActionContext
 	dataMap := make(map[string]interface{})
 	if ctx.Data != nil {
@@ -574,12 +584,13 @@ func convertNumber(v interface{}) interface{} {
 	return v
 }
 
-// errorStore is a stub Store that always returns an error
+// errorStore is a stub that always returns an error
 type errorStore struct {
 	err error
 }
 
-func (e *errorStore) Change(ctx *livetemplate.ActionContext) error {
+// HandleAction always returns the stored error
+func (e *errorStore) HandleAction(_ *livetemplate.ActionContext) error {
 	return e.err
 }
 

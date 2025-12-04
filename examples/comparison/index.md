@@ -126,19 +126,24 @@ type CounterState struct {
 	Counter int `json:"counter"`
 }
 
-// All logic in one place - validation is automatic
-func (s *CounterState) Change(ctx *livetemplate.ActionContext) error {
-	switch ctx.Action {
-	case "increment":
-		s.Counter++
-	case "decrement":
-		// Server-side validation (cannot be bypassed)
-		if s.Counter > 0 {
-			s.Counter--
-		}
-	case "reset":
-		s.Counter = 0
+// Increment handles the "increment" action
+func (s *CounterState) Increment(_ *livetemplate.ActionContext) error {
+	s.Counter++
+	return nil
+}
+
+// Decrement handles the "decrement" action with server-side validation
+func (s *CounterState) Decrement(_ *livetemplate.ActionContext) error {
+	// Server-side validation (cannot be bypassed)
+	if s.Counter > 0 {
+		s.Counter--
 	}
+	return nil
+}
+
+// Reset handles the "reset" action
+func (s *CounterState) Reset(_ *livetemplate.ActionContext) error {
+	s.Counter = 0
 	return nil
 }
 ```
@@ -178,17 +183,23 @@ type ComparisonCounterState struct {
 	Counter int `json:"counter"`
 }
 
-func (s *ComparisonCounterState) Change(ctx *livetemplate.ActionContext) error {
-	switch ctx.Action {
-	case "increment":
-		s.Counter++
-	case "decrement":
-		if s.Counter > 0 {
-			s.Counter--
-		}
-	case "reset":
-		s.Counter = 0
+// Increment handles the "increment" action
+func (s *ComparisonCounterState) Increment(_ *livetemplate.ActionContext) error {
+	s.Counter++
+	return nil
+}
+
+// Decrement handles the "decrement" action
+func (s *ComparisonCounterState) Decrement(_ *livetemplate.ActionContext) error {
+	if s.Counter > 0 {
+		s.Counter--
 	}
+	return nil
+}
+
+// Reset handles the "reset" action
+func (s *ComparisonCounterState) Reset(_ *livetemplate.ActionContext) error {
+	s.Counter = 0
 	return nil
 }
 ```

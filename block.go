@@ -27,7 +27,7 @@ type InteractiveBlock struct {
 	ID       string
 	StateRef string // References a ServerBlock ID
 	Template *livetemplate.Template
-	Store    livetemplate.Store
-	Content  string // Template content
+	Store    interface{} // State object with action methods (uses method dispatch)
+	Content  string      // Template content
 	Metadata map[string]string
 }

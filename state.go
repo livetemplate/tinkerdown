@@ -16,8 +16,8 @@ type PageState struct {
 	// Current step for multi-step tutorials
 	CurrentStep int
 
-	// Interactive block states (stored as generic interfaces for now)
-	// In the future, these will be livetemplate.Store instances
+	// Interactive block states (stored as generic interfaces)
+	// State objects use method dispatch for action handling
 	InteractiveStates map[string]interface{}
 
 	// Code edits for WASM blocks (blockID -> code)

@@ -28,21 +28,22 @@ type State struct {
 	Count   int    `json:"count"`
 }
 
-// Change handles all state mutations
-func (s *State) Change(ctx *livetemplate.ActionContext) error {
-	switch ctx.Action {
-	case "increment":
-		s.Count++
-	case "update-message":
-		if msg, ok := ctx.Data["message"].(string); ok {
-			s.Message = msg
-		}
+// Increment handles the "increment" action
+func (s *State) Increment(_ *livetemplate.ActionContext) error {
+	s.Count++
+	return nil
+}
+
+// UpdateMessage handles the "update-message" action
+func (s *State) UpdateMessage(ctx *livetemplate.ActionContext) error {
+	if msg, ok := ctx.Data["message"].(string); ok {
+		s.Message = msg
 	}
 	return nil
 }
 ```
 
-> 💡 **Key Concept**: The `Change()` method handles all user actions. This code runs on the server, keeping your business logic secure.
+> 💡 **Key Concept**: Each action has its own method (e.g., `Increment`, `UpdateMessage`). Method names match action names. This code runs on the server, keeping your business logic secure.
 
 ## Step 2: Build Your UI
 

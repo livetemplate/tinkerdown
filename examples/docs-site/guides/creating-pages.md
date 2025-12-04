@@ -62,7 +62,8 @@ type State struct {
     Counter int `json:"counter"`
 }
 
-func (s *State) Change(ctx *livetemplate.ActionContext) error {
+// Increment handles the "increment" action
+func (s *State) Increment(_ *livetemplate.ActionContext) error {
     s.Counter++
     return nil
 }

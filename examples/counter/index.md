@@ -42,17 +42,21 @@ type CounterState struct {
     Counter int `json:"counter"` // The current count value
 }
 
-// Change handles all state mutations
-// This method is called whenever a user action is received
-func (s *CounterState) Change(ctx *livetemplate.ActionContext) error {
-    switch ctx.Action {
-    case "increment":
-        s.Counter++  // Increase by 1
-    case "decrement":
-        s.Counter--  // Decrease by 1
-    case "reset":
-        s.Counter = 0  // Reset to zero
-    }
+// Increment handles the "increment" action - increases count by 1
+func (s *CounterState) Increment(_ *livetemplate.ActionContext) error {
+    s.Counter++
+    return nil
+}
+
+// Decrement handles the "decrement" action - decreases count by 1
+func (s *CounterState) Decrement(_ *livetemplate.ActionContext) error {
+    s.Counter--
+    return nil
+}
+
+// Reset handles the "reset" action - resets count to zero
+func (s *CounterState) Reset(_ *livetemplate.ActionContext) error {
+    s.Counter = 0
     return nil
 }
 ```
@@ -61,9 +65,9 @@ func (s *CounterState) Change(ctx *livetemplate.ActionContext) error {
 
 **What's happening here:**
 - `CounterState` struct holds our data
-- `Change()` method handles all state mutations
-- `ctx.Action` tells us which button was clicked
-- Server-side validation can be added in `Change()` (e.g., min/max limits)
+- Each action has its own method (e.g., `Increment`, `Decrement`, `Reset`)
+- Method names match action names (case-insensitive: `increment` → `Increment`)
+- Server-side validation can be added in each method (e.g., min/max limits)
 
 ## Step 2: Build Your UI
 

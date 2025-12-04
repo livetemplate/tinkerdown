@@ -235,10 +235,9 @@ type CounterState struct {
     Counter int ` + "`json:\"counter\"`" + `
 }
 
-func (s *CounterState) Change(ctx *ActionContext) error {
-    if ctx.Action == "increment" {
-        s.Counter++
-    }
+// Increment handles the "increment" action
+func (s *CounterState) Increment(_ *ActionContext) error {
+    s.Counter++
     return nil
 }
 ` + "```" + `

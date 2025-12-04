@@ -28,10 +28,9 @@ type CounterState struct {
     Counter int `json:"counter"`
 }
 
-func (s *CounterState) Change(ctx *livetemplate.ActionContext) error {
-    if ctx.Action == "increment" {
-        s.Counter++
-    }
+// Increment handles the "increment" action
+func (s *CounterState) Increment(_ *livetemplate.ActionContext) error {
+    s.Counter++
     return nil
 }
 ```

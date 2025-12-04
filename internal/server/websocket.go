@@ -36,13 +36,13 @@ type WebSocketHandler struct {
 	debug      bool
 	server     *Server // Reference to server for connection tracking
 	compiler   *compiler.ServerBlockCompiler
-	stateFactories map[string]func() livetemplate.Store // Compiled state factories
+	stateFactories map[string]func() compiler.Store // Compiled state factories
 }
 
 // BlockInstance represents a running LiveTemplate instance for an interactive block.
 type BlockInstance struct {
 	blockID  string
-	state    livetemplate.Store
+	state    compiler.Store
 	template *livetemplate.Template
 	conn     *websocket.Conn
 	mu       sync.Mutex
@@ -62,7 +62,7 @@ func NewWebSocketHandler(page *livepage.Page, server *Server, debug bool) *WebSo
 		debug:          debug,
 		server:         server,
 		compiler:       compiler.NewServerBlockCompiler(debug),
-		stateFactories: make(map[string]func() livetemplate.Store),
+		stateFactories: make(map[string]func() compiler.Store),
 	}
 
 	// Compile all server blocks
@@ -309,9 +309,9 @@ func (h *WebSocketHandler) handleAction(instance *BlockInstance, action string, 
 		Data:   livetemplate.NewActionData(dataMap),
 	}
 
-	// Execute state change
-	if err := instance.state.Change(ctx); err != nil {
-		return fmt.Errorf("state change failed: %w", err)
+	// Execute action via HandleAction method
+	if err := instance.state.HandleAction(ctx); err != nil {
+		return fmt.Errorf("action failed: %w", err)
 	}
 
 	if h.debug {

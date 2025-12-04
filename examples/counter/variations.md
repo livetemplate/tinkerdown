@@ -17,15 +17,18 @@ type BasicCounterState struct {
     Counter int `json:"counter"`
 }
 
-func (s *BasicCounterState) Change(ctx *livetemplate.ActionContext) error {
-    switch ctx.Action {
-    case "increment":
-        s.Counter++
-    case "decrement":
-        s.Counter--
-    case "reset":
-        s.Counter = 0
-    }
+func (s *BasicCounterState) Increment(_ *livetemplate.ActionContext) error {
+    s.Counter++
+    return nil
+}
+
+func (s *BasicCounterState) Decrement(_ *livetemplate.ActionContext) error {
+    s.Counter--
+    return nil
+}
+
+func (s *BasicCounterState) Reset(_ *livetemplate.ActionContext) error {
+    s.Counter = 0
     return nil
 }
 ```
@@ -52,25 +55,31 @@ type BoundedCounterState struct {
     Max     int `json:"max"`
 }
 
-func (s *BoundedCounterState) Change(ctx *livetemplate.ActionContext) error {
+func (s *BoundedCounterState) Init() error {
     // Initialize boundaries
     if s.Min == 0 && s.Max == 0 {
         s.Min = 0
         s.Max = 100
     }
+    return nil
+}
 
-    switch ctx.Action {
-    case "increment":
-        if s.Counter < s.Max {
-            s.Counter++
-        }
-    case "decrement":
-        if s.Counter > s.Min {
-            s.Counter--
-        }
-    case "reset":
-        s.Counter = s.Min
+func (s *BoundedCounterState) Increment(_ *livetemplate.ActionContext) error {
+    if s.Counter < s.Max {
+        s.Counter++
     }
+    return nil
+}
+
+func (s *BoundedCounterState) Decrement(_ *livetemplate.ActionContext) error {
+    if s.Counter > s.Min {
+        s.Counter--
+    }
+    return nil
+}
+
+func (s *BoundedCounterState) Reset(_ *livetemplate.ActionContext) error {
+    s.Counter = s.Min
     return nil
 }
 ```
@@ -106,23 +115,39 @@ type StepCounterState struct {
     Counter int `json:"counter"`
 }
 
-func (s *StepCounterState) Change(ctx *livetemplate.ActionContext) error {
-    switch ctx.Action {
-    case "add-1":
-        s.Counter += 1
-    case "add-5":
-        s.Counter += 5
-    case "add-10":
-        s.Counter += 10
-    case "subtract-1":
-        s.Counter -= 1
-    case "subtract-5":
-        s.Counter -= 5
-    case "subtract-10":
-        s.Counter -= 10
-    case "reset":
-        s.Counter = 0
-    }
+// Add1 handles "add-1" action (hyphen converted to camelCase)
+func (s *StepCounterState) Add1(_ *livetemplate.ActionContext) error {
+    s.Counter += 1
+    return nil
+}
+
+func (s *StepCounterState) Add5(_ *livetemplate.ActionContext) error {
+    s.Counter += 5
+    return nil
+}
+
+func (s *StepCounterState) Add10(_ *livetemplate.ActionContext) error {
+    s.Counter += 10
+    return nil
+}
+
+func (s *StepCounterState) Subtract1(_ *livetemplate.ActionContext) error {
+    s.Counter -= 1
+    return nil
+}
+
+func (s *StepCounterState) Subtract5(_ *livetemplate.ActionContext) error {
+    s.Counter -= 5
+    return nil
+}
+
+func (s *StepCounterState) Subtract10(_ *livetemplate.ActionContext) error {
+    s.Counter -= 10
+    return nil
+}
+
+func (s *StepCounterState) Reset(_ *livetemplate.ActionContext) error {
+    s.Counter = 0
     return nil
 }
 ```
@@ -160,19 +185,25 @@ type DualCounterStateA struct {
     Label   string `json:"label"`
 }
 
-func (s *DualCounterStateA) Change(ctx *livetemplate.ActionContext) error {
+func (s *DualCounterStateA) Init() error {
     if s.Label == "" {
         s.Label = "Counter A"
     }
+    return nil
+}
 
-    switch ctx.Action {
-    case "increment":
-        s.Counter++
-    case "decrement":
-        s.Counter--
-    case "reset":
-        s.Counter = 0
-    }
+func (s *DualCounterStateA) Increment(_ *livetemplate.ActionContext) error {
+    s.Counter++
+    return nil
+}
+
+func (s *DualCounterStateA) Decrement(_ *livetemplate.ActionContext) error {
+    s.Counter--
+    return nil
+}
+
+func (s *DualCounterStateA) Reset(_ *livetemplate.ActionContext) error {
+    s.Counter = 0
     return nil
 }
 ```
@@ -183,19 +214,25 @@ type DualCounterStateB struct {
     Label   string `json:"label"`
 }
 
-func (s *DualCounterStateB) Change(ctx *livetemplate.ActionContext) error {
+func (s *DualCounterStateB) Init() error {
     if s.Label == "" {
         s.Label = "Counter B"
     }
+    return nil
+}
 
-    switch ctx.Action {
-    case "increment":
-        s.Counter++
-    case "decrement":
-        s.Counter--
-    case "reset":
-        s.Counter = 0
-    }
+func (s *DualCounterStateB) Increment(_ *livetemplate.ActionContext) error {
+    s.Counter++
+    return nil
+}
+
+func (s *DualCounterStateB) Decrement(_ *livetemplate.ActionContext) error {
+    s.Counter--
+    return nil
+}
+
+func (s *DualCounterStateB) Reset(_ *livetemplate.ActionContext) error {
+    s.Counter = 0
     return nil
 }
 ```
@@ -247,30 +284,36 @@ type ProductState struct {
     Total       float64 `json:"total"`
 }
 
-func (s *ProductState) Change(ctx *livetemplate.ActionContext) error {
+func (s *ProductState) Init() error {
     // Initialize product
     if s.ProductName == "" {
         s.ProductName = "LiveTemplate T-Shirt"
         s.Price = 29.99
         s.Quantity = 1
     }
-
-    switch ctx.Action {
-    case "increase":
-        if s.Quantity < 10 {
-            s.Quantity++
-        }
-    case "decrease":
-        if s.Quantity > 1 {
-            s.Quantity--
-        }
-    case "remove":
-        s.Quantity = 0
-    }
-
-    // Calculate total
     s.Total = float64(s.Quantity) * s.Price
+    return nil
+}
 
+func (s *ProductState) Increase(_ *livetemplate.ActionContext) error {
+    if s.Quantity < 10 {
+        s.Quantity++
+    }
+    s.Total = float64(s.Quantity) * s.Price
+    return nil
+}
+
+func (s *ProductState) Decrease(_ *livetemplate.ActionContext) error {
+    if s.Quantity > 1 {
+        s.Quantity--
+    }
+    s.Total = float64(s.Quantity) * s.Price
+    return nil
+}
+
+func (s *ProductState) Remove(_ *livetemplate.ActionContext) error {
+    s.Quantity = 0
+    s.Total = 0
     return nil
 }
 ```
