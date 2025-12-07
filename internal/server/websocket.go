@@ -303,14 +303,8 @@ func (h *WebSocketHandler) handleAction(instance *BlockInstance, action string, 
 		dataMap = make(map[string]interface{})
 	}
 
-	// Create action context with data
-	ctx := &livetemplate.ActionContext{
-		Action: action,
-		Data:   livetemplate.NewActionData(dataMap),
-	}
-
 	// Execute action via HandleAction method
-	if err := instance.state.HandleAction(ctx); err != nil {
+	if err := instance.state.HandleAction(action, dataMap); err != nil {
 		return fmt.Errorf("action failed: %w", err)
 	}
 

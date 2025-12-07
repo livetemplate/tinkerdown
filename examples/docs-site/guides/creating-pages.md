@@ -63,7 +63,7 @@ type State struct {
 }
 
 // Increment handles the "increment" action
-func (s *State) Increment(_ *livetemplate.ActionContext) error {
+func (s *State) Increment(_ *livetemplate.Context) error {
     s.Counter++
     return nil
 }

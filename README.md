@@ -29,7 +29,7 @@ type CounterState struct {
 }
 
 // Increment handles the "increment" action
-func (s *CounterState) Increment(_ *livetemplate.ActionContext) error {
+func (s *CounterState) Increment(_ *livetemplate.Context) error {
     s.Counter++
     return nil
 }

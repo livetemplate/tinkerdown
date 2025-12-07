@@ -9,17 +9,16 @@ import (
 	"strings"
 
 	"github.com/hashicorp/go-plugin"
-	"github.com/livetemplate/livetemplate"
 	"github.com/livetemplate/livepage"
 	livepageplugin "github.com/livetemplate/livepage/plugin"
 )
 
 // Store is a local interface for state objects that can handle actions.
 // User state types implement this implicitly through method dispatch:
-// - Action methods like Increment(), Decrement() are called via livetemplate.Dispatch()
+// - Action methods like Increment(), Decrement() are called via reflection-based dispatch
 // - The HandleAction method is used by adapters to forward actions
 type Store interface {
-	HandleAction(ctx *livetemplate.ActionContext) error
+	HandleAction(action string, data map[string]interface{}) error
 }
 
 // ServerBlockCompiler compiles server blocks into loadable Go plugins
@@ -283,7 +282,11 @@ func (c *ServerBlockCompiler) generatePluginCode(block *livepage.ServerBlock) st
 
 	// Imports - add required RPC plugin imports
 	code.WriteString("import (\n")
+	code.WriteString("\t\"context\"\n")
 	code.WriteString("\t\"encoding/json\"\n")
+	code.WriteString("\t\"fmt\"\n")
+	code.WriteString("\t\"reflect\"\n")
+	code.WriteString("\t\"strings\"\n")
 	code.WriteString("\t\"github.com/hashicorp/go-plugin\"\n")
 	code.WriteString("\t\"github.com/livetemplate/livetemplate\"\n")
 	code.WriteString("\tlivepageplugin \"github.com/livetemplate/livepage/plugin\"\n")
@@ -318,7 +321,7 @@ func (c *ServerBlockCompiler) generatePluginCode(block *livepage.ServerBlock) st
 	// Detect state initialization code
 	stateInit := c.detectStateInitialization(block.Content)
 
-	// Generate RPC plugin wrapper
+	// Generate RPC plugin wrapper with local dispatch
 	code.WriteString(fmt.Sprintf(`// StatePluginImpl implements the plugin.StatePlugin interface
 type StatePluginImpl struct {
 	state interface{}
@@ -331,16 +334,37 @@ func NewStatePluginImpl() *StatePluginImpl {
 }
 
 func (s *StatePluginImpl) Change(action string, data map[string]interface{}) error {
-	ctx := &livetemplate.ActionContext{
-		Action: action,
-		Data:   livetemplate.NewActionData(data),
-	}
-	// Use method dispatch - routes action to method by name
-	return livetemplate.Dispatch(s.state, ctx)
+	ctx := livetemplate.NewContext(context.Background(), action, data)
+	// Use local method dispatch - routes action to method by name
+	return dispatchAction(s.state, action, ctx)
 }
 
 func (s *StatePluginImpl) GetState() (json.RawMessage, error) {
 	return json.Marshal(s.state)
+}
+
+// dispatchAction routes an action to a method on the state object.
+// It looks for methods with signature: func(*Context) error
+// Method names are matched case-insensitively with the action name.
+func dispatchAction(state interface{}, action string, ctx *livetemplate.Context) error {
+	stateVal := reflect.ValueOf(state)
+	stateType := stateVal.Type()
+
+	// Try to find matching method (case-insensitive)
+	actionLower := strings.ToLower(action)
+	for i := 0; i < stateType.NumMethod(); i++ {
+		method := stateType.Method(i)
+		if strings.ToLower(method.Name) == actionLower {
+			// Found matching method, call it
+			methodVal := stateVal.Method(i)
+			results := methodVal.Call([]reflect.Value{reflect.ValueOf(ctx)})
+			if len(results) == 1 && !results[0].IsNil() {
+				return results[0].Interface().(error)
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("method not found for action: %%s", action)
 }
 
 func main() {
@@ -511,14 +535,8 @@ type rpcStoreAdapter struct {
 }
 
 // HandleAction forwards action to the RPC plugin
-func (a *rpcStoreAdapter) HandleAction(ctx *livetemplate.ActionContext) error {
-	// Extract data map from ActionContext
-	dataMap := make(map[string]interface{})
-	if ctx.Data != nil {
-		dataMap = ctx.Data.Raw()
-	}
-
-	return a.plugin.Change(ctx.Action, dataMap)
+func (a *rpcStoreAdapter) HandleAction(action string, data map[string]interface{}) error {
+	return a.plugin.Change(action, data)
 }
 
 // GetStateAsInterface fetches the current state from the plugin as a generic interface{}
@@ -590,7 +608,7 @@ type errorStore struct {
 }
 
 // HandleAction always returns the stored error
-func (e *errorStore) HandleAction(_ *livetemplate.ActionContext) error {
+func (e *errorStore) HandleAction(_ string, _ map[string]interface{}) error {
 	return e.err
 }
 

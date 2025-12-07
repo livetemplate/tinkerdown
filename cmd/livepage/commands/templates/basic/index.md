@@ -29,13 +29,13 @@ type State struct {
 }
 
 // Increment handles the "increment" action
-func (s *State) Increment(_ *livetemplate.ActionContext) error {
+func (s *State) Increment(_ *livetemplate.Context) error {
 	s.Count++
 	return nil
 }
 
 // UpdateMessage handles the "update-message" action
-func (s *State) UpdateMessage(ctx *livetemplate.ActionContext) error {
+func (s *State) UpdateMessage(ctx *livetemplate.Context) error {
 	if msg, ok := ctx.Data["message"].(string); ok {
 		s.Message = msg
 	}

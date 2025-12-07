@@ -17,17 +17,17 @@ type BasicCounterState struct {
     Counter int `json:"counter"`
 }
 
-func (s *BasicCounterState) Increment(_ *livetemplate.ActionContext) error {
+func (s *BasicCounterState) Increment(_ *livetemplate.Context) error {
     s.Counter++
     return nil
 }
 
-func (s *BasicCounterState) Decrement(_ *livetemplate.ActionContext) error {
+func (s *BasicCounterState) Decrement(_ *livetemplate.Context) error {
     s.Counter--
     return nil
 }
 
-func (s *BasicCounterState) Reset(_ *livetemplate.ActionContext) error {
+func (s *BasicCounterState) Reset(_ *livetemplate.Context) error {
     s.Counter = 0
     return nil
 }
@@ -64,21 +64,21 @@ func (s *BoundedCounterState) Init() error {
     return nil
 }
 
-func (s *BoundedCounterState) Increment(_ *livetemplate.ActionContext) error {
+func (s *BoundedCounterState) Increment(_ *livetemplate.Context) error {
     if s.Counter < s.Max {
         s.Counter++
     }
     return nil
 }
 
-func (s *BoundedCounterState) Decrement(_ *livetemplate.ActionContext) error {
+func (s *BoundedCounterState) Decrement(_ *livetemplate.Context) error {
     if s.Counter > s.Min {
         s.Counter--
     }
     return nil
 }
 
-func (s *BoundedCounterState) Reset(_ *livetemplate.ActionContext) error {
+func (s *BoundedCounterState) Reset(_ *livetemplate.Context) error {
     s.Counter = s.Min
     return nil
 }
@@ -116,37 +116,37 @@ type StepCounterState struct {
 }
 
 // Add1 handles "add-1" action (hyphen converted to camelCase)
-func (s *StepCounterState) Add1(_ *livetemplate.ActionContext) error {
+func (s *StepCounterState) Add1(_ *livetemplate.Context) error {
     s.Counter += 1
     return nil
 }
 
-func (s *StepCounterState) Add5(_ *livetemplate.ActionContext) error {
+func (s *StepCounterState) Add5(_ *livetemplate.Context) error {
     s.Counter += 5
     return nil
 }
 
-func (s *StepCounterState) Add10(_ *livetemplate.ActionContext) error {
+func (s *StepCounterState) Add10(_ *livetemplate.Context) error {
     s.Counter += 10
     return nil
 }
 
-func (s *StepCounterState) Subtract1(_ *livetemplate.ActionContext) error {
+func (s *StepCounterState) Subtract1(_ *livetemplate.Context) error {
     s.Counter -= 1
     return nil
 }
 
-func (s *StepCounterState) Subtract5(_ *livetemplate.ActionContext) error {
+func (s *StepCounterState) Subtract5(_ *livetemplate.Context) error {
     s.Counter -= 5
     return nil
 }
 
-func (s *StepCounterState) Subtract10(_ *livetemplate.ActionContext) error {
+func (s *StepCounterState) Subtract10(_ *livetemplate.Context) error {
     s.Counter -= 10
     return nil
 }
 
-func (s *StepCounterState) Reset(_ *livetemplate.ActionContext) error {
+func (s *StepCounterState) Reset(_ *livetemplate.Context) error {
     s.Counter = 0
     return nil
 }
@@ -192,17 +192,17 @@ func (s *DualCounterStateA) Init() error {
     return nil
 }
 
-func (s *DualCounterStateA) Increment(_ *livetemplate.ActionContext) error {
+func (s *DualCounterStateA) Increment(_ *livetemplate.Context) error {
     s.Counter++
     return nil
 }
 
-func (s *DualCounterStateA) Decrement(_ *livetemplate.ActionContext) error {
+func (s *DualCounterStateA) Decrement(_ *livetemplate.Context) error {
     s.Counter--
     return nil
 }
 
-func (s *DualCounterStateA) Reset(_ *livetemplate.ActionContext) error {
+func (s *DualCounterStateA) Reset(_ *livetemplate.Context) error {
     s.Counter = 0
     return nil
 }
@@ -221,17 +221,17 @@ func (s *DualCounterStateB) Init() error {
     return nil
 }
 
-func (s *DualCounterStateB) Increment(_ *livetemplate.ActionContext) error {
+func (s *DualCounterStateB) Increment(_ *livetemplate.Context) error {
     s.Counter++
     return nil
 }
 
-func (s *DualCounterStateB) Decrement(_ *livetemplate.ActionContext) error {
+func (s *DualCounterStateB) Decrement(_ *livetemplate.Context) error {
     s.Counter--
     return nil
 }
 
-func (s *DualCounterStateB) Reset(_ *livetemplate.ActionContext) error {
+func (s *DualCounterStateB) Reset(_ *livetemplate.Context) error {
     s.Counter = 0
     return nil
 }
@@ -295,7 +295,7 @@ func (s *ProductState) Init() error {
     return nil
 }
 
-func (s *ProductState) Increase(_ *livetemplate.ActionContext) error {
+func (s *ProductState) Increase(_ *livetemplate.Context) error {
     if s.Quantity < 10 {
         s.Quantity++
     }
@@ -303,7 +303,7 @@ func (s *ProductState) Increase(_ *livetemplate.ActionContext) error {
     return nil
 }
 
-func (s *ProductState) Decrease(_ *livetemplate.ActionContext) error {
+func (s *ProductState) Decrease(_ *livetemplate.Context) error {
     if s.Quantity > 1 {
         s.Quantity--
     }
@@ -311,7 +311,7 @@ func (s *ProductState) Decrease(_ *livetemplate.ActionContext) error {
     return nil
 }
 
-func (s *ProductState) Remove(_ *livetemplate.ActionContext) error {
+func (s *ProductState) Remove(_ *livetemplate.Context) error {
     s.Quantity = 0
     s.Total = 0
     return nil

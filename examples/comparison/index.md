@@ -127,13 +127,13 @@ type CounterState struct {
 }
 
 // Increment handles the "increment" action
-func (s *CounterState) Increment(_ *livetemplate.ActionContext) error {
+func (s *CounterState) Increment(_ *livetemplate.Context) error {
 	s.Counter++
 	return nil
 }
 
 // Decrement handles the "decrement" action with server-side validation
-func (s *CounterState) Decrement(_ *livetemplate.ActionContext) error {
+func (s *CounterState) Decrement(_ *livetemplate.Context) error {
 	// Server-side validation (cannot be bypassed)
 	if s.Counter > 0 {
 		s.Counter--
@@ -142,7 +142,7 @@ func (s *CounterState) Decrement(_ *livetemplate.ActionContext) error {
 }
 
 // Reset handles the "reset" action
-func (s *CounterState) Reset(_ *livetemplate.ActionContext) error {
+func (s *CounterState) Reset(_ *livetemplate.Context) error {
 	s.Counter = 0
 	return nil
 }
@@ -184,13 +184,13 @@ type ComparisonCounterState struct {
 }
 
 // Increment handles the "increment" action
-func (s *ComparisonCounterState) Increment(_ *livetemplate.ActionContext) error {
+func (s *ComparisonCounterState) Increment(_ *livetemplate.Context) error {
 	s.Counter++
 	return nil
 }
 
 // Decrement handles the "decrement" action
-func (s *ComparisonCounterState) Decrement(_ *livetemplate.ActionContext) error {
+func (s *ComparisonCounterState) Decrement(_ *livetemplate.Context) error {
 	if s.Counter > 0 {
 		s.Counter--
 	}
@@ -198,7 +198,7 @@ func (s *ComparisonCounterState) Decrement(_ *livetemplate.ActionContext) error 
 }
 
 // Reset handles the "reset" action
-func (s *ComparisonCounterState) Reset(_ *livetemplate.ActionContext) error {
+func (s *ComparisonCounterState) Reset(_ *livetemplate.Context) error {
 	s.Counter = 0
 	return nil
 }

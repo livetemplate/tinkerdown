@@ -43,19 +43,19 @@ type CounterState struct {
 }
 
 // Increment handles the "increment" action - increases count by 1
-func (s *CounterState) Increment(_ *livetemplate.ActionContext) error {
+func (s *CounterState) Increment(_ *livetemplate.Context) error {
     s.Counter++
     return nil
 }
 
 // Decrement handles the "decrement" action - decreases count by 1
-func (s *CounterState) Decrement(_ *livetemplate.ActionContext) error {
+func (s *CounterState) Decrement(_ *livetemplate.Context) error {
     s.Counter--
     return nil
 }
 
 // Reset handles the "reset" action - resets count to zero
-func (s *CounterState) Reset(_ *livetemplate.ActionContext) error {
+func (s *CounterState) Reset(_ *livetemplate.Context) error {
     s.Counter = 0
     return nil
 }
