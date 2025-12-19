@@ -10,16 +10,27 @@ import (
 
 // Config represents the livepage configuration
 type Config struct {
-	Title       string         `yaml:"title"`
-	Description string         `yaml:"description"`
-	Type        string         `yaml:"type"` // "tutorial" or "site"
-	Site        *SiteConfig    `yaml:"site,omitempty"`
-	Navigation  []NavSection   `yaml:"navigation,omitempty"`
-	Server      ServerConfig   `yaml:"server"`
-	Styling     StylingConfig  `yaml:"styling"`
-	Blocks      BlocksConfig   `yaml:"blocks"`
-	Features    FeaturesConfig `yaml:"features"`
-	Ignore      []string       `yaml:"ignore"`
+	Title       string                  `yaml:"title"`
+	Description string                  `yaml:"description"`
+	Type        string                  `yaml:"type"` // "tutorial" or "site"
+	Site        *SiteConfig             `yaml:"site,omitempty"`
+	Navigation  []NavSection            `yaml:"navigation,omitempty"`
+	Server      ServerConfig            `yaml:"server"`
+	Styling     StylingConfig           `yaml:"styling"`
+	Blocks      BlocksConfig            `yaml:"blocks"`
+	Features    FeaturesConfig          `yaml:"features"`
+	Ignore      []string                `yaml:"ignore"`
+	Sources     map[string]SourceConfig `yaml:"sources,omitempty"`
+}
+
+// SourceConfig defines a data source for lvt-source blocks
+type SourceConfig struct {
+	Type    string            `yaml:"type"`              // "exec", "pg", "rest", "csv", "json"
+	Cmd     string            `yaml:"cmd,omitempty"`     // For exec: command to run
+	Query   string            `yaml:"query,omitempty"`   // For pg: SQL query
+	URL     string            `yaml:"url,omitempty"`     // For rest: API endpoint
+	File    string            `yaml:"file,omitempty"`    // For csv/json: file path
+	Options map[string]string `yaml:"options,omitempty"` // Type-specific options
 }
 
 // SiteConfig holds site-level configuration

@@ -10,6 +10,7 @@ import (
 
 	"github.com/hashicorp/go-plugin"
 	"github.com/livetemplate/livepage"
+	"github.com/livetemplate/livepage/internal/config"
 	livepageplugin "github.com/livetemplate/livepage/plugin"
 )
 
@@ -19,6 +20,8 @@ import (
 // - The HandleAction method is used by adapters to forward actions
 type Store interface {
 	HandleAction(action string, data map[string]interface{}) error
+	// Close releases resources. Optional - returns nil if not implemented.
+	Close() error
 }
 
 // ServerBlockCompiler compiles server blocks into loadable Go plugins
@@ -146,6 +149,27 @@ func (c *ServerBlockCompiler) CompileServerBlock(block *livepage.ServerBlock) (f
 				lines = append(lines, "")
 				lines = append(lines, replaceDirectives...)
 			}
+
+			// Check if the generated code imports components/datatable
+			// and add a require statement if needed
+			for _, rd := range replaceDirectives {
+				if strings.Contains(rd, "github.com/livetemplate/components") {
+					// Add require statement for components (before replace)
+					// Find the closing of require block
+					for i, line := range lines {
+						if strings.TrimSpace(line) == ")" && i > 0 {
+							// Check if previous lines look like require block content
+							if strings.Contains(lines[i-1], "github.com") || strings.Contains(lines[i-1], "gopkg.in") {
+								// Insert require before the closing paren
+								lines = append(lines[:i+1], lines[i:]...)
+								lines[i] = "\tgithub.com/livetemplate/components v0.0.0"
+								break
+							}
+						}
+					}
+					break
+				}
+			}
 		}
 	}
 
@@ -176,6 +200,8 @@ func (c *ServerBlockCompiler) CompileServerBlock(block *livepage.ServerBlock) (f
 					continue
 				}
 				if inUse && trimmed == ")" {
+					// Add the plugin directory itself before closing paren
+					updatedWorkLines = append(updatedWorkLines, "\t"+pluginDir)
 					inUse = false
 					updatedWorkLines = append(updatedWorkLines, line)
 					continue
@@ -296,11 +322,33 @@ func (c *ServerBlockCompiler) generatePluginCode(block *livepage.ServerBlock) st
 		// Clean up import line
 		imp = strings.TrimPrefix(imp, "import ")
 		imp = strings.TrimSpace(imp)
-		if !strings.HasPrefix(imp, "\"") {
+		// Allow imports that start with:
+		// - " (regular import like "fmt")
+		// - _ (blank import like _ "github.com/...")
+		// - letter (aliased import like foo "github.com/...")
+		if imp == "" {
+			continue // Skip empty lines
+		}
+		firstChar := imp[0]
+		if firstChar != '"' && firstChar != '_' && !((firstChar >= 'a' && firstChar <= 'z') || (firstChar >= 'A' && firstChar <= 'Z')) {
 			continue // Skip malformed imports
 		}
-		// Skip duplicates of what we already added
-		if strings.Contains(imp, "livetemplate") || strings.Contains(imp, "go-plugin") {
+		// Skip duplicates of what we already added (but keep components imports!)
+		if strings.Contains(imp, "livetemplate/livetemplate") ||
+			strings.Contains(imp, "livetemplate/livepage") ||
+			strings.Contains(imp, "go-plugin") {
+			continue
+		}
+		// Skip standard imports that are already in the base import list
+		baseImports := []string{`"context"`, `"encoding/json"`, `"fmt"`, `"reflect"`, `"strings"`}
+		isDuplicate := false
+		for _, base := range baseImports {
+			if strings.Contains(imp, base) {
+				isDuplicate = true
+				break
+			}
+		}
+		if isDuplicate {
 			continue
 		}
 		code.WriteString("\t" + imp + "\n")
@@ -319,7 +367,7 @@ func (c *ServerBlockCompiler) generatePluginCode(block *livepage.ServerBlock) st
 	code.WriteString("\n\n")
 
 	// Detect state initialization code
-	stateInit := c.detectStateInitialization(block.Content)
+	stateInitResult := c.detectStateInitialization(block.Content)
 
 	// Generate RPC plugin wrapper with local dispatch
 	code.WriteString(fmt.Sprintf(`// StatePluginImpl implements the plugin.StatePlugin interface
@@ -387,26 +435,54 @@ func main() {
 		},
 	})
 }
-`, stateInit))
+`, stateInitResult.code))
 
 	return code.String()
 }
 
+// stateInitResult holds the result of state initialization detection
+type stateInitResult struct {
+	code       string // The initialization code
+	hasError   bool   // Whether the constructor returns an error
+	funcName   string // Name of the constructor function (if found)
+}
+
 // detectStateInitialization tries to find how to initialize the state
 // It looks for either a NewXxxState() constructor function or generates an inline constructor
-func (c *ServerBlockCompiler) detectStateInitialization(content string) string {
+func (c *ServerBlockCompiler) detectStateInitialization(content string) stateInitResult {
 	lines := strings.Split(content, "\n")
 
 	// First, try to find a NewXxxState() constructor function
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
-		// Look for func NewXxxState() patterns
+		// Look for func NewXxxState() patterns that return (*State, error)
 		if strings.HasPrefix(trimmed, "func New") && strings.Contains(trimmed, "State()") {
+			// Check if it returns error
+			returnsError := strings.Contains(trimmed, ", error)")
+
 			// Extract function name
 			parts := strings.Fields(trimmed)
 			if len(parts) >= 2 {
 				funcName := strings.TrimSuffix(parts[1], "()")
-				return funcName + "()"
+				if returnsError {
+					// Constructor returns (*State, error) - generate error handling code
+					return stateInitResult{
+						code: fmt.Sprintf(`func() interface{} {
+		s, err := %s()
+		if err != nil {
+			panic(fmt.Sprintf("failed to initialize state: %%v", err))
+		}
+		return s
+	}()`, funcName),
+						hasError: true,
+						funcName: funcName,
+					}
+				}
+				return stateInitResult{
+					code:     funcName + "()",
+					hasError: false,
+					funcName: funcName,
+				}
 			}
 		}
 	}
@@ -419,13 +495,19 @@ func (c *ServerBlockCompiler) detectStateInitialization(content string) string {
 			parts := strings.Fields(trimmed)
 			if len(parts) >= 2 {
 				typeName := parts[1]
-				return "&" + typeName + "{}"
+				return stateInitResult{
+					code:     "&" + typeName + "{}",
+					hasError: false,
+				}
 			}
 		}
 	}
 
 	// Fallback - this should rarely happen
-	return "&TodoState{}"
+	return stateInitResult{
+		code:     "&TodoState{}",
+		hasError: false,
+	}
 }
 
 // findGoWorkspace searches upward from current directory for go.work file
@@ -551,6 +633,14 @@ func (a *rpcStoreAdapter) HandleAction(action string, data map[string]interface{
 	return a.plugin.Change(action, data)
 }
 
+// Close kills the RPC client process
+func (a *rpcStoreAdapter) Close() error {
+	if a.client != nil {
+		a.client.Kill()
+	}
+	return nil
+}
+
 // GetStateAsInterface fetches the current state from the plugin as a generic interface{}
 // This is used for template rendering
 func (a *rpcStoreAdapter) GetStateAsInterface() (interface{}, error) {
@@ -624,7 +714,84 @@ func (e *errorStore) HandleAction(_ string, _ map[string]interface{}) error {
 	return e.err
 }
 
+// Close is a no-op for error store
+func (e *errorStore) Close() error {
+	return nil
+}
+
 // Cleanup removes build artifacts
 func (c *ServerBlockCompiler) Cleanup() {
 	os.RemoveAll(c.buildDir)
+}
+
+// CompileAutoPersist compiles an auto-persist form into a Go plugin
+// This generates all the boilerplate code (State struct, NewState, action methods)
+// based on form fields extracted from the LVT template
+func (c *ServerBlockCompiler) CompileAutoPersist(blockID string, lvtContent string, siteDBPath string) (func() Store, error) {
+	if c.debug {
+		fmt.Printf("[Compiler] Compiling auto-persist block: %s\n", blockID)
+	}
+
+	// Parse form fields from LVT content
+	config, err := ParseFormFields(lvtContent)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse form fields: %w", err)
+	}
+	if config == nil {
+		return nil, fmt.Errorf("no lvt-persist form found in block %s", blockID)
+	}
+
+	if c.debug {
+		fmt.Printf("[Compiler] Found %d form fields for table '%s'\n", len(config.Fields), config.TableName)
+		for _, f := range config.Fields {
+			fmt.Printf("[Compiler]   - %s: %s (%s)\n", f.Name, f.Type, f.HTMLType)
+		}
+	}
+
+	// Generate the server block code
+	generatedCode := GenerateAutoPersistCode(config, siteDBPath)
+
+	// Create a virtual ServerBlock with the generated code
+	block := &livepage.ServerBlock{
+		ID:       blockID,
+		Language: "go",
+		Content:  generatedCode,
+		Metadata: map[string]string{
+			"auto-persist": config.TableName,
+		},
+	}
+
+	// Compile using the standard flow
+	return c.CompileServerBlock(block)
+}
+
+// CompileLvtSource compiles an lvt-source block into a Go plugin
+// This generates code that fetches data from the configured source
+func (c *ServerBlockCompiler) CompileLvtSource(blockID string, sourceName string, sourceCfg config.SourceConfig, siteDir string, metadata map[string]string) (func() Store, error) {
+	if c.debug {
+		fmt.Printf("[Compiler] Compiling lvt-source block: %s (source: %s, type: %s)\n", blockID, sourceName, sourceCfg.Type)
+	}
+
+	// Generate code for the source
+	// Pass element type and other metadata for component-aware code generation
+	generatedCode, err := GenerateLvtSourceCode(sourceName, sourceCfg, siteDir, metadata)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate lvt-source code: %w", err)
+	}
+
+	if c.debug {
+		fmt.Printf("[Compiler] Generated lvt-source code:\n%s\n", generatedCode)
+	}
+
+	// Create a synthetic server block with the generated code
+	// Preserve all metadata from the original block
+	block := &livepage.ServerBlock{
+		ID:       blockID,
+		Language: "go",
+		Content:  generatedCode,
+		Metadata: metadata,
+	}
+
+	// Compile using the standard flow
+	return c.CompileServerBlock(block)
 }

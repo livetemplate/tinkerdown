@@ -1,0 +1,1 @@
+- check if a lvt-* attribute is already implemented in /Users/adnaan/code/livetemplate/client before reimplementing it

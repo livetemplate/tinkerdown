@@ -1,0 +1,249 @@
+# LivePage - One-File AI App Builder
+
+> Build working web apps in a single markdown file. No React. No build step. No CSS classes. Just run.
+
+## Overview
+
+LivePage outputs working apps in a single markdown file:
+- Single file = easy to generate, share, modify
+- No build step = instant feedback loop
+- No npm/React = LLMs generate simpler code
+- **No CSS classes needed** = PicoCSS styles semantic HTML automatically
+- SQLite auto-persistence = zero backend code
+
+## Quick Start
+
+```markdown
+---
+title: "My App"
+---
+
+# My App
+
+\`\`\`lvt
+<main>
+    <h1>Todo List</h1>
+
+    <form lvt-submit="save" lvt-persist="items">
+        <input type="text" name="title" placeholder="Add item..." required>
+        <button type="submit">Add</button>
+    </form>
+
+    {{range .Items}}
+    <article>
+        {{.Title}}
+        <button lvt-click="Delete" lvt-data-id="{{.Id}}">Delete</button>
+    </article>
+    {{end}}
+</main>
+\`\`\`
+```
+
+Run: `livepage serve myapp.md`
+
+## Key Attributes
+
+| Attribute | Purpose | Example |
+|-----------|---------|---------|
+| `lvt-submit` | Handle form submission | `<form lvt-submit="save">` |
+| `lvt-persist` | Auto-save to SQLite | `<form lvt-persist="todos">` |
+| `lvt-click` | Button action handler | `<button lvt-click="Delete">` |
+| `lvt-data-*` | Pass data with action | `lvt-data-id="{{.Id}}"` |
+| `lvt-source` | Connect to data source | `<div lvt-source="users">` |
+| `lvt-columns` | Smart table columns | `lvt-columns="name:Name,email:Email"` |
+
+## Styling - NO CSS CLASSES NEEDED
+
+LivePage includes PicoCSS, a classless CSS framework. Just write semantic HTML:
+
+```html
+<!-- PicoCSS styles these automatically - no classes! -->
+<main>
+    <h1>Title</h1>
+    <p>Paragraph text</p>
+    <button>Click me</button>
+    <input type="text" placeholder="Enter text...">
+    <article>Card content</article>
+    <table>...</table>
+</main>
+```
+
+### Semantic Elements (PicoCSS)
+
+| Element | Renders as |
+|---------|------------|
+| `<main>` | Centered container |
+| `<article>` | Card with shadow |
+| `<button>` | Styled button |
+| `<input>` | Styled input field |
+| `<table>` | Styled table |
+| `<fieldset role="group">` | Inline form group |
+| `<nav>` | Navigation bar |
+| `<dialog>` | Modal dialog |
+
+### Button Variants (only when needed)
+
+```html
+<button>Primary</button>
+<button class="secondary">Secondary</button>
+<button class="outline">Outline</button>
+<button class="contrast">Contrast</button>
+```
+
+## Auto-Persistence (lvt-persist)
+
+Creates SQLite table automatically from form fields:
+
+```html
+<form lvt-submit="save" lvt-persist="contacts">
+    <input type="text" name="name">      <!-- creates name column -->
+    <input type="email" name="email">    <!-- creates email column -->
+    <input type="checkbox" name="active"> <!-- creates active column -->
+    <button type="submit">Save</button>
+</form>
+
+{{range .Contacts}}
+<article>{{.Name}} - {{.Email}}</article>
+{{end}}
+```
+
+Auto-generates: Id, CreatedAt, Save action, Delete action.
+
+## Data Sources (livepage.yaml)
+
+### PostgreSQL
+```yaml
+sources:
+  users:
+    type: pg
+    query: SELECT * FROM users
+```
+
+### REST API
+```yaml
+sources:
+  posts:
+    type: rest
+    url: https://api.example.com/posts
+```
+
+### JSON File
+```yaml
+sources:
+  config:
+    type: json
+    file: data.json
+```
+
+### Exec (Run Script)
+```yaml
+sources:
+  stats:
+    type: exec
+    cmd: ./get-stats.sh
+```
+
+Script outputs JSON array:
+```json
+[{"name": "CPU", "value": 45}, {"name": "Memory", "value": 72}]
+```
+
+## Template Reference
+
+```html
+{{.FieldName}}                    <!-- Access field -->
+{{range .Items}}<li>{{.Name}}</li>{{end}}  <!-- Loop -->
+{{if .Error}}{{.Error}}{{end}}    <!-- Conditional -->
+{{if eq .Status "active"}}...{{end}}  <!-- Compare -->
+{{len .Items}}                    <!-- Length -->
+```
+
+## Common Patterns
+
+### CRUD List
+```html
+<main>
+    <h1>My Items</h1>
+
+    <form lvt-submit="save" lvt-persist="items">
+        <fieldset role="group">
+            <input type="text" name="title" required placeholder="New item...">
+            <button type="submit">Add</button>
+        </fieldset>
+    </form>
+
+    {{range .Items}}
+    <article>
+        <header>{{.Title}}</header>
+        <footer>
+            <button lvt-click="Delete" lvt-data-id="{{.Id}}">Delete</button>
+        </footer>
+    </article>
+    {{end}}
+</main>
+```
+
+### Data Table
+```html
+<main lvt-source="users">
+    <h1>Users</h1>
+    <table>
+        <thead>
+            <tr><th>Name</th><th>Email</th></tr>
+        </thead>
+        <tbody>
+            {{range .Data}}
+            <tr><td>{{.name}}</td><td>{{.email}}</td></tr>
+            {{end}}
+        </tbody>
+    </table>
+</main>
+```
+
+### Contact Form
+```html
+<main>
+    <h1>Contact Us</h1>
+
+    <form lvt-submit="save" lvt-persist="messages">
+        <label>
+            Name
+            <input type="text" name="name" required>
+        </label>
+        <label>
+            Email
+            <input type="email" name="email" required>
+        </label>
+        <label>
+            Message
+            <textarea name="message" required></textarea>
+        </label>
+        <button type="submit">Send</button>
+    </form>
+</main>
+```
+
+## Field Types
+
+| Input Type | SQLite Type | Template Access |
+|------------|-------------|-----------------|
+| text, email, url | TEXT | {{.Name}} |
+| number | INTEGER | {{.Count}} |
+| checkbox | BOOLEAN | {{if .Active}} |
+| date | DATETIME | {{.Date}} |
+| textarea | TEXT | {{.Content}} |
+
+## CLI Commands
+
+```bash
+livepage serve myapp.md           # Serve single file
+livepage serve ./myapp/           # Serve directory
+livepage serve . --port 8080      # Custom port
+```
+
+## Links
+
+- Documentation: https://livepage.dev
+- Playground: https://livepage.dev/playground
+- Examples: https://github.com/livetemplate/livepage/tree/main/skills/livepage/examples
+- Source: https://github.com/livetemplate/livepage

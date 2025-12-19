@@ -7,7 +7,7 @@
   "scripts": {
     "build": "npm run build:lib && npm run build:browser",
     "build:lib": "tsc",
-    "build:browser": "esbuild src/browser.ts --bundle --minify --sourcemap --outfile=dist/livepage-client.browser.js --global-name=LivepageClient --format=iife --loader:.ttf=file --loader:.woff=file --loader:.woff2=file --external:*.ttf --external:*.woff --external:*.woff2 --external:monaco-editor --splitting=false --metafile=dist/meta.json",
+    "build:browser": "esbuild src/browser.ts --bundle --minify --sourcemap --outfile=dist/livepage-client.browser.js --global-name=LivepageClient --format=iife --loader:.ttf=file --loader:.woff=file --loader:.woff2=file --external:*.ttf --external:*.woff --external:*.woff2 --external:monaco-editor --splitting=false --metafile=dist/meta.json --main-fields=main,module",
     "build:esm": "esbuild src/browser.ts --bundle --minify --sourcemap --outdir=dist/esm --format=esm --splitting --loader:.ttf=file --loader:.woff=file --loader:.woff2=file --external:*.ttf --external:*.woff --external:*.woff2 --metafile=dist/esm/meta.json",
     "dev": "tsc --watch",
     "test": "jest",
@@ -15,7 +15,7 @@
     "analyze": "node -e \"const fs=require('fs');const m=JSON.parse(fs.readFileSync('dist/meta.json'));Object.entries(m.outputs).forEach(([k,v])=>console.log(k,Math.round(v.bytes/1024)+'KB'));\""
   },
   "dependencies": {
-    "@livetemplate/client": "^0.3.0",
+    "@livetemplate/client": "^0.7.0",
     "monaco-editor": "^0.45.0"
   },
   "devDependencies": {

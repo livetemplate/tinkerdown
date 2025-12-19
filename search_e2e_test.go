@@ -6,16 +6,35 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/chromedp/cdproto/runtime"
 	"github.com/chromedp/chromedp"
+	"github.com/livetemplate/livepage/internal/config"
+	"github.com/livetemplate/livepage/internal/server"
 )
 
 // TestSearchFunctionality tests the complete search feature in site mode
 func TestSearchFunctionality(t *testing.T) {
+	// Load config from docs-site example (which has type: "site")
+	cfg, err := config.LoadFromDir("examples/docs-site")
+	if err != nil {
+		t.Fatalf("Failed to load config: %v", err)
+	}
+
+	// Create test server with config for docs-site example
+	srv := server.NewWithConfig("examples/docs-site", cfg)
+	if err := srv.Discover(); err != nil {
+		t.Fatalf("Failed to discover pages: %v", err)
+	}
+
+	handler := server.WithCompression(srv)
+	ts := httptest.NewServer(handler)
+	defer ts.Close()
+
 	// Setup context with output options
 	allocCtx, cancel := chromedp.NewExecAllocator(context.Background(),
 		append(chromedp.DefaultExecAllocatorOptions[:],
@@ -45,8 +64,8 @@ func TestSearchFunctionality(t *testing.T) {
 	var searchButtonExists bool
 	var modalHTML string
 
-	err := chromedp.Run(ctx,
-		chromedp.Navigate("http://localhost:9090/"),
+	err = chromedp.Run(ctx,
+		chromedp.Navigate(ts.URL+"/"),
 		chromedp.WaitVisible(".livepage-nav-sidebar", chromedp.ByQuery),
 		chromedp.Sleep(500*time.Millisecond), // Wait for client to initialize
 		chromedp.OuterHTML("html", &htmlContent),
@@ -342,16 +361,31 @@ func TestSearchFunctionality(t *testing.T) {
 	}
 
 	// Test 13: Verify search doesn't appear in non-site mode
+	// Create a separate test server for counter example
+	counterSrv := server.New("examples/counter")
+	if err := counterSrv.Discover(); err != nil {
+		t.Fatalf("Failed to discover counter pages: %v", err)
+	}
+
+	counterHandler := server.WithCompression(counterSrv)
+	counterTS := httptest.NewServer(counterHandler)
+	defer counterTS.Close()
+
 	var searchButtonInNonSiteMode bool
 
 	err = chromedp.Run(ctx,
-		chromedp.Navigate("http://localhost:8080/"), // Counter example (non-site mode)
+		chromedp.Navigate(counterTS.URL+"/"),
 		chromedp.Sleep(500*time.Millisecond),
 		chromedp.Evaluate(`document.querySelector('.search-button') !== null`, &searchButtonInNonSiteMode),
 	)
 
-	// Note: This test will fail if port 8080 is not running, but that's okay for this specific test
-	// We just want to ensure search doesn't appear where it shouldn't
+	if err != nil {
+		t.Logf("Failed to check non-site mode: %v", err)
+	} else if searchButtonInNonSiteMode {
+		t.Log("Warning: Search button found in non-site mode (counter example)")
+	} else {
+		t.Log("✓ Search button not present in non-site mode")
+	}
 
 	t.Logf("Console logs during test: %v", consoleLogs)
 	t.Log("✅ All search functionality tests passed!")
@@ -359,8 +393,24 @@ func TestSearchFunctionality(t *testing.T) {
 
 // TestSearchIndexGeneration tests the server-side search index generation
 func TestSearchIndexGeneration(t *testing.T) {
+	// Load config from docs-site example (which has type: "site")
+	cfg, err := config.LoadFromDir("examples/docs-site")
+	if err != nil {
+		t.Fatalf("Failed to load config: %v", err)
+	}
+
+	// Create test server with config for docs-site example
+	srv := server.NewWithConfig("examples/docs-site", cfg)
+	if err := srv.Discover(); err != nil {
+		t.Fatalf("Failed to discover pages: %v", err)
+	}
+
+	handler := server.WithCompression(srv)
+	ts := httptest.NewServer(handler)
+	defer ts.Close()
+
 	// Fetch search index directly using HTTP client
-	resp, err := http.Get("http://localhost:9090/search-index.json")
+	resp, err := http.Get(ts.URL + "/search-index.json")
 	if err != nil {
 		t.Fatalf("Failed to fetch search index: %v", err)
 	}

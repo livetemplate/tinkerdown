@@ -29,7 +29,7 @@ func TestUXEnhancements(t *testing.T) {
 	ts := httptest.NewServer(handler)
 	defer ts.Close()
 
-	t.Run("TailwindCSSLoaded", func(t *testing.T) {
+	t.Run("PicoCSSLoaded", func(t *testing.T) {
 		resp, err := http.Get(ts.URL)
 		if err != nil {
 			t.Fatalf("Failed to fetch page: %v", err)
@@ -43,9 +43,9 @@ func TestUXEnhancements(t *testing.T) {
 
 		html := string(bodyBytes)
 
-		// Check for Tailwind CDN script
-		if !strings.Contains(html, "cdn.tailwindcss.com") {
-			t.Error("Tailwind CSS CDN not found in HTML")
+		// Check for PicoCSS CDN
+		if !strings.Contains(html, "picocss") {
+			t.Error("PicoCSS CDN not found in HTML")
 		}
 	})
 

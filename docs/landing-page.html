@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LivePage - AI builds tools in one file</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        code, pre { font-family: 'JetBrains Mono', monospace; }
+        .gradient-text {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .code-block {
+            background: #1e1e2e;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        .code-header {
+            background: #313244;
+            padding: 12px 16px;
+            font-size: 13px;
+            color: #a6adc8;
+            border-bottom: 1px solid #45475a;
+        }
+        .code-content {
+            padding: 20px;
+            color: #cdd6f4;
+            font-size: 14px;
+            line-height: 1.6;
+            overflow-x: auto;
+        }
+        .code-content .keyword { color: #cba6f7; }
+        .code-content .string { color: #a6e3a1; }
+        .code-content .tag { color: #89b4fa; }
+        .code-content .attr { color: #f9e2af; }
+        .code-content .comment { color: #6c7086; }
+    </style>
+</head>
+<body class="bg-slate-950 text-white">
+
+    <!-- Hero Section -->
+    <section class="min-h-screen flex flex-col">
+        <nav class="container mx-auto px-6 py-6 flex justify-between items-center">
+            <div class="text-2xl font-bold">
+                <span class="gradient-text">LivePage</span>
+            </div>
+            <div class="flex gap-6 items-center">
+                <a href="#how-it-works" class="text-slate-400 hover:text-white transition">How it works</a>
+                <a href="#compare" class="text-slate-400 hover:text-white transition">Compare</a>
+                <a href="https://github.com/livetemplate/livepage" class="bg-white text-slate-900 px-4 py-2 rounded-lg font-medium hover:bg-slate-200 transition">
+                    GitHub
+                </a>
+            </div>
+        </nav>
+
+        <div class="flex-1 container mx-auto px-6 flex items-center">
+            <div class="max-w-4xl mx-auto text-center">
+                <div class="inline-flex items-center gap-2 px-4 py-2 bg-indigo-500/10 border border-indigo-500/20 rounded-full text-indigo-400 text-sm mb-8">
+                    <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clip-rule="evenodd"/></svg>
+                    The AI app builder that actually works
+                </div>
+                <h1 class="text-5xl lg:text-7xl font-bold leading-tight mb-6">
+                    One markdown file.<br>
+                    <span class="gradient-text">Working app.</span>
+                </h1>
+                <p class="text-xl text-slate-400 mb-10 leading-relaxed max-w-2xl mx-auto">
+                    Ask AI to build a tool. Paste the output. Run it. Done.<br>
+                    No framework. No npm. No debugging.
+                </p>
+
+                <!-- Example Prompt -->
+                <div class="bg-slate-800/50 rounded-xl p-6 mb-10 max-w-2xl mx-auto border border-slate-700 text-left">
+                    <div class="flex items-start gap-3">
+                        <div class="w-8 h-8 bg-purple-500/20 rounded-lg flex items-center justify-center flex-shrink-0 mt-1">
+                            <svg class="w-4 h-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/></svg>
+                        </div>
+                        <div>
+                            <div class="text-xs text-slate-500 mb-1">Example prompt</div>
+                            <p class="text-slate-300 text-sm leading-relaxed">
+                                "Build me a feature request board. Let users submit requests with a title, description, and priority. Show all requests in a table."
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- The Flow -->
+                <div class="flex items-center justify-center gap-4 mb-12 flex-wrap">
+                    <div class="flex items-center gap-3 bg-slate-800/50 px-5 py-3 rounded-xl border border-slate-700">
+                        <div class="w-10 h-10 bg-purple-500/20 rounded-lg flex items-center justify-center">
+                            <svg class="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/></svg>
+                        </div>
+                        <div class="text-left">
+                            <div class="text-xs text-slate-500">Step 1</div>
+                            <div class="text-sm font-medium">Prompt AI</div>
+                        </div>
+                    </div>
+                    <svg class="w-6 h-6 text-slate-600 hidden sm:block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
+                    <div class="flex items-center gap-3 bg-slate-800/50 px-5 py-3 rounded-xl border border-slate-700">
+                        <div class="w-10 h-10 bg-blue-500/20 rounded-lg flex items-center justify-center">
+                            <svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                        </div>
+                        <div class="text-left">
+                            <div class="text-xs text-slate-500">Step 2</div>
+                            <div class="text-sm font-medium">Get .md file</div>
+                        </div>
+                    </div>
+                    <svg class="w-6 h-6 text-slate-600 hidden sm:block" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
+                    <div class="flex items-center gap-3 bg-slate-800/50 px-5 py-3 rounded-xl border border-green-500/30">
+                        <div class="w-10 h-10 bg-green-500/20 rounded-lg flex items-center justify-center">
+                            <svg class="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        </div>
+                        <div class="text-left">
+                            <div class="text-xs text-slate-500">Step 3</div>
+                            <div class="text-sm font-medium">Run it</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex gap-4 justify-center mb-12">
+                    <a href="#demo" class="bg-gradient-to-r from-indigo-500 to-purple-600 px-8 py-4 rounded-xl font-medium hover:opacity-90 transition text-lg">
+                        Watch Demo
+                    </a>
+                    <a href="#get-started" class="border border-slate-700 px-8 py-4 rounded-xl font-medium hover:bg-slate-800 transition text-lg font-mono text-base">
+                        brew install livepage
+                    </a>
+                </div>
+
+                <div class="flex items-center justify-center gap-8 text-sm text-slate-500">
+                    <div class="flex items-center gap-2">
+                        <svg class="w-5 h-5 text-green-500" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+                        Open Source
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <svg class="w-5 h-5 text-green-500" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+                        Self-hosted
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <svg class="w-5 h-5 text-green-500" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+                        Free Forever
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Scroll indicator -->
+        <div class="pb-8 text-center">
+            <a href="#demo" class="inline-flex flex-col items-center text-slate-500 hover:text-slate-300 transition">
+                <span class="text-xs mb-2">See it in action</span>
+                <svg class="w-5 h-5 animate-bounce" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 14l-7 7m0 0l-7-7m7 7V3"/></svg>
+            </a>
+        </div>
+    </section>
+
+    <!-- Live Demo Section -->
+    <section class="py-24 bg-slate-900">
+        <div class="container mx-auto px-6">
+            <div class="max-w-3xl mx-auto text-center mb-16">
+                <h2 class="text-3xl font-bold mb-4">From markdown to working app</h2>
+                <p class="text-slate-400 text-lg">
+                    Write the code on the left. See the result on the right.
+                </p>
+            </div>
+
+            <div class="grid lg:grid-cols-2 gap-8 max-w-6xl mx-auto items-stretch">
+                <!-- Code (Left) -->
+                <div class="code-block shadow-2xl h-full">
+                    <div class="code-header flex items-center gap-2">
+                        <div class="flex gap-1.5">
+                            <div class="w-3 h-3 rounded-full bg-red-500"></div>
+                            <div class="w-3 h-3 rounded-full bg-yellow-500"></div>
+                            <div class="w-3 h-3 rounded-full bg-green-500"></div>
+                        </div>
+                        <span class="ml-2">features.md</span>
+                        <span class="ml-auto text-xs bg-slate-600 px-2 py-0.5 rounded">~20 lines of code</span>
+                    </div>
+                    <div class="code-content text-sm">
+<pre><span class="comment"># Feature Requests</span>
+
+<span class="keyword">```html</span>
+<span class="tag">&lt;form</span> <span class="attr">lvt-persist</span>=<span class="string">"requests"</span><span class="tag">&gt;</span>
+  <span class="tag">&lt;input</span> <span class="attr">name</span>=<span class="string">"title"</span> <span class="attr">placeholder</span>=<span class="string">"Feature title"</span><span class="tag">&gt;</span>
+  <span class="tag">&lt;textarea</span> <span class="attr">name</span>=<span class="string">"description"</span><span class="tag">&gt;&lt;/textarea&gt;</span>
+  <span class="tag">&lt;select</span> <span class="attr">name</span>=<span class="string">"priority"</span><span class="tag">&gt;</span>
+    <span class="tag">&lt;option&gt;</span>Nice to have<span class="tag">&lt;/option&gt;</span>
+    <span class="tag">&lt;option&gt;</span>Important<span class="tag">&lt;/option&gt;</span>
+    <span class="tag">&lt;option&gt;</span>Critical<span class="tag">&lt;/option&gt;</span>
+  <span class="tag">&lt;/select&gt;</span>
+  <span class="tag">&lt;button&gt;</span>Submit<span class="tag">&lt;/button&gt;</span>
+<span class="tag">&lt;/form&gt;</span>
+<span class="keyword">```</span>
+
+<span class="keyword">```lvt</span>
+| Feature | Priority |
+|---------|----------|
+<span class="keyword">{{range .requests}}</span>
+| <span class="keyword">{{.title}}</span> | <span class="keyword">{{.priority}}</span> |
+<span class="keyword">{{end}}</span>
+<span class="keyword">```</span></pre>
+                    </div>
+                </div>
+
+                <!-- Rendered UI (Right) -->
+                <div class="bg-white rounded-xl shadow-2xl overflow-hidden h-full flex flex-col">
+                    <!-- Browser Chrome -->
+                    <div class="bg-slate-100 px-4 py-3 flex items-center gap-3 border-b border-slate-200">
+                        <div class="flex gap-2">
+                            <span class="w-3 h-3 rounded-full bg-red-400"></span>
+                            <span class="w-3 h-3 rounded-full bg-yellow-400"></span>
+                            <span class="w-3 h-3 rounded-full bg-green-400"></span>
+                        </div>
+                        <div class="flex-1 bg-white rounded-md px-3 py-1.5 text-xs text-slate-500 font-mono border border-slate-200">
+                            localhost:8080/features
+                        </div>
+                    </div>
+                    <!-- Rendered Content -->
+                    <div class="p-6 bg-white flex-1">
+                        <h1 class="text-xl font-bold text-slate-900 mb-4">Feature Requests</h1>
+
+                        <!-- Form -->
+                        <div class="space-y-3 mb-6">
+                            <input type="text" placeholder="Feature title" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm text-slate-700">
+                            <textarea placeholder="Describe the feature..." class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm text-slate-700 h-16 resize-none"></textarea>
+                            <div class="flex gap-2">
+                                <select class="flex-1 px-3 py-2 border border-slate-300 rounded-lg text-sm text-slate-700 bg-white">
+                                    <option>Nice to have</option>
+                                    <option>Important</option>
+                                    <option>Critical</option>
+                                </select>
+                                <button class="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition">Submit</button>
+                            </div>
+                        </div>
+
+                        <!-- Table -->
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="border-b border-slate-200">
+                                    <th class="text-left py-2 text-slate-600 font-medium">Feature</th>
+                                    <th class="text-left py-2 text-slate-600 font-medium">Priority</th>
+                                    <th class="text-left py-2 text-slate-600 font-medium">Submitted</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr class="border-b border-slate-100">
+                                    <td class="py-2 text-slate-700">Dark mode</td>
+                                    <td class="py-2"><span class="px-2 py-0.5 bg-red-100 text-red-700 rounded text-xs">Critical</span></td>
+                                    <td class="py-2 text-slate-500 text-xs">2 hours ago</td>
+                                </tr>
+                                <tr class="border-b border-slate-100">
+                                    <td class="py-2 text-slate-700">Export to CSV</td>
+                                    <td class="py-2"><span class="px-2 py-0.5 bg-yellow-100 text-yellow-700 rounded text-xs">Important</span></td>
+                                    <td class="py-2 text-slate-500 text-xs">5 hours ago</td>
+                                </tr>
+                                <tr class="border-b border-slate-100">
+                                    <td class="py-2 text-slate-700">Keyboard shortcuts</td>
+                                    <td class="py-2"><span class="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-xs">Nice to have</span></td>
+                                    <td class="py-2 text-slate-500 text-xs">1 day ago</td>
+                                </tr>
+                            </tbody>
+                        </table>
+
+                        <!-- Footer hint -->
+                        <p class="text-xs text-slate-400 mt-4 text-center">
+                            lvt-persist="requests" auto-creates database + CRUD
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Arrow indicator -->
+            <div class="text-center mt-8">
+                <span class="inline-flex items-center gap-3 text-slate-500 text-sm">
+                    <span class="hidden lg:inline">Markdown + HTML</span>
+                    <svg class="w-6 h-6 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path>
+                    </svg>
+                    <span class="hidden lg:inline">Working App</span>
+                </span>
+            </div>
+        </div>
+    </section>
+
+    <!-- Why It Works Section -->
+    <section class="py-24">
+        <div class="container mx-auto px-6">
+            <div class="max-w-3xl mx-auto text-center mb-16">
+                <h2 class="text-3xl font-bold mb-4">Why it works the first time</h2>
+                <p class="text-slate-400 text-lg">
+                    Declarative syntax = deterministic output. No debugging. No tinkering.
+                </p>
+            </div>
+            <div class="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto mb-24">
+                <div class="bg-slate-800/30 rounded-xl p-6 border border-slate-700/50">
+                    <div class="w-12 h-12 bg-green-500/20 rounded-xl flex items-center justify-center mb-4">
+                        <svg class="w-6 h-6 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    </div>
+                    <h3 class="font-semibold mb-2">AI gets it right</h3>
+                    <p class="text-slate-400 text-sm">
+                        <code class="text-green-400">lvt-persist="requests"</code> means one thing. Not 50 lines of hooks and API routes that might have bugs. Simple syntax = working code.
+                    </p>
+                </div>
+                <div class="bg-slate-800/30 rounded-xl p-6 border border-slate-700/50">
+                    <div class="w-12 h-12 bg-blue-500/20 rounded-xl flex items-center justify-center mb-4">
+                        <svg class="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6z"/></svg>
+                    </div>
+                    <h3 class="font-semibold mb-2">Everything in one file</h3>
+                    <p class="text-slate-400 text-sm">
+                        Database, server, and UI in a single markdown file. Nothing to wire up. Nothing to break.
+                    </p>
+                </div>
+                <div class="bg-slate-800/30 rounded-xl p-6 border border-slate-700/50">
+                    <div class="w-12 h-12 bg-purple-500/20 rounded-xl flex items-center justify-center mb-4">
+                        <svg class="w-6 h-6 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                    </div>
+                    <h3 class="font-semibold mb-2">No build step. Ever.</h3>
+                    <p class="text-slate-400 text-sm">
+                        No <code class="text-slate-500">npm install</code>. No webpack. No "works on my machine." Paste the file, run it, done.
+                    </p>
+                </div>
+            </div>
+
+            <div class="max-w-3xl mx-auto text-center mb-16">
+                <h2 class="text-3xl font-bold mb-4">The problem with other AI builders</h2>
+                <p class="text-slate-400 text-lg">
+                    You asked for a feature request board. Here's what you got:
+                </p>
+            </div>
+            <div class="grid md:grid-cols-2 gap-8 max-w-5xl mx-auto">
+                <div class="bg-slate-800/50 rounded-xl p-8 border border-slate-700">
+                    <div class="text-red-400 font-medium mb-4 flex items-center gap-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                        v0 / Bolt / Lovable
+                    </div>
+                    <div class="code-block">
+                        <div class="code-content text-sm">
+<pre>package.json
+src/app.js
+src/components/form.js
+src/components/list.js
+src/api/requests.js
+src/utils/helpers.js
+config.js
+build.config.js
+styles.css
+...</pre>
+                        </div>
+                    </div>
+                    <p class="text-slate-500 mt-4 text-sm">
+                        10+ files, npm install, build pipeline, hosting required<br>
+                        <span class="text-slate-600">Must test: components, state, API calls, hydration</span>
+                    </p>
+                </div>
+                <div class="bg-slate-800/50 rounded-xl p-8 border border-green-500/30">
+                    <div class="text-green-400 font-medium mb-4 flex items-center gap-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                        LivePage
+                    </div>
+                    <div class="code-block">
+                        <div class="code-content text-sm">
+<pre>features.md</pre>
+                        </div>
+                    </div>
+                    <p class="text-slate-500 mt-4 text-sm">
+                        1 file. Run <code class="text-green-400">livepage serve features.md</code>. Done.<br>
+                        <span class="text-slate-600">Test only: E2E user flows</span>
+                    </p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- How It Works Section -->
+    <section id="how-it-works" class="py-24">
+        <div class="container mx-auto px-6">
+            <div class="max-w-3xl mx-auto text-center mb-16">
+                <h2 class="text-3xl font-bold mb-4">Declarative. Powerful. Simple.</h2>
+                <p class="text-slate-400 text-lg">
+                    Write what you want. LivePage handles the rest.
+                </p>
+            </div>
+            <div class="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
+                <div class="text-center">
+                    <div class="w-16 h-16 bg-indigo-500/20 rounded-2xl flex items-center justify-center mx-auto mb-6">
+                        <svg class="w-8 h-8 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4"/></svg>
+                    </div>
+                    <h3 class="font-semibold text-lg mb-2">lvt-persist</h3>
+                    <p class="text-slate-400 text-sm">
+                        Auto-generates database tables and CRUD operations. Zero backend code.
+                    </p>
+                    <code class="text-xs text-indigo-400 mt-3 block">lvt-persist="todos"</code>
+                </div>
+                <div class="text-center">
+                    <div class="w-16 h-16 bg-purple-500/20 rounded-2xl flex items-center justify-center mx-auto mb-6">
+                        <svg class="w-8 h-8 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                    </div>
+                    <h3 class="font-semibold text-lg mb-2">lvt-source</h3>
+                    <p class="text-slate-400 text-sm">
+                        Connect to PostgreSQL, REST APIs, CSV files, or any script.
+                    </p>
+                    <code class="text-xs text-purple-400 mt-3 block">lvt-source="pg:users"</code>
+                </div>
+                <div class="text-center">
+                    <div class="w-16 h-16 bg-pink-500/20 rounded-2xl flex items-center justify-center mx-auto mb-6">
+                        <svg class="w-8 h-8 text-pink-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"/></svg>
+                    </div>
+                    <h3 class="font-semibold text-lg mb-2">Components</h3>
+                    <p class="text-slate-400 text-sm">
+                        Pre-built datatables, dropdowns, modals. Production-ready UI.
+                    </p>
+                    <code class="text-xs text-pink-400 mt-3 block">{{template "lvt:datatable"}}</code>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Polyglot Section -->
+    <section class="py-24 bg-slate-900">
+        <div class="container mx-auto px-6">
+            <div class="grid lg:grid-cols-2 gap-16 items-center max-w-6xl mx-auto">
+                <div>
+                    <div class="text-indigo-400 font-medium mb-4">Use any language</div>
+                    <h2 class="text-3xl font-bold mb-6">
+                        Build a UI for your scripts in 30 seconds
+                    </h2>
+                    <p class="text-slate-400 text-lg mb-8">
+                        Don't know Go? No problem. LivePage's polyglot mode lets you use Python, Bash, Node, or any language as a data source. Write a script that outputs JSON, and LivePage handles the rest.
+                    </p>
+                    <div class="flex flex-wrap gap-3">
+                        <span class="px-3 py-1 bg-slate-800 rounded-full text-sm text-slate-300">Python</span>
+                        <span class="px-3 py-1 bg-slate-800 rounded-full text-sm text-slate-300">Bash</span>
+                        <span class="px-3 py-1 bg-slate-800 rounded-full text-sm text-slate-300">Node.js</span>
+                        <span class="px-3 py-1 bg-slate-800 rounded-full text-sm text-slate-300">Ruby</span>
+                        <span class="px-3 py-1 bg-slate-800 rounded-full text-sm text-slate-300">Rust</span>
+                        <span class="px-3 py-1 bg-slate-800 rounded-full text-sm text-slate-300">Any CLI</span>
+                    </div>
+                </div>
+                <div class="code-block shadow-2xl">
+                    <div class="code-header">livepage.yaml</div>
+                    <div class="code-content">
+<pre><span class="attr">sources</span>:
+  <span class="attr">sales</span>:
+    <span class="attr">type</span>: <span class="string">exec</span>
+    <span class="attr">cmd</span>: <span class="string">python scripts/fetch_sales.py</span>
+    <span class="attr">interval</span>: <span class="string">60s</span></pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Comparison Section -->
+    <section id="compare" class="py-24">
+        <div class="container mx-auto px-6">
+            <div class="max-w-3xl mx-auto text-center mb-16">
+                <h2 class="text-3xl font-bold mb-4">Smaller testing surface area</h2>
+                <p class="text-slate-400">UI testing is simpler because there's no client-side logic to test.</p>
+            </div>
+            <div class="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto mb-12">
+                <!-- Without LivePage -->
+                <div class="bg-slate-800/50 rounded-xl p-8 border border-slate-700">
+                    <div class="text-red-400 font-medium mb-6 flex items-center gap-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                        Without LivePage
+                    </div>
+                    <div class="space-y-3 text-sm">
+                        <div class="flex items-center gap-3 text-slate-400">
+                            <span class="text-slate-600">1.</span> Ask AI for an app
+                        </div>
+                        <div class="flex items-center gap-3 text-slate-400">
+                            <span class="text-slate-600">2.</span> Get 10+ generated files
+                        </div>
+                        <div class="flex items-center gap-3 text-slate-400">
+                            <span class="text-slate-600">3.</span> npm install
+                        </div>
+                        <div class="flex items-center gap-3 text-slate-400">
+                            <span class="text-slate-600">4.</span> Fix build errors
+                        </div>
+                        <div class="flex items-center gap-3 text-slate-400">
+                            <span class="text-slate-600">5.</span> Run it
+                        </div>
+                        <div class="flex items-center gap-3 text-slate-400">
+                            <span class="text-slate-600">6.</span> Unit test components
+                        </div>
+                        <div class="flex items-center gap-3 text-slate-400">
+                            <span class="text-slate-600">7.</span> Integration test API calls
+                        </div>
+                        <div class="flex items-center gap-3 text-slate-400">
+                            <span class="text-slate-600">8.</span> E2E test user flows
+                        </div>
+                        <div class="flex items-center gap-3 text-red-400">
+                            <span class="text-slate-600">9.</span> Debug "why doesn't this render?"
+                        </div>
+                    </div>
+                </div>
+
+                <!-- With LivePage -->
+                <div class="bg-slate-800/50 rounded-xl p-8 border border-green-500/30">
+                    <div class="text-green-400 font-medium mb-6 flex items-center gap-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
+                        With LivePage
+                    </div>
+                    <div class="space-y-3 text-sm">
+                        <div class="flex items-center gap-3 text-slate-400">
+                            <span class="text-slate-600">1.</span> Ask AI for an app
+                        </div>
+                        <div class="flex items-center gap-3 text-slate-400">
+                            <span class="text-slate-600">2.</span> Get 1 markdown file
+                        </div>
+                        <div class="flex items-center gap-3 text-slate-400">
+                            <span class="text-slate-600">3.</span> <code class="text-green-400">livepage serve app.md</code>
+                        </div>
+                        <div class="flex items-center gap-3 text-slate-400">
+                            <span class="text-slate-600">4.</span> E2E test user flows
+                        </div>
+                        <div class="flex items-center gap-3 text-green-400 font-medium">
+                            <span class="text-slate-600">5.</span> Done
+                        </div>
+                    </div>
+                    <p class="text-xs text-slate-500 mt-6 pt-4 border-t border-slate-700">
+                        No hidden state. No async rendering bugs. No "works in dev but not prod" hydration issues.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Get Started Section -->
+    <section id="get-started" class="py-24 bg-slate-900">
+        <div class="container mx-auto px-6">
+            <div class="max-w-3xl mx-auto text-center mb-12">
+                <h2 class="text-3xl font-bold mb-4">Try it in 30 seconds</h2>
+            </div>
+            <div class="max-w-2xl mx-auto">
+                <div class="code-block shadow-2xl mb-8">
+                    <div class="code-header">Terminal</div>
+                    <div class="code-content">
+<pre><span class="comment"># Install</span>
+brew install livepage
+
+<span class="comment"># Run the feature request example</span>
+livepage serve features.md
+
+<span class="comment"># Open http://localhost:8080</span></pre>
+                    </div>
+                </div>
+                <div class="flex justify-center gap-4">
+                    <a href="#demo" class="bg-gradient-to-r from-indigo-500 to-purple-600 px-6 py-3 rounded-lg font-medium hover:opacity-90 transition">
+                        Watch Demo
+                    </a>
+                    <a href="https://github.com/livetemplate/livepage" class="border border-slate-700 px-6 py-3 rounded-lg font-medium hover:bg-slate-800 transition">
+                        View on GitHub
+                    </a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- CTA Section -->
+    <section class="py-24">
+        <div class="container mx-auto px-6">
+            <div class="max-w-3xl mx-auto text-center">
+                <h2 class="text-4xl font-bold mb-6">
+                    Stop overengineering simple tools
+                </h2>
+                <p class="text-xl text-slate-400 mb-8">
+                    Just write a LivePage.
+                </p>
+                <div class="flex justify-center gap-4">
+                    <a href="#get-started" class="bg-gradient-to-r from-indigo-500 to-purple-600 px-8 py-4 rounded-lg font-medium hover:opacity-90 transition text-lg font-mono">
+                        brew install livepage
+                    </a>
+                    <a href="https://github.com/livetemplate/livepage" class="border border-slate-700 px-8 py-4 rounded-lg font-medium hover:bg-slate-800 transition text-lg">
+                        Star on GitHub
+                    </a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="py-12 border-t border-slate-800">
+        <div class="container mx-auto px-6">
+            <div class="flex flex-col md:flex-row justify-between items-center gap-4">
+                <div class="text-slate-500 text-sm">
+                    LivePage is open source (Apache 2.0). Built with Go.
+                </div>
+                <div class="flex gap-6 text-sm text-slate-500">
+                    <a href="https://github.com/livetemplate/livepage" class="hover:text-white transition">GitHub</a>
+                    <a href="#" class="hover:text-white transition">Documentation</a>
+                    <a href="#" class="hover:text-white transition">Examples</a>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+</body>
+</html>

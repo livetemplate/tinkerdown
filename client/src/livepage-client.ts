@@ -2,6 +2,7 @@
  * LivepageClient - Main orchestrator for Livepage interactive documentation
  */
 
+import { setupReactiveAttributeListeners } from "@livetemplate/client";
 import { LivepageClientOptions, BlockConfig, BlockMetadata, MessageEnvelope } from "./types";
 import { MessageRouter } from "./core/message-router";
 import { PersistenceManager } from "./core/persistence-manager";
@@ -151,6 +152,10 @@ export class LivepageClient {
    */
   discoverBlocks(): void {
     console.log("[LivepageClient] Discovering blocks...");
+
+    // Set up reactive attribute listeners from @livetemplate/client
+    // This handles lvt-{action}-on:{event} attributes (e.g., lvt-reset-on:success)
+    setupReactiveAttributeListeners();
 
     // Find all code blocks with livepage metadata
     const codeBlocks = document.querySelectorAll<HTMLElement>(

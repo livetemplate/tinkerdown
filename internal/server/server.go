@@ -34,16 +34,19 @@ type Server struct {
 	connections map[*websocket.Conn]bool // Track connected WebSocket clients
 	connMu      sync.RWMutex              // Separate mutex for connections
 	watcher     *Watcher                  // File watcher for live reload
+	playground  *PlaygroundHandler        // Playground for testing AI-generated apps
 }
 
 // New creates a new server for the given root directory.
 func New(rootDir string) *Server {
-	return &Server{
+	srv := &Server{
 		rootDir:     rootDir,
 		config:      config.DefaultConfig(),
 		routes:      make([]*Route, 0),
 		connections: make(map[*websocket.Conn]bool),
 	}
+	srv.playground = NewPlaygroundHandler(srv)
+	return srv
 }
 
 // NewWithConfig creates a new server with a specific configuration.
@@ -59,6 +62,9 @@ func NewWithConfig(rootDir string, cfg *config.Config) *Server {
 	if cfg.IsSiteMode() {
 		srv.siteManager = site.New(rootDir, cfg)
 	}
+
+	// Initialize playground handler
+	srv.playground = NewPlaygroundHandler(srv)
 
 	return srv
 }
@@ -180,6 +186,24 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Serve playground routes
+	if r.URL.Path == "/playground" {
+		s.playground.ServePlaygroundPage(w, r)
+		return
+	}
+	if r.URL.Path == "/playground/render" {
+		s.playground.HandleRender(w, r)
+		return
+	}
+	if strings.HasPrefix(r.URL.Path, "/playground/preview/") {
+		s.playground.HandlePreview(w, r)
+		return
+	}
+	if r.URL.Path == "/playground/ws" {
+		s.playground.HandlePreviewWS(w, r)
+		return
+	}
+
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -211,7 +235,7 @@ func (s *Server) serveWebSocket(w http.ResponseWriter, r *http.Request) {
 	route := s.routes[0]
 
 	// Create WebSocket handler for this page
-	wsHandler := NewWebSocketHandler(route.Page, s, true) // debug=true
+	wsHandler := NewWebSocketHandler(route.Page, s, true, s.rootDir, s.config) // debug=true
 	wsHandler.ServeHTTP(w, r)
 }
 
@@ -275,12 +299,12 @@ func (s *Server) servePage(w http.ResponseWriter, r *http.Request, route *Route)
 	// TODO: Add WebSocket support for interactivity
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 
-	html := s.renderPage(route.Page, r.URL.Path)
+	html := s.renderPage(route.Page, r.URL.Path, r.Host)
 	w.Write([]byte(html))
 }
 
 // renderPage renders a page to HTML.
-func (s *Server) renderPage(page *livepage.Page, currentPath string) string {
+func (s *Server) renderPage(page *livepage.Page, currentPath string, host string) string {
 	// Render code blocks with metadata for client discovery
 	content := s.renderContent(page)
 
@@ -307,17 +331,20 @@ func (s *Server) renderPage(page *livepage.Page, currentPath string) string {
 		%s
 	`, breadcrumbsHTML, content, prevNextHTML)
 
+	// Build WebSocket URL from host
+	wsURL := fmt.Sprintf("ws://%s/ws", host)
+
 	// Basic HTML wrapper with the static content
 	html := fmt.Sprintf(`<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="livepage-ws-url" content="ws://localhost:8080/ws">
+    <meta name="livepage-ws-url" content="%s">
     <meta name="livepage-debug" content="true">
     <title>%s</title>
-    <!-- Tailwind CSS Play CDN -->
-    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- PicoCSS - Semantic/Classless CSS Framework -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
     <link rel="stylesheet" href="/assets/livepage-client.css">
     <style>
         /* Theme Variables */
@@ -332,12 +359,16 @@ func (s *Server) renderPage(page *livepage.Page, currentPath string) string {
             --code-border: #e1e4e8;
             --pre-bg: #282c34;
             --pre-text: #abb2bf;
-            --button-bg: linear-gradient(135deg, #667eea 0%%, #764ba2 100%%);
-            --button-shadow: rgba(102, 126, 234, 0.3);
             --card-bg: #ffffff;
             --card-border: rgba(0,0,0,0.06);
             --card-shadow: rgba(0,0,0,0.08);
             --accent: #0066cc;
+
+            /* PicoCSS size overrides - reduce by ~25%% */
+            --pico-font-size: 87.5%%;
+            --pico-spacing: 0.75rem;
+            --pico-form-element-spacing-vertical: 0.5rem;
+            --pico-form-element-spacing-horizontal: 0.75rem;
         }
 
         [data-theme="dark"] {
@@ -351,8 +382,6 @@ func (s *Server) renderPage(page *livepage.Page, currentPath string) string {
             --code-border: #404040;
             --pre-bg: #1e1e1e;
             --pre-text: #d4d4d4;
-            --button-bg: linear-gradient(135deg, #4da6ff 0%%, #357abd 100%%);
-            --button-shadow: rgba(77, 166, 255, 0.3);
             --card-bg: #242424;
             --card-border: rgba(255,255,255,0.1);
             --card-shadow: rgba(0,0,0,0.3);
@@ -395,12 +424,12 @@ func (s *Server) renderPage(page *livepage.Page, currentPath string) string {
         }
 
         h1 {
-            font-size: 3rem !important;
+            font-size: 2.25rem !important;
             font-weight: 900 !important;
-            margin-bottom: 2rem !important;
+            margin-bottom: 1.5rem !important;
             margin-top: 0 !important;
-            padding-bottom: 1rem !important;
-            border-bottom: 4px solid var(--accent) !important;
+            padding-bottom: 0.75rem !important;
+            border-bottom: 3px solid var(--accent) !important;
             color: var(--text-heading) !important;
             line-height: 1.2 !important;
             letter-spacing: -0.025em !important;
@@ -408,31 +437,31 @@ func (s *Server) renderPage(page *livepage.Page, currentPath string) string {
 
         /* Subtitle/description that follows H1 */
         h1 + p {
-            font-size: 1.25rem;
+            font-size: 1rem;
             margin-top: 0;
-            padding-top: 1.5rem;
-            margin-bottom: 3rem;
+            padding-top: 1rem;
+            margin-bottom: 2rem;
             color: var(--text-secondary);
             line-height: 1.6;
         }
 
         h2 {
-            font-size: 1.875rem !important;
-            font-weight: 800 !important;
-            margin-top: 4rem !important;
-            margin-bottom: 1.5rem !important;
-            padding-bottom: 0.75rem !important;
-            border-bottom: 3px solid var(--border-color) !important;
+            font-size: 1.4rem !important;
+            font-weight: 700 !important;
+            margin-top: 2.5rem !important;
+            margin-bottom: 1rem !important;
+            padding-bottom: 0.5rem !important;
+            border-bottom: 2px solid var(--border-color) !important;
             color: var(--text-heading) !important;
             line-height: 1.3 !important;
             letter-spacing: -0.02em !important;
         }
 
         h3 {
-            font-size: 1.5rem !important;
-            font-weight: 800 !important;
-            margin-top: 2.5rem !important;
-            margin-bottom: 1rem !important;
+            font-size: 1.125rem !important;
+            font-weight: 700 !important;
+            margin-top: 1.75rem !important;
+            margin-bottom: 0.75rem !important;
             color: var(--text-heading) !important;
             line-height: 1.4 !important;
         }
@@ -556,31 +585,7 @@ func (s *Server) renderPage(page *livepage.Page, currentPath string) string {
             box-shadow: 0 8px 24px var(--card-shadow);
         }
 
-        /* Buttons */
-        button {
-            background: var(--button-bg);
-            color: white;
-            border: none;
-            padding: 0.75rem 1.5rem;
-            border-radius: 8px;
-            font-size: 1rem;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            box-shadow: 0 2px 8px var(--button-shadow);
-            margin: 0.25rem;
-            font-family: inherit;
-        }
-
-        button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px var(--button-shadow);
-        }
-
-        button:active {
-            transform: translateY(0);
-            box-shadow: 0 1px 4px var(--button-shadow);
-        }
+        /* Buttons - Let PicoCSS handle default styling */
 
         /* Counter display */
         .counter-display {
@@ -638,55 +643,50 @@ func (s *Server) renderPage(page *livepage.Page, currentPath string) string {
             }
 
             h1 {
-                font-size: 2.5rem !important;
+                font-size: 1.875rem !important;
                 font-weight: 900 !important;
             }
 
             h2 {
-                font-size: 1.625rem !important;
-                font-weight: 800 !important;
+                font-size: 1.25rem !important;
+                font-weight: 700 !important;
             }
 
             h3 {
-                font-size: 1.375rem !important;
-                font-weight: 800 !important;
+                font-size: 1rem !important;
+                font-weight: 700 !important;
             }
 
             .livepage-wasm-block,
             .livepage-interactive-block {
-                padding: 1.5rem;
-                border-radius: 12px;
+                padding: 1rem;
+                border-radius: 10px;
             }
 
             .counter-display {
-                font-size: 2.5rem;
-                padding: 1.5rem;
-            }
-
-            button {
-                padding: 0.625rem 1.25rem;
-                font-size: 0.9rem;
+                font-size: 1.875rem;
+                padding: 1rem;
             }
         }
 
         @media (max-width: 480px) {
             body {
-                padding: 0.75rem;
+                padding: 0.5rem;
             }
 
             h1 {
-                font-size: 2rem !important;
+                font-size: 1.5rem !important;
                 font-weight: 900 !important;
             }
 
             h2 {
-                font-size: 1.5rem !important;
-                font-weight: 800 !important;
+                font-size: 1.125rem !important;
+                font-weight: 700 !important;
             }
 
             h3 {
-                font-size: 1.25rem !important;
-                font-weight: 800 !important;
+                font-size: 1rem !important;
+                font-weight: 700 !important;
             }
 
             .livepage-wasm-block,
@@ -698,11 +698,6 @@ func (s *Server) renderPage(page *livepage.Page, currentPath string) string {
             .counter-display {
                 font-size: 2rem;
                 padding: 1rem;
-            }
-
-            button {
-                width: 100%%;
-                margin: 0.25rem 0;
             }
 
             .button-group {
@@ -821,6 +816,9 @@ func (s *Server) renderPage(page *livepage.Page, currentPath string) string {
         /* Presentation Mode Styles */
         body.presentation-mode {
             margin-left: 0 !important;
+            max-width: 100%% !important;
+            width: 100%% !important;
+            padding: 0 !important;
         }
 
         body.presentation-mode .livepage-nav-sidebar {
@@ -853,8 +851,10 @@ func (s *Server) renderPage(page *livepage.Page, currentPath string) string {
         }
 
         body.presentation-mode .content-wrapper {
-            max-width: 1200px;
+            max-width: 100%%;
+            width: 100%%;
             padding: 2rem 4rem;
+            margin: 0 auto;
         }
 
         body.presentation-mode h2 {
@@ -874,6 +874,16 @@ func (s *Server) renderPage(page *livepage.Page, currentPath string) string {
 
         body.presentation-mode pre {
             font-size: 1rem;
+        }
+
+        /* Toolbar position in presentation mode - top-right corner */
+        body.presentation-mode .page-toolbar {
+            position: fixed !important;
+            top: 1rem !important;
+            right: 1rem !important;
+            bottom: auto !important;
+            left: auto !important;
+            z-index: 1001;
         }
 
         /* Tutorial Navigation - Sidebar TOC */
@@ -913,20 +923,30 @@ func (s *Server) renderPage(page *livepage.Page, currentPath string) string {
             padding: 0;
             margin: 0;
             list-style: none;
+            /* Override PicoCSS nav > ol horizontal layout */
+            display: flex;
+            flex-direction: column;
+            flex-wrap: nowrap;
         }
 
         .nav-step {
             border-bottom: 1px solid var(--border-color);
+            /* Override PicoCSS nav > ol > li horizontal layout */
+            display: block;
+            width: 100%%;
         }
 
         .nav-step a {
             display: flex;
             align-items: center;
+            justify-content: flex-start;
             gap: 1rem;
             padding: 1rem 1.5rem;
             text-decoration: none;
             color: var(--text-secondary);
             transition: all 0.2s ease;
+            width: 100%%;
+            text-align: left;
         }
 
         .nav-step:hover a {
@@ -1023,6 +1043,25 @@ func (s *Server) renderPage(page *livepage.Page, currentPath string) string {
 
         [data-theme="dark"] .nav-pages li a.active {
             background: rgba(77, 166, 255, 0.15);
+        }
+
+        /* Sidebar Footer - for toolbar when inside sidebar */
+        .nav-sidebar-footer {
+            padding: 1rem;
+            border-top: 1px solid var(--border-color);
+            background: var(--bg-primary);
+            margin-top: auto;
+        }
+
+        .nav-sidebar-footer .page-toolbar {
+            position: static;
+            width: 100%%;
+            justify-content: center;
+            opacity: 1;
+            background: transparent;
+            box-shadow: none;
+            border: none;
+            padding: 0;
         }
 
         /* Breadcrumbs */
@@ -1135,7 +1174,7 @@ func (s *Server) renderPage(page *livepage.Page, currentPath string) string {
         .livepage-nav-bottom {
             position: fixed;
             bottom: 0;
-            left: 180px;
+            left: 360px;
             right: 0;
             height: 60px;
             background: var(--card-bg);
@@ -1635,6 +1674,47 @@ func (s *Server) renderPage(page *livepage.Page, currentPath string) string {
             });
         })();
 
+        // Move toolbar into sidebar footer when sidebar exists
+        (function() {
+            function moveToolbarToSidebar() {
+                const sidebar = document.querySelector('.livepage-nav-sidebar');
+                const toolbar = document.querySelector('.page-toolbar');
+
+                if (sidebar && toolbar) {
+                    // Check if footer already exists
+                    let footer = sidebar.querySelector('.nav-sidebar-footer');
+                    if (!footer) {
+                        footer = document.createElement('div');
+                        footer.className = 'nav-sidebar-footer';
+                        sidebar.appendChild(footer);
+                    }
+
+                    // Move toolbar into footer
+                    footer.appendChild(toolbar);
+                }
+            }
+
+            // Run on DOMContentLoaded
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', moveToolbarToSidebar);
+            } else {
+                moveToolbarToSidebar();
+            }
+
+            // Also watch for dynamically created sidebars (tutorial mode)
+            const observer = new MutationObserver((mutations) => {
+                for (const mutation of mutations) {
+                    for (const node of mutation.addedNodes) {
+                        if (node.nodeType === 1 && node.classList?.contains('livepage-nav-sidebar')) {
+                            moveToolbarToSidebar();
+                            return;
+                        }
+                    }
+                }
+            });
+            observer.observe(document.body, { childList: true, subtree: true });
+        })();
+
         // Presentation Mode
         (function() {
             let presentationMode = false;
@@ -1710,11 +1790,18 @@ func (s *Server) renderPage(page *livepage.Page, currentPath string) string {
             function togglePresentationMode() {
                 presentationMode = !presentationMode;
                 const btn = document.getElementById('presentation-toggle');
+                const toolbar = document.querySelector('.page-toolbar');
+                const sidebarFooter = document.querySelector('.nav-sidebar-footer');
 
                 if (presentationMode) {
                     // Enter presentation mode
                     document.body.classList.add('presentation-mode');
                     btn.classList.add('active');
+
+                    // Move toolbar to body (sidebar will be hidden)
+                    if (toolbar && sidebarFooter) {
+                        document.body.appendChild(toolbar);
+                    }
 
                     // Get sections and show first one
                     getSections();
@@ -1723,6 +1810,11 @@ func (s *Server) renderPage(page *livepage.Page, currentPath string) string {
                     // Exit presentation mode
                     document.body.classList.remove('presentation-mode');
                     btn.classList.remove('active');
+
+                    // Move toolbar back to sidebar footer
+                    if (toolbar && sidebarFooter) {
+                        sidebarFooter.appendChild(toolbar);
+                    }
 
                     // Remove all presentation classes
                     document.querySelectorAll('.presentation-current-section').forEach(el => {
@@ -1886,7 +1978,7 @@ func (s *Server) renderPage(page *livepage.Page, currentPath string) string {
         });
     </script>
 </body>
-</html>`, page.Title, sidebar, contentWithNav)
+</html>`, wsURL, page.Title, sidebar, contentWithNav)
 
 	return html
 }

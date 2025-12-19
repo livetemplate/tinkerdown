@@ -2,7 +2,7 @@
  * InteractiveBlock - Wraps a LiveTemplateClient instance for interactive UI
  */
 
-import { LiveTemplateClient } from "@livetemplate/client";
+import { LiveTemplateClient, checkLvtConfirm, extractLvtData } from "@livetemplate/client";
 import { BaseBlock } from "./base-block";
 import { BlockConfig } from "../types";
 import { PersistenceManager } from "../core/persistence-manager";
@@ -11,6 +11,8 @@ export class InteractiveBlock extends BaseBlock {
   private client: LiveTemplateClient | null = null;
   private containerElement: HTMLElement | null = null;
   private sendMessage: ((blockID: string, action: string, data: any) => void) | null = null;
+  private pendingForm: HTMLFormElement | null = null;
+  private pendingAction: string | null = null;
 
   constructor(config: BlockConfig, persistence: PersistenceManager, debug = false) {
     super(config, persistence, debug);
@@ -29,15 +31,10 @@ export class InteractiveBlock extends BaseBlock {
       this.element.dataset.stateRef = this.metadata.stateRef;
     }
 
-    // Initialize LiveTemplateClient instance (without WebSocket - we handle that)
-    // TODO: Fix @livetemplate/client export issue
-    // For now, we handle DOM updates manually via updateDOM method
-    // this.client = new LiveTemplateClient({
-    //   autoReconnect: false,
-    //   onConnect: () => this.log("Client connected"),
-    //   onDisconnect: () => this.log("Client disconnected"),
-    //   onError: (error) => this.error("Client error:", error),
-    // });
+    // Initialize LiveTemplateClient for tree reconciliation
+    // We don't use WebSocket connection - livepage handles that
+    // We only use the client's tree rendering capabilities
+    this.client = new LiveTemplateClient();
 
     // Attach event handler to intercept lvt-* events
     this.attachEventHandlers();
@@ -58,22 +55,40 @@ export class InteractiveBlock extends BaseBlock {
 
     switch (action) {
       case "tree":
-        // Server sent a tree update - apply it to the DOM
-        if (data.tree && this.containerElement) {
-          this.updateDOM(data.tree);
-        }
-        break;
+        // Server sent a tree update - apply it to the DOM using LiveTemplateClient
+        if (data && this.containerElement && this.client) {
+          this.client.updateDOM(this.containerElement, data);
+          this.log("DOM updated with tree");
 
-      case "update":
-        // Server sent HTML update - replace container content
-        if (data.html && this.containerElement) {
-          this.containerElement.innerHTML = data.html;
-          this.log("DOM updated with HTML");
+          // Dispatch lifecycle events for pending form (mimics formLifecycleManager)
+          if (this.pendingForm) {
+            const meta = { success: true, errors: {}, action: this.pendingAction };
+
+            // Dispatch lvt:success event from the form
+            // The reactive attribute listeners from @livetemplate/client handle
+            // lvt-reset-on:success and other lvt-{action}-on:{event} attributes
+            this.pendingForm.dispatchEvent(
+              new CustomEvent("lvt:success", { bubbles: true, detail: meta })
+            );
+            this.log("Dispatched lvt:success event");
+
+            this.pendingForm = null;
+            this.pendingAction = null;
+          }
         }
         break;
 
       case "error":
         this.error("Server error:", data.message);
+        // Dispatch lvt:error event for pending form
+        if (this.pendingForm) {
+          const meta = { success: false, errors: data.errors || {}, action: this.pendingAction };
+          this.pendingForm.dispatchEvent(
+            new CustomEvent("lvt:error", { bubbles: true, detail: meta })
+          );
+          this.pendingForm = null;
+          this.pendingAction = null;
+        }
         break;
 
       default:
@@ -86,25 +101,6 @@ export class InteractiveBlock extends BaseBlock {
    */
   setMessageSender(sender: (blockID: string, action: string, data: any) => void): void {
     this.sendMessage = sender;
-  }
-
-  /**
-   * Update DOM with tree from server
-   */
-  private updateDOM(tree: any): void {
-    if (!this.client || !this.containerElement) return;
-
-    try {
-      // Use the livetemplate client's tree renderer to update DOM
-      // We need to access the internal renderer - for now, update innerHTML
-      // TODO: Access TreeRenderer directly for optimized updates
-      if (tree.html) {
-        this.containerElement.innerHTML = tree.html;
-      }
-      this.log("DOM updated");
-    } catch (error) {
-      this.error("Error updating DOM:", error);
-    }
   }
 
   /**
@@ -121,6 +117,9 @@ export class InteractiveBlock extends BaseBlock {
 
   /**
    * Handle click events (lvt-click)
+   * Supports lvt-data-* attributes to pass data with the action
+   * Supports lvt-confirm="message" for confirmation dialogs (uses shared utility from @livetemplate/client)
+   * Example: <button lvt-click="Delete" lvt-data-id="123" lvt-confirm="Are you sure?">Delete</button>
    */
   private handleClick(e: Event): void {
     const target = e.target as HTMLElement;
@@ -128,8 +127,16 @@ export class InteractiveBlock extends BaseBlock {
 
     if (action) {
       e.preventDefault();
-      this.sendAction(action, {});
-      this.log("Click action:", action);
+
+      // Check for confirmation dialog (uses shared utility from @livetemplate/client)
+      if (!checkLvtConfirm(target)) {
+        this.log("Click action cancelled by user:", action);
+        return;
+      }
+
+      const data = extractLvtData(target);
+      this.sendAction(action, data);
+      this.log("Click action:", action, data);
     }
   }
 
@@ -147,6 +154,16 @@ export class InteractiveBlock extends BaseBlock {
       formData.forEach((value, key) => {
         data[key] = value;
       });
+
+      // Track form and action for lifecycle events
+      this.pendingForm = target;
+      this.pendingAction = action;
+
+      // Dispatch lvt:pending event
+      target.dispatchEvent(
+        new CustomEvent("lvt:pending", { bubbles: true, detail: { action } })
+      );
+
       this.sendAction(action, data);
       this.log("Submit action:", action, data);
     }

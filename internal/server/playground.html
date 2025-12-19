@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LivePage Playground - Try Your AI-Generated Apps</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .editor-container {
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+        }
+        #editor {
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            font-size: 13px;
+            line-height: 1.5;
+            tab-size: 2;
+            resize: none;
+        }
+        #editor:focus {
+            outline: none;
+        }
+        .preview-frame {
+            background: white;
+            border: none;
+        }
+        .loading-overlay {
+            background: rgba(255, 255, 255, 0.9);
+        }
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+        .status-ready { background: #22c55e; }
+        .status-running { background: #3b82f6; animation: pulse 1s infinite; }
+        .status-error { background: #ef4444; }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    <!-- Header -->
+    <header class="bg-white border-b border-gray-200 px-6 py-3">
+        <div class="flex items-center justify-between">
+            <div class="flex items-center gap-4">
+                <a href="/" class="flex items-center gap-2">
+                    <svg class="w-8 h-8 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
+                    <span class="font-bold text-xl text-gray-900">LivePage</span>
+                </a>
+                <span class="text-gray-300">|</span>
+                <span class="text-gray-600 font-medium">Playground</span>
+            </div>
+            <div class="flex items-center gap-4">
+                <div class="flex items-center gap-2 text-sm text-gray-500">
+                    <span class="status-dot status-ready" id="statusDot"></span>
+                    <span id="statusText">Ready</span>
+                </div>
+                <a href="https://github.com/livetemplate/livepage" target="_blank"
+                   class="text-gray-600 hover:text-gray-900">
+                    <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                        <path fill-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z" clip-rule="evenodd"/>
+                    </svg>
+                </a>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex h-[calc(100vh-60px)]">
+        <!-- Editor Panel -->
+        <div class="w-1/2 flex flex-col border-r border-gray-200 bg-white">
+            <!-- Editor Toolbar -->
+            <div class="flex items-center justify-between px-4 py-2 border-b border-gray-200 bg-gray-50">
+                <div class="flex items-center gap-2">
+                    <span class="text-sm font-medium text-gray-700">Markdown Editor</span>
+                    <span class="text-xs text-gray-400">(paste AI-generated code)</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button onclick="loadExample()"
+                            class="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded">
+                        Load Example
+                    </button>
+                    <button onclick="clearEditor()"
+                            class="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded">
+                        Clear
+                    </button>
+                    <button onclick="runPreview()" id="runBtn"
+                            class="px-4 py-1.5 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded flex items-center gap-2">
+                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                        Run
+                    </button>
+                </div>
+            </div>
+
+            <!-- Editor -->
+            <div class="flex-1 editor-container">
+                <textarea id="editor"
+                          class="w-full h-full p-4 bg-gray-900 text-gray-100"
+                          placeholder="Paste your AI-generated LivePage markdown here...
+
+Example:
+---
+title: &quot;My App&quot;
+---
+
+# My App
+
+```lvt
+<form lvt-submit=&quot;save&quot; lvt-persist=&quot;items&quot;>
+    <input type=&quot;text&quot; name=&quot;title&quot; required>
+    <button type=&quot;submit&quot;>Add</button>
+</form>
+
+{{range .Items}}
+<div>{{.Title}}</div>
+{{end}}
+```"
+                          spellcheck="false"></textarea>
+            </div>
+        </div>
+
+        <!-- Preview Panel -->
+        <div class="w-1/2 flex flex-col bg-gray-100">
+            <!-- Preview Toolbar -->
+            <div class="flex items-center justify-between px-4 py-2 border-b border-gray-200 bg-gray-50">
+                <div class="flex items-center gap-2">
+                    <span class="text-sm font-medium text-gray-700">Live Preview</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button onclick="refreshPreview()"
+                            class="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded flex items-center gap-2">
+                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                        Refresh
+                    </button>
+                    <button onclick="openInNewTab()"
+                            class="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded flex items-center gap-2">
+                        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                        </svg>
+                        Open
+                    </button>
+                </div>
+            </div>
+
+            <!-- Preview Frame -->
+            <div class="flex-1 relative">
+                <div id="loadingOverlay" class="loading-overlay absolute inset-0 flex items-center justify-center hidden z-10">
+                    <div class="text-center">
+                        <svg class="animate-spin h-8 w-8 text-blue-600 mx-auto mb-2" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        <p class="text-gray-600">Rendering...</p>
+                    </div>
+                </div>
+                <div id="emptyState" class="absolute inset-0 flex items-center justify-center">
+                    <div class="text-center text-gray-500">
+                        <svg class="w-16 h-16 mx-auto mb-4 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                        </svg>
+                        <p class="text-lg font-medium mb-1">No Preview Yet</p>
+                        <p class="text-sm">Paste markdown and click "Run" to see your app</p>
+                    </div>
+                </div>
+                <div id="errorState" class="absolute inset-0 flex items-center justify-center hidden">
+                    <div class="text-center text-red-500 max-w-md px-4">
+                        <svg class="w-16 h-16 mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                        </svg>
+                        <p class="text-lg font-medium mb-2">Preview Error</p>
+                        <p id="errorMessage" class="text-sm text-red-400"></p>
+                    </div>
+                </div>
+                <iframe id="previewFrame"
+                        class="preview-frame w-full h-full hidden"
+                        sandbox="allow-scripts allow-forms allow-same-origin"></iframe>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // State
+        let currentSessionId = null;
+        let previewUrl = null;
+
+        // API base URL - detect if running locally or on a server
+        const API_BASE = window.location.origin;
+
+        // Example app to load - uses semantic HTML styled by PicoCSS
+        const EXAMPLE_APP = `---
+title: "Todo App"
+---
+
+# My Todo List
+
+A simple todo app built with LivePage. No CSS classes needed - PicoCSS styles semantic HTML automatically.
+
+\`\`\`lvt
+<main>
+    <h1>My Todos</h1>
+
+    <form lvt-submit="save" lvt-persist="todos">
+        <fieldset role="group">
+            <input type="text" name="title" required placeholder="What needs to be done?">
+            <button type="submit">Add</button>
+        </fieldset>
+    </form>
+
+    {{if .Todos}}
+    <table>
+        <thead>
+            <tr>
+                <th>Task</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .Todos}}
+            <tr>
+                <td>{{.Title}}</td>
+                <td><button lvt-click="Delete" lvt-data-id="{{.Id}}" >Delete</button></td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+    <small>{{len .Todos}} items</small>
+    {{else}}
+    <p><em>No todos yet. Add one above!</em></p>
+    {{end}}
+</main>
+\`\`\`
+`;
+
+        // DOM Elements
+        const editor = document.getElementById('editor');
+        const previewFrame = document.getElementById('previewFrame');
+        const loadingOverlay = document.getElementById('loadingOverlay');
+        const emptyState = document.getElementById('emptyState');
+        const errorState = document.getElementById('errorState');
+        const errorMessage = document.getElementById('errorMessage');
+        const statusDot = document.getElementById('statusDot');
+        const statusText = document.getElementById('statusText');
+
+        // Update status indicator
+        function setStatus(status, text) {
+            statusDot.className = 'status-dot status-' + status;
+            statusText.textContent = text;
+        }
+
+        // Show loading state
+        function showLoading() {
+            loadingOverlay.classList.remove('hidden');
+            emptyState.classList.add('hidden');
+            errorState.classList.add('hidden');
+            setStatus('running', 'Rendering...');
+        }
+
+        // Show error state
+        function showError(message) {
+            loadingOverlay.classList.add('hidden');
+            emptyState.classList.add('hidden');
+            errorState.classList.remove('hidden');
+            previewFrame.classList.add('hidden');
+            errorMessage.textContent = message;
+            setStatus('error', 'Error');
+        }
+
+        // Show preview
+        function showPreview() {
+            loadingOverlay.classList.add('hidden');
+            emptyState.classList.add('hidden');
+            errorState.classList.add('hidden');
+            previewFrame.classList.remove('hidden');
+            setStatus('ready', 'Running');
+        }
+
+        // Run preview
+        async function runPreview() {
+            const markdown = editor.value.trim();
+            if (!markdown) {
+                showError('Please enter some markdown to preview');
+                return;
+            }
+
+            showLoading();
+
+            try {
+                const response = await fetch(`${API_BASE}/playground/render`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ markdown }),
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(errorData.error || `Server error: ${response.status}`);
+                }
+
+                const data = await response.json();
+                currentSessionId = data.sessionId;
+                previewUrl = `${API_BASE}/playground/preview/${currentSessionId}`;
+
+                previewFrame.src = previewUrl;
+                previewFrame.onload = () => showPreview();
+                previewFrame.onerror = () => showError('Failed to load preview');
+
+            } catch (error) {
+                console.error('Preview error:', error);
+                showError(error.message || 'Failed to render preview');
+            }
+        }
+
+        // Refresh preview
+        function refreshPreview() {
+            if (previewUrl) {
+                showLoading();
+                previewFrame.src = previewUrl;
+                previewFrame.onload = () => showPreview();
+            } else {
+                runPreview();
+            }
+        }
+
+        // Open in new tab
+        function openInNewTab() {
+            if (previewUrl) {
+                window.open(previewUrl, '_blank');
+            } else {
+                alert('Run the preview first to open in a new tab');
+            }
+        }
+
+        // Load example
+        function loadExample() {
+            editor.value = EXAMPLE_APP;
+            // Auto-run after loading example
+            runPreview();
+        }
+
+        // Clear editor
+        function clearEditor() {
+            editor.value = '';
+            currentSessionId = null;
+            previewUrl = null;
+            previewFrame.src = '';
+            previewFrame.classList.add('hidden');
+            emptyState.classList.remove('hidden');
+            errorState.classList.add('hidden');
+            setStatus('ready', 'Ready');
+        }
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            // Cmd/Ctrl + Enter to run
+            if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+                e.preventDefault();
+                runPreview();
+            }
+        });
+
+        // Tab handling in editor
+        editor.addEventListener('keydown', (e) => {
+            if (e.key === 'Tab') {
+                e.preventDefault();
+                const start = editor.selectionStart;
+                const end = editor.selectionEnd;
+                editor.value = editor.value.substring(0, start) + '  ' + editor.value.substring(end);
+                editor.selectionStart = editor.selectionEnd = start + 2;
+            }
+        });
+    </script>
+</body>
+</html>
