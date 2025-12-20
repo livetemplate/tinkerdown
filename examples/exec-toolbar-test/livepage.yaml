@@ -1,0 +1,11 @@
+title: "Exec Toolbar Test"
+description: "Test for exec toolbar with manual mode"
+
+sources:
+  system-info:
+    type: exec
+    cmd: ./get-info.sh
+    manual: true
+  auto-info:
+    type: exec
+    cmd: ./auto-info.sh

@@ -2,7 +2,7 @@
  * BaseBlock - Abstract base class for all code blocks
  */
 
-import { BlockConfig, BlockMetadata } from "../types";
+import { BlockConfig, BlockMetadata, ExecMeta } from "../types";
 import { PersistenceManager } from "../core/persistence-manager";
 
 export abstract class BaseBlock {
@@ -35,7 +35,7 @@ export abstract class BaseBlock {
   /**
    * Handle incoming messages from the server
    */
-  abstract handleMessage(action: string, data: any): void;
+  abstract handleMessage(action: string, data: any, execMeta?: ExecMeta): void;
 
   /**
    * Get the block ID

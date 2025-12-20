@@ -265,8 +265,8 @@ export class LivepageClient {
     block.initialize();
 
     // Register with router (for message handling)
-    this.router.register(metadata.id, (action, data) => {
-      block.handleMessage(action, data);
+    this.router.register(metadata.id, (action, data, execMeta) => {
+      block.handleMessage(action, data, execMeta);
     });
 
     // Store block reference

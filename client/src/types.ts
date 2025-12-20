@@ -13,10 +13,19 @@ export interface BlockMetadata {
   stateRef?: string; // Reference to server state (for interactive blocks)
 }
 
+export interface ExecMeta {
+  status: string;
+  duration?: number;
+  output?: string;
+  stderr?: string;
+  command?: string;
+}
+
 export interface MessageEnvelope {
   blockID: string;
   action: string;
   data: any;
+  execMeta?: ExecMeta;
 }
 
 export interface LivepageClientOptions {

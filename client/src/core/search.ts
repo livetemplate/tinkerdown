@@ -57,14 +57,21 @@ export class SiteSearch {
     try {
       const response = await fetch('/search-index.json');
       if (!response.ok) {
-        console.warn('[Search] Failed to load search index');
+        // Search index not available (single tutorial mode)
+        return;
+      }
+
+      // Check content-type to avoid parsing HTML as JSON
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        // Server returned non-JSON (likely a redirect to home page)
         return;
       }
 
       this.searchIndex = await response.json();
       console.log(`[Search] Loaded ${this.searchIndex.length} pages`);
     } catch (error) {
-      console.error('[Search] Error loading search index:', error);
+      // Silently ignore - search index is optional in single tutorial mode
     }
   }
 

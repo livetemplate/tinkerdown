@@ -655,40 +655,69 @@ func (a *rpcStoreAdapter) GetStateAsInterface() (interface{}, error) {
 		return nil, fmt.Errorf("failed to unmarshal state: %w", err)
 	}
 
-	// Convert map keys to capitalize first letter (for template compatibility)
-	state := capitalizeMapKeys(rawMap)
+	// Process state map: capitalize top-level keys (Status, Data, etc.) to match Go struct fields,
+	// but preserve nested data keys (key, value, status in Data array) as-is from JSON
+	state := processStateMap(rawMap)
 
 	return state, nil
 }
 
-// capitalizeMapKeys recursively capitalizes the first letter of all keys in a map
-// This makes JSON data compatible with Go template field access (which expects capitalized fields)
-func capitalizeMapKeys(m map[string]interface{}) map[string]interface{} {
+// processStateMap processes the top-level State map to:
+// 1. Capitalize top-level keys to match Go struct field names (Status, Data, Command, etc.)
+// 2. Keep nested data keys (within Data array) as-is from JSON
+// 3. Convert float64 to int where appropriate
+func processStateMap(m map[string]interface{}) map[string]interface{} {
 	result := make(map[string]interface{})
 	for k, v := range m {
-		// Capitalize first letter
+		// Capitalize first letter of top-level keys to match Go struct field names
+		// e.g., "status" -> "Status", "data" -> "Data"
 		newKey := strings.ToUpper(k[:1]) + k[1:]
 
-		// Recursively handle nested maps and slices
+		// Process values but DON'T capitalize nested keys
 		switch val := v.(type) {
 		case map[string]interface{}:
-			result[newKey] = capitalizeMapKeys(val)
+			result[newKey] = processMapValues(val)
 		case []interface{}:
 			newSlice := make([]interface{}, len(val))
 			for i, item := range val {
 				if itemMap, ok := item.(map[string]interface{}); ok {
-					newSlice[i] = capitalizeMapKeys(itemMap)
+					newSlice[i] = processMapValues(itemMap)
 				} else {
 					newSlice[i] = convertNumber(item)
 				}
 			}
 			result[newKey] = newSlice
 		case float64:
-			// JSON unmarshaling converts all numbers to float64
-			// Convert whole numbers back to int for template compatibility
 			result[newKey] = convertNumber(val)
 		default:
 			result[newKey] = v
+		}
+	}
+	return result
+}
+
+// processMapValues recursively processes map values to convert float64 to int
+// Map keys are preserved exactly as they appear in JSON
+func processMapValues(m map[string]interface{}) map[string]interface{} {
+	result := make(map[string]interface{})
+	for k, v := range m {
+		switch val := v.(type) {
+		case map[string]interface{}:
+			result[k] = processMapValues(val)
+		case []interface{}:
+			newSlice := make([]interface{}, len(val))
+			for i, item := range val {
+				if itemMap, ok := item.(map[string]interface{}); ok {
+					newSlice[i] = processMapValues(itemMap)
+				} else {
+					newSlice[i] = convertNumber(item)
+				}
+			}
+			result[k] = newSlice
+		case float64:
+			result[k] = convertNumber(val)
+		default:
+			result[k] = v
 		}
 	}
 	return result

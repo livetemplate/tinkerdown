@@ -3,7 +3,7 @@
  */
 
 import { BaseBlock } from "./base-block";
-import { BlockConfig } from "../types";
+import { BlockConfig, ExecMeta } from "../types";
 import { PersistenceManager } from "../core/persistence-manager";
 
 export class ServerBlock extends BaseBlock {
@@ -40,7 +40,7 @@ export class ServerBlock extends BaseBlock {
     // No cleanup needed for server blocks
   }
 
-  handleMessage(action: string, data: any): void {
+  handleMessage(action: string, data: any, _execMeta?: ExecMeta): void {
     this.log("Received message:", action, data);
     // Server blocks don't handle messages (they're static)
     console.warn(`[ServerBlock:${this.id}] Received unexpected message:`, action);

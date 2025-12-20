@@ -28,9 +28,19 @@ var upgrader = websocket.Upgrader{
 
 // MessageEnvelope represents a multiplexed WebSocket message.
 type MessageEnvelope struct {
-	BlockID string          `json:"blockID"`
-	Action  string          `json:"action"`
-	Data    json.RawMessage `json:"data"`
+	BlockID  string          `json:"blockID"`
+	Action   string          `json:"action"`
+	Data     json.RawMessage `json:"data"`
+	ExecMeta *ExecMeta       `json:"execMeta,omitempty"` // Optional exec source metadata
+}
+
+// ExecMeta contains execution state for exec source blocks
+type ExecMeta struct {
+	Status   string `json:"status"`
+	Duration int64  `json:"duration,omitempty"`
+	Output   string `json:"output,omitempty"`
+	Stderr   string `json:"stderr,omitempty"`
+	Command  string `json:"command,omitempty"`
 }
 
 // WebSocketHandler handles WebSocket connections for interactive blocks.
@@ -187,6 +197,7 @@ func (h *WebSocketHandler) getEffectiveSource(name string) (config.SourceConfig,
 				URL:     src.URL,
 				File:    src.File,
 				Options: src.Options,
+				Manual:  src.Manual,
 			}, true
 		}
 	}
@@ -362,9 +373,10 @@ func (h *WebSocketHandler) sendInitialState(instance *BlockInstance) {
 
 	// The buffer contains the tree JSON directly
 	response := MessageEnvelope{
-		BlockID: instance.blockID,
-		Action:  "tree",
-		Data:    json.RawMessage(buf.Bytes()),
+		BlockID:  instance.blockID,
+		Action:   "tree",
+		Data:     json.RawMessage(buf.Bytes()),
+		ExecMeta: extractExecMeta(stateData),
 	}
 
 	h.sendMessage(instance.conn, response)
@@ -462,9 +474,10 @@ func (h *WebSocketHandler) sendUpdate(instance *BlockInstance) {
 
 	// The buffer contains the tree JSON directly
 	response := MessageEnvelope{
-		BlockID: instance.blockID,
-		Action:  "tree",
-		Data:    json.RawMessage(buf.Bytes()),
+		BlockID:  instance.blockID,
+		Action:   "tree",
+		Data:     json.RawMessage(buf.Bytes()),
+		ExecMeta: extractExecMeta(stateData),
 	}
 
 	h.sendMessage(instance.conn, response)
@@ -486,6 +499,48 @@ func (h *WebSocketHandler) sendMessage(conn *websocket.Conn, envelope MessageEnv
 	if h.debug {
 		log.Printf("[WS] Sent: %s", data)
 	}
+}
+
+// extractExecMeta extracts exec state metadata from a state object.
+// Returns nil if the state doesn't contain exec metadata fields (Status).
+func extractExecMeta(stateData interface{}) *ExecMeta {
+	stateMap, ok := stateData.(map[string]interface{})
+	if !ok {
+		return nil
+	}
+
+	// Check if this state has exec metadata by looking for Status field
+	status, hasStatus := stateMap["Status"].(string)
+	if !hasStatus {
+		return nil
+	}
+
+	meta := &ExecMeta{
+		Status: status,
+	}
+
+	// Extract other optional fields
+	if duration, ok := stateMap["Duration"].(int); ok {
+		meta.Duration = int64(duration)
+	} else if duration, ok := stateMap["Duration"].(int64); ok {
+		meta.Duration = duration
+	} else if duration, ok := stateMap["Duration"].(float64); ok {
+		meta.Duration = int64(duration)
+	}
+
+	if output, ok := stateMap["Output"].(string); ok {
+		meta.Output = output
+	}
+
+	if stderr, ok := stateMap["Stderr"].(string); ok {
+		meta.Stderr = stderr
+	}
+
+	if command, ok := stateMap["Command"].(string); ok {
+		meta.Command = command
+	}
+
+	return meta
 }
 
 // Note: State types are now dynamically compiled from server blocks

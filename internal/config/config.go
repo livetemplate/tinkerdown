@@ -31,6 +31,7 @@ type SourceConfig struct {
 	URL     string            `yaml:"url,omitempty"`     // For rest: API endpoint
 	File    string            `yaml:"file,omitempty"`    // For csv/json: file path
 	Options map[string]string `yaml:"options,omitempty"` // Type-specific options
+	Manual  bool              `yaml:"manual,omitempty"`  // For exec: require Run button click
 }
 
 // SiteConfig holds site-level configuration

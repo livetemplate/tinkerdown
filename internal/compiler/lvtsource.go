@@ -27,7 +27,7 @@ func GenerateLvtSourceCode(sourceName string, sourceCfg config.SourceConfig, sit
 	// Default: generate simple data code
 	switch sourceCfg.Type {
 	case "exec":
-		return generateExecSourceCode(sourceName, sourceCfg.Cmd, siteDir)
+		return generateExecSourceCode(sourceName, sourceCfg.Cmd, siteDir, sourceCfg.Manual)
 	case "pg":
 		return generatePostgresSourceCode(sourceName, sourceCfg.Query, sourceCfg.Options)
 	case "rest":
@@ -42,7 +42,7 @@ func GenerateLvtSourceCode(sourceName string, sourceCfg config.SourceConfig, sit
 }
 
 // generateExecSourceCode generates code for an exec source
-func generateExecSourceCode(sourceName, cmd, siteDir string) (string, error) {
+func generateExecSourceCode(sourceName, cmd, siteDir string, manual bool) (string, error) {
 	if cmd == "" {
 		return "", fmt.Errorf("exec source %q: cmd is required", sourceName)
 	}
@@ -51,6 +51,7 @@ func generateExecSourceCode(sourceName, cmd, siteDir string) (string, error) {
 
 	// Imports
 	code.WriteString("import (\n")
+	code.WriteString("\t\"bytes\"\n")
 	code.WriteString("\t\"context\"\n")
 	code.WriteString("\t\"encoding/json\"\n")
 	code.WriteString("\t\"fmt\"\n")
@@ -59,20 +60,39 @@ func generateExecSourceCode(sourceName, cmd, siteDir string) (string, error) {
 	code.WriteString("\t\"time\"\n")
 	code.WriteString(")\n\n")
 
-	// State struct with Data field
-	code.WriteString("// State holds data fetched from the source\n")
+	// Escape the command for embedding in Go code
+	escapedCmd := strings.ReplaceAll(cmd, `"`, `\"`)
+	escapedDir := strings.ReplaceAll(siteDir, `"`, `\"`)
+
+	// State struct with Data field and execution metadata
+	code.WriteString("// State holds data fetched from the source and execution metadata\n")
 	code.WriteString("type State struct {\n")
-	code.WriteString("\tData []map[string]interface{} `json:\"data\"`\n")
-	code.WriteString("\tError string `json:\"error,omitempty\"`\n")
+	code.WriteString("\tData     []map[string]interface{} `json:\"data\"`\n")
+	code.WriteString("\tError    string `json:\"error,omitempty\"`\n")
+	code.WriteString("\tOutput   string `json:\"output,omitempty\"`\n")   // stdout
+	code.WriteString("\tStderr   string `json:\"stderr,omitempty\"`\n")   // stderr
+	code.WriteString("\tDuration int64  `json:\"duration,omitempty\"`\n") // execution time in ms
+	code.WriteString("\tStatus   string `json:\"status\"`\n")             // idle, running, success, error
+	code.WriteString("\tCommand  string `json:\"command\"`\n")            // command for display
 	code.WriteString("}\n\n")
 
 	// NewState constructor
-	code.WriteString("// NewState creates a new State and fetches initial data\n")
+	code.WriteString("// NewState creates a new State and optionally fetches initial data\n")
 	code.WriteString("func NewState() (*State, error) {\n")
-	code.WriteString("\ts := &State{}\n")
-	code.WriteString("\tif err := s.fetchData(); err != nil {\n")
-	code.WriteString("\t\ts.Error = err.Error()\n")
-	code.WriteString("\t}\n")
+	code.WriteString(fmt.Sprintf("\ts := &State{Command: %q}\n", escapedCmd))
+	if manual {
+		// Manual mode: don't auto-execute
+		code.WriteString("\ts.Status = \"idle\"\n")
+	} else {
+		// Auto-execute mode (default)
+		code.WriteString("\ts.Status = \"running\"\n")
+		code.WriteString("\tif err := s.fetchData(); err != nil {\n")
+		code.WriteString("\t\ts.Error = err.Error()\n")
+		code.WriteString("\t\ts.Status = \"error\"\n")
+		code.WriteString("\t} else {\n")
+		code.WriteString("\t\ts.Status = \"success\"\n")
+		code.WriteString("\t}\n")
+	}
 	code.WriteString("\treturn s, nil\n")
 	code.WriteString("}\n\n")
 
@@ -82,24 +102,31 @@ func generateExecSourceCode(sourceName, cmd, siteDir string) (string, error) {
 	code.WriteString("\treturn nil\n")
 	code.WriteString("}\n\n")
 
-	// Refresh action
-	code.WriteString("// Refresh re-fetches data from the source\n")
-	code.WriteString("func (s *State) Refresh(ctx *livetemplate.Context) error {\n")
+	// Run action - executes the command (for manual mode or re-run)
+	code.WriteString("// Run executes the command\n")
+	code.WriteString("func (s *State) Run(ctx *livetemplate.Context) error {\n")
+	code.WriteString("\ts.Status = \"running\"\n")
 	code.WriteString("\ts.Error = \"\"\n")
+	code.WriteString("\ts.Output = \"\"\n")
+	code.WriteString("\ts.Stderr = \"\"\n")
 	code.WriteString("\tif err := s.fetchData(); err != nil {\n")
 	code.WriteString("\t\ts.Error = err.Error()\n")
+	code.WriteString("\t\ts.Status = \"error\"\n")
+	code.WriteString("\t} else {\n")
+	code.WriteString("\t\ts.Status = \"success\"\n")
 	code.WriteString("\t}\n")
 	code.WriteString("\treturn nil\n")
+	code.WriteString("}\n\n")
+
+	// Refresh action - alias to Run for backwards compatibility
+	code.WriteString("// Refresh re-fetches data from the source (alias to Run)\n")
+	code.WriteString("func (s *State) Refresh(ctx *livetemplate.Context) error {\n")
+	code.WriteString("\treturn s.Run(ctx)\n")
 	code.WriteString("}\n\n")
 
 	// fetchData method - executes the command and parses JSON
 	code.WriteString("// fetchData executes the source command and parses JSON output\n")
 	code.WriteString("func (s *State) fetchData() error {\n")
-
-	// Escape the command for embedding in Go code
-	escapedCmd := strings.ReplaceAll(cmd, `"`, `\"`)
-	escapedDir := strings.ReplaceAll(siteDir, `"`, `\"`)
-
 	code.WriteString(fmt.Sprintf("\tcmd := \"%s\"\n", escapedCmd))
 	code.WriteString(fmt.Sprintf("\tworkDir := \"%s\"\n", escapedDir))
 	code.WriteString("\n")
@@ -113,24 +140,33 @@ func generateExecSourceCode(sourceName, cmd, siteDir string) (string, error) {
 	code.WriteString("\n")
 
 	code.WriteString("\t// Execute with timeout\n")
+	code.WriteString("\tstart := time.Now()\n")
 	code.WriteString("\tctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)\n")
 	code.WriteString("\tdefer cancel()\n")
 	code.WriteString("\n")
 	code.WriteString("\texecCmd := exec.CommandContext(ctx, parts[0], parts[1:]...)\n")
 	code.WriteString("\texecCmd.Dir = workDir\n")
 	code.WriteString("\n")
-	code.WriteString("\toutput, err := execCmd.Output()\n")
+
+	// Use separate buffers for stdout/stderr
+	code.WriteString("\t// Capture stdout and stderr separately\n")
+	code.WriteString("\tvar stdoutBuf, stderrBuf bytes.Buffer\n")
+	code.WriteString("\texecCmd.Stdout = &stdoutBuf\n")
+	code.WriteString("\texecCmd.Stderr = &stderrBuf\n")
+	code.WriteString("\n")
+	code.WriteString("\terr := execCmd.Run()\n")
+	code.WriteString("\ts.Duration = time.Since(start).Milliseconds()\n")
+	code.WriteString("\ts.Output = stdoutBuf.String()\n")
+	code.WriteString("\ts.Stderr = stderrBuf.String()\n")
+	code.WriteString("\n")
 	code.WriteString("\tif err != nil {\n")
-	code.WriteString("\t\tif exitErr, ok := err.(*exec.ExitError); ok {\n")
-	code.WriteString("\t\t\treturn fmt.Errorf(\"command failed: %s\\nstderr: %s\", err, string(exitErr.Stderr))\n")
-	code.WriteString("\t\t}\n")
-	code.WriteString("\t\treturn err\n")
+	code.WriteString("\t\treturn fmt.Errorf(\"command failed: %w\", err)\n")
 	code.WriteString("\t}\n")
 	code.WriteString("\n")
 
 	// Parse JSON
 	code.WriteString("\t// Parse JSON output\n")
-	code.WriteString("\treturn s.parseJSON(output)\n")
+	code.WriteString("\treturn s.parseJSON([]byte(s.Output))\n")
 	code.WriteString("}\n\n")
 
 	// parseJSON method

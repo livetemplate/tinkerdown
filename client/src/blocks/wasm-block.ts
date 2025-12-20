@@ -3,7 +3,7 @@
  */
 
 import { BaseBlock } from "./base-block";
-import { BlockConfig } from "../types";
+import { BlockConfig, ExecMeta } from "../types";
 import { PersistenceManager } from "../core/persistence-manager";
 import { MonacoEditor } from "../editor/monaco-editor";
 import { OutputPanel } from "../ui/output-panel";
@@ -53,7 +53,7 @@ export class WasmBlock extends BaseBlock {
     this.executor = null;
   }
 
-  handleMessage(action: string, data: any): void {
+  handleMessage(action: string, data: any, _execMeta?: ExecMeta): void {
     this.log("Received message:", action, data);
     // WASM blocks don't receive messages from server (client-side execution)
   }

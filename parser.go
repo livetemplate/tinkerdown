@@ -19,12 +19,13 @@ import (
 
 // SourceConfig represents a data source configuration for lvt-source blocks.
 type SourceConfig struct {
-	Type    string            `yaml:"type"`           // exec, pg, rest, csv, json
-	Cmd     string            `yaml:"cmd,omitempty"`  // For exec type
+	Type    string            `yaml:"type"`            // exec, pg, rest, csv, json
+	Cmd     string            `yaml:"cmd,omitempty"`   // For exec type
 	Query   string            `yaml:"query,omitempty"` // For pg type
-	URL     string            `yaml:"url,omitempty"`  // For rest type
-	File    string            `yaml:"file,omitempty"` // For csv/json types
+	URL     string            `yaml:"url,omitempty"`   // For rest type
+	File    string            `yaml:"file,omitempty"`  // For csv/json types
 	Options map[string]string `yaml:"options,omitempty"`
+	Manual  bool              `yaml:"manual,omitempty"` // For exec: require Run button click
 }
 
 // StylingConfig represents styling/theme configuration.
@@ -128,7 +129,7 @@ func ParseMarkdown(content []byte) (*Frontmatter, []*CodeBlock, string, error) {
 
 	// Post-process HTML to add data attributes to livepage blocks
 	html := htmlBuf.String()
-	html = injectBlockAttributes(html, codeBlocks)
+	html = injectBlockAttributes(html, codeBlocks, frontmatter.Sources)
 
 	return frontmatter, codeBlocks, html, nil
 }
@@ -170,7 +171,7 @@ func extractFrontmatter(content []byte) (*Frontmatter, []byte, error) {
 }
 
 // injectBlockAttributes post-processes HTML to wrap livepage code blocks with data attributes.
-func injectBlockAttributes(html string, blocks []*CodeBlock) string {
+func injectBlockAttributes(html string, blocks []*CodeBlock, sources map[string]SourceConfig) string {
 	// For each livepage block, find its HTML representation and wrap it
 	for i, block := range blocks {
 		// Determine readonly/editable
@@ -202,6 +203,17 @@ func injectBlockAttributes(html string, blocks []*CodeBlock) string {
 
 			if stateRef, ok := block.Metadata["state"]; ok {
 				container += fmt.Sprintf(` data-state-ref="%s"`, escapeHTML(stateRef))
+			}
+
+			// Check if this block has an exec source and add toolbar attributes
+			if sources != nil {
+				sourceName := getLvtSourceFromContent(block.Content)
+				if sourceName != "" {
+					if srcCfg, ok := sources[sourceName]; ok && srcCfg.Type == "exec" {
+						container += ` data-exec-source="true"`
+						container += fmt.Sprintf(` data-exec-command="%s"`, escapeHTML(srcCfg.Cmd))
+					}
+				}
 			}
 
 			// Add a placeholder that will be replaced by WebSocket initial state
@@ -253,6 +265,18 @@ func injectBlockAttributes(html string, blocks []*CodeBlock) string {
 	}
 
 	return html
+}
+
+// getLvtSourceFromContent extracts the lvt-source attribute value from block content.
+// Returns empty string if not found.
+func getLvtSourceFromContent(content string) string {
+	// Look for lvt-source="name" on any element
+	sourceRegex := regexp.MustCompile(`lvt-source="([^"]+)"`)
+	match := sourceRegex.FindStringSubmatch(content)
+	if match != nil && len(match) > 1 {
+		return match[1]
+	}
+	return ""
 }
 
 // containsFlag checks if a flag is in the flags slice.
@@ -486,7 +510,7 @@ func ParseMarkdownWithPartials(content []byte, baseDir string) (*Frontmatter, []
 
 	// Post-process HTML to add data attributes
 	htmlStr := htmlBuf.String()
-	htmlStr = injectBlockAttributes(htmlStr, codeBlocks)
+	htmlStr = injectBlockAttributes(htmlStr, codeBlocks, frontmatter.Sources)
 
 	return frontmatter, codeBlocks, htmlStr, nil
 }
