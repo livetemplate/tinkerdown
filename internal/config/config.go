@@ -79,6 +79,7 @@ type BlocksConfig struct {
 // FeaturesConfig holds feature flags
 type FeaturesConfig struct {
 	HotReload bool `yaml:"hot_reload"`
+	Sidebar   bool `yaml:"sidebar"` // Show navigation sidebar (default: false)
 }
 
 // DefaultConfig returns the default configuration

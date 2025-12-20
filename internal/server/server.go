@@ -308,9 +308,9 @@ func (s *Server) renderPage(page *livepage.Page, currentPath string, host string
 	// Render code blocks with metadata for client discovery
 	content := s.renderContent(page)
 
-	// Render navigation sidebar for site mode
+	// Render navigation sidebar if enabled in config
 	sidebar := ""
-	if s.siteManager != nil {
+	if s.siteManager != nil && s.config.Features.Sidebar {
 		sidebar = s.renderSidebar(currentPath)
 	}
 
@@ -708,7 +708,7 @@ func (s *Server) renderPage(page *livepage.Page, currentPath string, host string
         /* Unified Page Toolbar */
         .page-toolbar {
             position: fixed;
-            bottom: 1.5rem;
+            top: 1rem;
             right: 1.5rem;
             z-index: 1000;
             display: flex;
