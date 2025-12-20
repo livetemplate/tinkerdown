@@ -1241,7 +1241,9 @@ func (s *Server) renderPage(page *livepage.Page, currentPath string, host string
         /* Adjust main content to make room for navigation */
         body:has(.livepage-nav-sidebar) {
             margin-left: 360px;
+            margin-right: 0;
             margin-bottom: 60px;
+            max-width: none;
         }
 
         /* Responsive Navigation */
