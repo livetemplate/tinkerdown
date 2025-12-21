@@ -4,6 +4,7 @@ import (
 	"context"
 	"os/exec"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -138,12 +139,12 @@ func InferType(value string) string {
 
 // positionalArgName returns the internal name for a positional argument
 func positionalArgName(index int) string {
-	return "arg" + string(rune('1'+index))
+	return "arg" + strconv.Itoa(index+1)
 }
 
 // positionalArgLabel returns the display label for a positional argument
 func positionalArgLabel(index int) string {
-	return "Arg " + string(rune('1'+index))
+	return "Arg " + strconv.Itoa(index+1)
 }
 
 // IntrospectScript runs the script with --help and parses flag descriptions.
