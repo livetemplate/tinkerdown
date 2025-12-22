@@ -10,7 +10,7 @@ require (
 	github.com/hashicorp/go-plugin v1.7.0
 	github.com/lib/pq v1.10.9
 	github.com/livetemplate/components v0.0.0-20251208230528-4aa686d20754
-	github.com/livetemplate/livetemplate v0.7.3-0.20251222060732-7fb21ba845e6
+	github.com/livetemplate/livetemplate v0.7.3-0.20251222065455-b0d3545145b2
 	github.com/yuin/goldmark v1.7.13
 	gopkg.in/yaml.v3 v3.0.1
 )
