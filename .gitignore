@@ -40,3 +40,4 @@ testdata/tmp/
 
 livemdtools
 livemdtools-test
+.worktrees/

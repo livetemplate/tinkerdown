@@ -1,10 +1,10 @@
-# LivePage - One-File AI App Builder
+# Livemdtools - One-File AI App Builder
 
 > Build working web apps in a single markdown file. No React. No build step. No CSS classes. Just run.
 
 ## Overview
 
-LivePage outputs working apps in a single markdown file:
+Livemdtools outputs working apps in a single markdown file:
 - Single file = easy to generate, share, modify
 - No build step = instant feedback loop
 - No npm/React = LLMs generate simpler code
@@ -39,7 +39,7 @@ title: "My App"
 \`\`\`
 ```
 
-Run: `livepage serve myapp.md`
+Run: `livemdtools serve myapp.md`
 
 ## Key Attributes
 
@@ -54,7 +54,7 @@ Run: `livepage serve myapp.md`
 
 ## Styling - NO CSS CLASSES NEEDED
 
-LivePage includes PicoCSS, a classless CSS framework. Just write semantic HTML:
+Livemdtools includes PicoCSS, a classless CSS framework. Just write semantic HTML:
 
 ```html
 <!-- PicoCSS styles these automatically - no classes! -->
@@ -109,7 +109,7 @@ Creates SQLite table automatically from form fields:
 
 Auto-generates: Id, CreatedAt, Save action, Delete action.
 
-## Data Sources (livepage.yaml)
+## Data Sources (livemdtools.yaml)
 
 ### PostgreSQL
 ```yaml
@@ -236,14 +236,14 @@ Script outputs JSON array:
 ## CLI Commands
 
 ```bash
-livepage serve myapp.md           # Serve single file
-livepage serve ./myapp/           # Serve directory
-livepage serve . --port 8080      # Custom port
+livemdtools serve myapp.md           # Serve single file
+livemdtools serve ./myapp/           # Serve directory
+livemdtools serve . --port 8080      # Custom port
 ```
 
 ## Links
 
-- Documentation: https://livepage.dev
-- Playground: https://livepage.dev/playground
-- Examples: https://github.com/livetemplate/livepage/tree/main/skills/livepage/examples
-- Source: https://github.com/livetemplate/livepage
+- Documentation: https://livemdtools.dev
+- Playground: https://livemdtools.dev/playground
+- Examples: https://github.com/livetemplate/livemdtools/tree/main/examples
+- Source: https://github.com/livetemplate/livemdtools

@@ -290,8 +290,28 @@ func TestPresentationModeDocsSite(t *testing.T) {
 	}
 
 	// Click presentation mode button
+	var pmDefined bool
 	err = chromedp.Run(ctx,
-		chromedp.Click("#presentation-toggle"),
+		// Check if window.livemdtoolsPresentationMode is defined
+		chromedp.Evaluate(`typeof window.livemdtoolsPresentationMode !== 'undefined'`, &pmDefined),
+	)
+	if err != nil {
+		t.Fatalf("Failed to check JS: %v", err)
+	}
+	t.Logf("Presentation mode JS defined: %v", pmDefined)
+
+	// Use JS click to ensure it works
+	var clickResult string
+	err = chromedp.Run(ctx,
+		chromedp.Evaluate(`
+			const btn = document.getElementById('presentation-toggle');
+			if (!btn) {
+				"no button"
+			} else {
+				btn.click();
+				"clicked button"
+			}
+		`, &clickResult),
 		chromedp.Sleep(1*time.Second),
 
 		// Check body has presentation-mode class
@@ -313,6 +333,7 @@ func TestPresentationModeDocsSite(t *testing.T) {
 		t.Fatalf("Failed to activate presentation mode: %v", err)
 	}
 
+	t.Logf("Click result: %v", clickResult)
 	t.Logf("Body has presentation-mode class: %v", bodyHasClass)
 	t.Logf("Current section exists: %v", currentSectionExists)
 	t.Logf("Content is visible: %v", contentVisible)

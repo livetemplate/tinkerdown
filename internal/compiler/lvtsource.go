@@ -41,10 +41,24 @@ func GenerateLvtSourceCode(sourceName string, sourceCfg config.SourceConfig, sit
 	}
 }
 
-// generateExecSourceCode generates code for an exec source
+// generateExecSourceCode generates code for an exec source with argument form support
 func generateExecSourceCode(sourceName, cmd, siteDir string, manual bool) (string, error) {
 	if cmd == "" {
 		return "", fmt.Errorf("exec source %q: cmd is required", sourceName)
+	}
+
+	// Parse the command to extract executable and arguments
+	executable, args, err := ParseExecCommand(cmd)
+	if err != nil {
+		return "", fmt.Errorf("exec source %q: failed to parse command: %w", sourceName, err)
+	}
+
+	// Run --help introspection to get flag descriptions (fails silently)
+	descriptions := IntrospectScript(executable, siteDir)
+	for i := range args {
+		if desc, ok := descriptions[args[i].Name]; ok {
+			args[i].Description = desc
+		}
 	}
 
 	var code strings.Builder
@@ -60,31 +74,60 @@ func generateExecSourceCode(sourceName, cmd, siteDir string, manual bool) (strin
 	code.WriteString("\t\"time\"\n")
 	code.WriteString(")\n\n")
 
-	// Escape the command for embedding in Go code
-	escapedCmd := strings.ReplaceAll(cmd, `"`, `\"`)
 	escapedDir := strings.ReplaceAll(siteDir, `"`, `\"`)
+	escapedExec := strings.ReplaceAll(executable, `"`, `\"`)
 
-	// State struct with Data field and execution metadata
-	code.WriteString("// State holds data fetched from the source and execution metadata\n")
-	code.WriteString("type State struct {\n")
-	code.WriteString("\tData     []map[string]interface{} `json:\"data\"`\n")
-	code.WriteString("\tError    string `json:\"error,omitempty\"`\n")
-	code.WriteString("\tOutput   string `json:\"output,omitempty\"`\n")   // stdout
-	code.WriteString("\tStderr   string `json:\"stderr,omitempty\"`\n")   // stderr
-	code.WriteString("\tDuration int64  `json:\"duration,omitempty\"`\n") // execution time in ms
-	code.WriteString("\tStatus   string `json:\"status\"`\n")             // idle, running, success, error
-	code.WriteString("\tCommand  string `json:\"command\"`\n")            // command for display
+	// ExecArg struct for template rendering
+	code.WriteString("// ExecArg represents a command-line argument\n")
+	code.WriteString("type ExecArg struct {\n")
+	code.WriteString("\tName        string `json:\"name\"`\n")
+	code.WriteString("\tLabel       string `json:\"label\"`\n")
+	code.WriteString("\tType        string `json:\"type\"`\n")
+	code.WriteString("\tValue       string `json:\"value\"`\n")
+	code.WriteString("\tPosition    int    `json:\"position\"`\n")
+	code.WriteString("\tDescription string `json:\"description\"`\n")
 	code.WriteString("}\n\n")
 
-	// NewState constructor
+	// State struct with Args field
+	code.WriteString("// State holds data fetched from the source and execution metadata\n")
+	code.WriteString("type State struct {\n")
+	code.WriteString("\tData       []map[string]interface{} `json:\"data\"`\n")
+	code.WriteString("\tError      string `json:\"error,omitempty\"`\n")
+	code.WriteString("\tOutput     string `json:\"output,omitempty\"`\n")
+	code.WriteString("\tStderr     string `json:\"stderr,omitempty\"`\n")
+	code.WriteString("\tDuration   int64  `json:\"duration,omitempty\"`\n")
+	code.WriteString("\tStatus     string `json:\"status\"`\n")
+	code.WriteString("\tCommand    string `json:\"command\"`\n")
+	code.WriteString("\tArgs       []ExecArg `json:\"args\"`\n")
+	code.WriteString("\tExecutable string `json:\"executable\"`\n")
+	code.WriteString("\tWorkDir    string `json:\"-\"`\n")
+	code.WriteString("}\n\n")
+
+	// NewState constructor - initialize args
 	code.WriteString("// NewState creates a new State and optionally fetches initial data\n")
 	code.WriteString("func NewState() (*State, error) {\n")
-	code.WriteString(fmt.Sprintf("\ts := &State{Command: %q}\n", escapedCmd))
+	code.WriteString("\ts := &State{\n")
+	code.WriteString(fmt.Sprintf("\t\tExecutable: %q,\n", escapedExec))
+	code.WriteString(fmt.Sprintf("\t\tWorkDir: %q,\n", escapedDir))
+	code.WriteString("\t\tArgs: []ExecArg{\n")
+
+	// Generate arg initializers
+	for _, arg := range args {
+		escapedName := strings.ReplaceAll(arg.Name, `"`, `\"`)
+		escapedLabel := strings.ReplaceAll(arg.Label, `"`, `\"`)
+		escapedDefault := strings.ReplaceAll(arg.Default, `"`, `\"`)
+		escapedDesc := strings.ReplaceAll(arg.Description, `"`, `\"`)
+		code.WriteString(fmt.Sprintf("\t\t\t{Name: %q, Label: %q, Type: %q, Value: %q, Position: %d, Description: %q},\n",
+			escapedName, escapedLabel, arg.Type, escapedDefault, arg.Position, escapedDesc))
+	}
+
+	code.WriteString("\t\t},\n")
+	code.WriteString("\t}\n")
+	code.WriteString("\ts.Command = s.buildCommandString()\n")
+
 	if manual {
-		// Manual mode: don't auto-execute
 		code.WriteString("\ts.Status = \"idle\"\n")
 	} else {
-		// Auto-execute mode (default)
 		code.WriteString("\ts.Status = \"running\"\n")
 		code.WriteString("\tif err := s.fetchData(); err != nil {\n")
 		code.WriteString("\t\ts.Error = err.Error()\n")
@@ -102,9 +145,26 @@ func generateExecSourceCode(sourceName, cmd, siteDir string, manual bool) (strin
 	code.WriteString("\treturn nil\n")
 	code.WriteString("}\n\n")
 
-	// Run action - executes the command (for manual mode or re-run)
-	code.WriteString("// Run executes the command\n")
+	// Run action - accepts form data and executes the command
+	code.WriteString("// Run executes the command with current arg values from form\n")
 	code.WriteString("func (s *State) Run(ctx *livetemplate.Context) error {\n")
+	code.WriteString("\t// Update arg values from form submission\n")
+	code.WriteString("\tfor i := range s.Args {\n")
+	code.WriteString("\t\targ := &s.Args[i]\n")
+	code.WriteString("\t\tif val := ctx.GetString(arg.Name); val != \"\" {\n")
+	code.WriteString("\t\t\t// HTML checkboxes send 'on' when checked - convert to 'true'\n")
+	code.WriteString("\t\t\tif arg.Type == \"bool\" && val == \"on\" {\n")
+	code.WriteString("\t\t\t\targ.Value = \"true\"\n")
+	code.WriteString("\t\t\t} else {\n")
+	code.WriteString("\t\t\t\targ.Value = val\n")
+	code.WriteString("\t\t\t}\n")
+	code.WriteString("\t\t} else if arg.Type == \"bool\" {\n")
+	code.WriteString("\t\t\t// Unchecked checkbox won't be in form data\n")
+	code.WriteString("\t\t\targ.Value = \"false\"\n")
+	code.WriteString("\t\t}\n")
+	code.WriteString("\t}\n")
+	code.WriteString("\ts.Command = s.buildCommandString()\n")
+	code.WriteString("\n")
 	code.WriteString("\ts.Status = \"running\"\n")
 	code.WriteString("\ts.Error = \"\"\n")
 	code.WriteString("\ts.Output = \"\"\n")
@@ -118,37 +178,61 @@ func generateExecSourceCode(sourceName, cmd, siteDir string, manual bool) (strin
 	code.WriteString("\treturn nil\n")
 	code.WriteString("}\n\n")
 
-	// Refresh action - alias to Run for backwards compatibility
+	// Refresh action - alias to Run
 	code.WriteString("// Refresh re-fetches data from the source (alias to Run)\n")
 	code.WriteString("func (s *State) Refresh(ctx *livetemplate.Context) error {\n")
 	code.WriteString("\treturn s.Run(ctx)\n")
 	code.WriteString("}\n\n")
 
-	// fetchData method - executes the command and parses JSON
+	// buildCommandString - builds display command from current args
+	code.WriteString("// buildCommandString builds the command string for display\n")
+	code.WriteString("func (s *State) buildCommandString() string {\n")
+	code.WriteString("\tparts := []string{s.Executable}\n")
+	code.WriteString("\tfor _, arg := range s.Args {\n")
+	code.WriteString("\t\tif arg.Position >= 0 {\n")
+	code.WriteString("\t\t\tparts = append(parts, arg.Value)\n")
+	code.WriteString("\t\t} else {\n")
+	code.WriteString("\t\t\tparts = append(parts, \"--\"+arg.Name, arg.Value)\n")
+	code.WriteString("\t\t}\n")
+	code.WriteString("\t}\n")
+	code.WriteString("\treturn strings.Join(parts, \" \")\n")
+	code.WriteString("}\n\n")
+
+	// buildCommandParts - builds command parts for execution
+	code.WriteString("// buildCommandParts builds the command parts for execution\n")
+	code.WriteString("func (s *State) buildCommandParts() []string {\n")
+	code.WriteString("\tparts := []string{s.Executable}\n")
+	code.WriteString("\t// Add positional args first (in order)\n")
+	code.WriteString("\tfor _, arg := range s.Args {\n")
+	code.WriteString("\t\tif arg.Position >= 0 {\n")
+	code.WriteString("\t\t\tparts = append(parts, arg.Value)\n")
+	code.WriteString("\t\t}\n")
+	code.WriteString("\t}\n")
+	code.WriteString("\t// Add named args\n")
+	code.WriteString("\tfor _, arg := range s.Args {\n")
+	code.WriteString("\t\tif arg.Position < 0 {\n")
+	code.WriteString("\t\t\tparts = append(parts, \"--\"+arg.Name, arg.Value)\n")
+	code.WriteString("\t\t}\n")
+	code.WriteString("\t}\n")
+	code.WriteString("\treturn parts\n")
+	code.WriteString("}\n\n")
+
+	// fetchData method - uses dynamic command building
 	code.WriteString("// fetchData executes the source command and parses JSON output\n")
 	code.WriteString("func (s *State) fetchData() error {\n")
-	code.WriteString(fmt.Sprintf("\tcmd := \"%s\"\n", escapedCmd))
-	code.WriteString(fmt.Sprintf("\tworkDir := \"%s\"\n", escapedDir))
-	code.WriteString("\n")
-
-	// Parse and execute command
-	code.WriteString("\t// Parse command\n")
-	code.WriteString("\tparts := strings.Fields(cmd)\n")
+	code.WriteString("\tparts := s.buildCommandParts()\n")
 	code.WriteString("\tif len(parts) == 0 {\n")
 	code.WriteString("\t\treturn fmt.Errorf(\"empty command\")\n")
 	code.WriteString("\t}\n")
 	code.WriteString("\n")
-
 	code.WriteString("\t// Execute with timeout\n")
 	code.WriteString("\tstart := time.Now()\n")
 	code.WriteString("\tctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)\n")
 	code.WriteString("\tdefer cancel()\n")
 	code.WriteString("\n")
 	code.WriteString("\texecCmd := exec.CommandContext(ctx, parts[0], parts[1:]...)\n")
-	code.WriteString("\texecCmd.Dir = workDir\n")
+	code.WriteString("\texecCmd.Dir = s.WorkDir\n")
 	code.WriteString("\n")
-
-	// Use separate buffers for stdout/stderr
 	code.WriteString("\t// Capture stdout and stderr separately\n")
 	code.WriteString("\tvar stdoutBuf, stderrBuf bytes.Buffer\n")
 	code.WriteString("\texecCmd.Stdout = &stdoutBuf\n")
@@ -163,8 +247,6 @@ func generateExecSourceCode(sourceName, cmd, siteDir string, manual bool) (strin
 	code.WriteString("\t\treturn fmt.Errorf(\"command failed: %w\", err)\n")
 	code.WriteString("\t}\n")
 	code.WriteString("\n")
-
-	// Parse JSON
 	code.WriteString("\t// Parse JSON output\n")
 	code.WriteString("\treturn s.parseJSON([]byte(s.Output))\n")
 	code.WriteString("}\n\n")

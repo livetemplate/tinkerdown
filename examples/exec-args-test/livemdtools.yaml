@@ -1,0 +1,5 @@
+sources:
+  greeting:
+    type: exec
+    cmd: ./greet.sh --name World --count 3 --uppercase false
+    manual: true
