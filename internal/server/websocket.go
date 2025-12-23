@@ -148,7 +148,12 @@ func (h *WebSocketHandler) compileServerBlocks() {
 			if h.debug {
 				log.Printf("[WS] Compiling lvt-source block: %s (source: %s, type: %s)", blockID, sourceName, sourceCfg.Type)
 			}
-			factory, err = h.compiler.CompileLvtSource(blockID, sourceName, sourceCfg, h.rootDir, block.Metadata)
+			// Pass the current markdown file path for same-file markdown sources
+			currentFile := ""
+			if h.page != nil {
+				currentFile = h.page.SourceFile
+			}
+			factory, err = h.compiler.CompileLvtSource(blockID, sourceName, sourceCfg, h.rootDir, currentFile, block.Metadata)
 		} else if block.Metadata["auto-persist"] == "true" {
 			// Auto-persist block - generate code from form fields
 			dbPath := filepath.Join(h.rootDir, "site.sqlite")
@@ -191,13 +196,15 @@ func (h *WebSocketHandler) getEffectiveSource(name string) (config.SourceConfig,
 		if src, ok := h.page.Config.Sources[name]; ok {
 			// Convert livemdtools.SourceConfig to config.SourceConfig
 			return config.SourceConfig{
-				Type:    src.Type,
-				Cmd:     src.Cmd,
-				Query:   src.Query,
-				URL:     src.URL,
-				File:    src.File,
-				Options: src.Options,
-				Manual:  src.Manual,
+				Type:     src.Type,
+				Cmd:      src.Cmd,
+				Query:    src.Query,
+				URL:      src.URL,
+				File:     src.File,
+				Anchor:   src.Anchor,
+				Readonly: src.Readonly,
+				Options:  src.Options,
+				Manual:   src.Manual,
 			}, true
 		}
 	}

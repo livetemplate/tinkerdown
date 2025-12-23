@@ -30,6 +30,12 @@ type Registry struct {
 
 // NewRegistry creates a source registry from config
 func NewRegistry(cfg *config.Config, siteDir string) (*Registry, error) {
+	return NewRegistryWithFile(cfg, siteDir, "")
+}
+
+// NewRegistryWithFile creates a source registry with knowledge of the current markdown file
+// This is needed for markdown sources that reference anchors in the current file
+func NewRegistryWithFile(cfg *config.Config, siteDir, currentFile string) (*Registry, error) {
 	r := &Registry{
 		sources: make(map[string]Source),
 	}
@@ -39,7 +45,7 @@ func NewRegistry(cfg *config.Config, siteDir string) (*Registry, error) {
 	}
 
 	for name, srcCfg := range cfg.Sources {
-		src, err := createSource(name, srcCfg, siteDir)
+		src, err := createSource(name, srcCfg, siteDir, currentFile)
 		if err != nil {
 			return nil, err
 		}
@@ -66,7 +72,7 @@ func (r *Registry) Close() error {
 }
 
 // createSource instantiates a source based on config type
-func createSource(name string, cfg config.SourceConfig, siteDir string) (Source, error) {
+func createSource(name string, cfg config.SourceConfig, siteDir, currentFile string) (Source, error) {
 	switch cfg.Type {
 	case "exec":
 		return NewExecSource(name, cfg.Cmd, siteDir)
@@ -78,6 +84,9 @@ func createSource(name string, cfg config.SourceConfig, siteDir string) (Source,
 		return NewJSONFileSource(name, cfg.File, siteDir)
 	case "csv":
 		return NewCSVFileSource(name, cfg.File, siteDir, cfg.Options)
+	case "markdown":
+		// Use IsReadonly() which defaults to true if not specified
+		return NewMarkdownSource(name, cfg.File, cfg.Anchor, siteDir, currentFile, cfg.IsReadonly())
 	default:
 		return nil, &UnsupportedSourceError{Type: cfg.Type}
 	}

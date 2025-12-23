@@ -25,13 +25,23 @@ type Config struct {
 
 // SourceConfig defines a data source for lvt-source blocks
 type SourceConfig struct {
-	Type    string            `yaml:"type"`              // "exec", "pg", "rest", "csv", "json"
-	Cmd     string            `yaml:"cmd,omitempty"`     // For exec: command to run
-	Query   string            `yaml:"query,omitempty"`   // For pg: SQL query
-	URL     string            `yaml:"url,omitempty"`     // For rest: API endpoint
-	File    string            `yaml:"file,omitempty"`    // For csv/json: file path
-	Options map[string]string `yaml:"options,omitempty"` // Type-specific options
-	Manual  bool              `yaml:"manual,omitempty"`  // For exec: require Run button click
+	Type     string            `yaml:"type"`              // "exec", "pg", "rest", "csv", "json", "markdown"
+	Cmd      string            `yaml:"cmd,omitempty"`     // For exec: command to run
+	Query    string            `yaml:"query,omitempty"`   // For pg: SQL query
+	URL      string            `yaml:"url,omitempty"`     // For rest: API endpoint
+	File     string            `yaml:"file,omitempty"`    // For csv/json/markdown: file path
+	Anchor   string            `yaml:"anchor,omitempty"`  // For markdown: section anchor (e.g., "#todos")
+	Readonly *bool             `yaml:"readonly,omitempty"` // For markdown: read-only mode (default: true, set to false for writes)
+	Options  map[string]string `yaml:"options,omitempty"` // Type-specific options
+	Manual   bool              `yaml:"manual,omitempty"`  // For exec: require Run button click
+}
+
+// IsReadonly returns true if the source is read-only (default: true for markdown sources)
+func (c SourceConfig) IsReadonly() bool {
+	if c.Readonly == nil {
+		return true // Default to read-only for safety
+	}
+	return *c.Readonly
 }
 
 // SiteConfig holds site-level configuration
