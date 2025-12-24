@@ -1199,6 +1199,8 @@ func generateMarkdownSourceCode(sourceName, file, anchor, siteDir, currentFile s
 	code.WriteString("\t\"path/filepath\"\n")
 	code.WriteString("\t\"regexp\"\n")
 	code.WriteString("\t\"strings\"\n")
+	code.WriteString("\n")
+	code.WriteString("\t\"github.com/livetemplate/livetemplate\"\n")
 	code.WriteString(")\n\n")
 
 	// State struct

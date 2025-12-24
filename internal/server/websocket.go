@@ -620,7 +620,12 @@ func getComponentTemplates() []*livetemplate.TemplateSet {
 // getComponentFuncs returns all component-specific template functions
 // These need to be registered with tmpl.Funcs() for tree generation to work
 func getComponentFuncs() template.FuncMap {
-	funcs := template.FuncMap{}
+	funcs := template.FuncMap{
+		// Standard math functions used by components
+		"mod": func(a, b int) int {
+			return a % b
+		},
+	}
 	// Merge all component funcs
 	for _, set := range getComponentTemplates() {
 		for name, fn := range set.Funcs {
