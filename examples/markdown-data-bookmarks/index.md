@@ -16,11 +16,11 @@ A bookmark manager that stores data in a separate markdown file.
 ## Add New Bookmark
 
 ```lvt
-<form lvt-submit="Add" lvt-source="bookmarks" style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px;">
-    <input name="Name" placeholder="Name" required style="padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+<form lvt-submit="Add" lvt-source="bookmarks" style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 16px;">
+    <input name="Name" placeholder="Name" required style="min-width: 0; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
     <input name="URL" type="url" placeholder="https://..." required style="flex: 1; min-width: 200px; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
-    <input name="Tags" placeholder="Tags (comma-separated)" style="padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
-    <button type="submit" style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">
+    <input name="Tags" placeholder="Tags (comma-separated)" style="min-width: 0; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+    <button type="submit" style="flex-shrink: 0; width: auto; padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">
         Add Bookmark
     </button>
 </form>
