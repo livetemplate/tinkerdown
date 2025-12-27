@@ -1,0 +1,8 @@
+title: "WASM Data Source"
+
+sources:
+  quotes:
+    type: wasm
+    path: "./sources/quotes.wasm"
+    options:
+      category: "inspiration"
