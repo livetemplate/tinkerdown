@@ -202,7 +202,7 @@ func injectBlockAttributes(html string, blocks []*CodeBlock, sources map[string]
 		if block.Type == "lvt" {
 			// Build container div with data attributes
 			container := fmt.Sprintf(
-				`<div class="livemdtools-interactive-block" data-livemdtools-block data-block-id="%s" data-block-type="lvt" data-language="lvt"`,
+				`<div class="tinkerdown-interactive-block" data-tinkerdown-block data-block-id="%s" data-block-type="lvt" data-language="lvt"`,
 				escapeHTML(blockID),
 			)
 
@@ -244,7 +244,7 @@ func injectBlockAttributes(html string, blocks []*CodeBlock, sources map[string]
 
 		// For server/wasm blocks, wrap the existing <pre><code> with attributes
 		wrapper := fmt.Sprintf(
-			`<div data-livemdtools-block data-block-id="%s" data-block-type="%s" data-language="%s"`,
+			`<div data-tinkerdown-block data-block-id="%s" data-block-type="%s" data-language="%s"`,
 			escapeHTML(blockID),
 			escapeHTML(block.Type),
 			escapeHTML(block.Language),

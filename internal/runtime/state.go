@@ -166,12 +166,106 @@ func (s *GenericState) GetStateAsInterface() (interface{}, error) {
 		return nil, err
 	}
 
-	var stateMap map[string]interface{}
-	if err := json.Unmarshal(stateBytes, &stateMap); err != nil {
+	var rawMap map[string]interface{}
+	if err := json.Unmarshal(stateBytes, &rawMap); err != nil {
 		return nil, err
 	}
 
-	return stateMap, nil
+	// Process state map to add titlecase keys for template access
+	// This allows templates to use both {{.data}} and {{.Data}}
+	return processStateMap(rawMap), nil
+}
+
+// processStateMap processes a map to add titlecase keys alongside lowercase keys.
+// This allows templates to use both {{.data}} and {{.Data}}, {{.status}} and {{.Status}}.
+// It also processes nested maps and slices recursively.
+func processStateMap(m map[string]interface{}) map[string]interface{} {
+	result := make(map[string]interface{})
+	for k, v := range m {
+		var processedValue interface{}
+
+		switch val := v.(type) {
+		case map[string]interface{}:
+			processedValue = processMapValues(val)
+		case []interface{}:
+			newSlice := make([]interface{}, len(val))
+			for i, item := range val {
+				if itemMap, ok := item.(map[string]interface{}); ok {
+					newSlice[i] = processMapValues(itemMap)
+				} else {
+					newSlice[i] = convertNumber(item)
+				}
+			}
+			processedValue = newSlice
+		case float64:
+			processedValue = convertNumber(val)
+		default:
+			processedValue = v
+		}
+
+		// Keep original key (e.g., "status", "data", "items")
+		result[k] = processedValue
+
+		// Also add titlecased key if different (e.g., "Status", "Data", "Items")
+		// This allows templates to use either {{.status}} or {{.Status}}
+		if len(k) > 0 {
+			titleKey := strings.ToUpper(k[:1]) + k[1:]
+			if titleKey != k {
+				result[titleKey] = processedValue
+			}
+		}
+	}
+	return result
+}
+
+// processMapValues recursively processes map values to add titlecase keys.
+func processMapValues(m map[string]interface{}) map[string]interface{} {
+	result := make(map[string]interface{})
+	for k, v := range m {
+		var processedValue interface{}
+
+		switch val := v.(type) {
+		case map[string]interface{}:
+			processedValue = processMapValues(val)
+		case []interface{}:
+			newSlice := make([]interface{}, len(val))
+			for i, item := range val {
+				if itemMap, ok := item.(map[string]interface{}); ok {
+					newSlice[i] = processMapValues(itemMap)
+				} else {
+					newSlice[i] = convertNumber(item)
+				}
+			}
+			processedValue = newSlice
+		case float64:
+			processedValue = convertNumber(val)
+		default:
+			processedValue = v
+		}
+
+		// Keep original key
+		result[k] = processedValue
+
+		// Also add titlecased key if different
+		if len(k) > 0 {
+			titleKey := strings.ToUpper(k[:1]) + k[1:]
+			if titleKey != k {
+				result[titleKey] = processedValue
+			}
+		}
+	}
+	return result
+}
+
+// convertNumber converts float64 values that are whole numbers to int.
+// JSON unmarshals all numbers as float64, but int is often more useful.
+func convertNumber(v interface{}) interface{} {
+	if f, ok := v.(float64); ok {
+		if f == float64(int(f)) {
+			return int(f)
+		}
+	}
+	return v
 }
 
 // Close releases any resources held by the source.
