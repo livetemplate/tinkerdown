@@ -232,6 +232,16 @@ func (c *ServerBlockCompiler) CompileServerBlock(block *livemdtools.ServerBlock)
 		fmt.Printf("[Compiler] Plugin will use same livetemplate version as main binary\n")
 	}
 
+	// Run go mod tidy to ensure dependencies are correct
+	tidyCmd := exec.Command("go", "mod", "tidy")
+	tidyCmd.Dir = pluginDir
+	if tidyOutput, err := tidyCmd.CombinedOutput(); err != nil {
+		if c.debug {
+			fmt.Printf("[Compiler] go mod tidy output: %s\n", tidyOutput)
+		}
+		// Continue even if tidy fails - the build might still work
+	}
+
 	// Build the plugin as a standalone executable
 	pluginFile := filepath.Join(pluginDir, block.ID)
 	cmd := exec.Command("go", "build", "-o", pluginFile, sourceFile)
@@ -822,14 +832,15 @@ func (c *ServerBlockCompiler) CompileAutoPersist(blockID string, lvtContent stri
 
 // CompileLvtSource compiles an lvt-source block into a Go plugin
 // This generates code that fetches data from the configured source
-func (c *ServerBlockCompiler) CompileLvtSource(blockID string, sourceName string, sourceCfg config.SourceConfig, siteDir string, metadata map[string]string) (func() Store, error) {
+// currentFile is the absolute path to the current markdown file (for same-file sources)
+func (c *ServerBlockCompiler) CompileLvtSource(blockID string, sourceName string, sourceCfg config.SourceConfig, siteDir string, currentFile string, metadata map[string]string) (func() Store, error) {
 	if c.debug {
 		fmt.Printf("[Compiler] Compiling lvt-source block: %s (source: %s, type: %s)\n", blockID, sourceName, sourceCfg.Type)
 	}
 
 	// Generate code for the source
 	// Pass element type and other metadata for component-aware code generation
-	generatedCode, err := GenerateLvtSourceCode(sourceName, sourceCfg, siteDir, metadata)
+	generatedCode, err := GenerateLvtSourceCode(sourceName, sourceCfg, siteDir, currentFile, metadata)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate lvt-source code: %w", err)
 	}

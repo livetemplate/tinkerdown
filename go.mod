@@ -9,8 +9,8 @@ require (
 	github.com/gorilla/websocket v1.5.3
 	github.com/hashicorp/go-plugin v1.7.0
 	github.com/lib/pq v1.10.9
-	github.com/livetemplate/components v0.0.0-20251208230528-4aa686d20754
-	github.com/livetemplate/livetemplate v0.7.3-0.20251222065455-b0d3545145b2
+	github.com/livetemplate/components v0.0.0-20251224004709-1f8c1de230b4
+	github.com/livetemplate/livetemplate v0.7.8
 	github.com/yuin/goldmark v1.7.13
 	gopkg.in/yaml.v3 v3.0.1
 )

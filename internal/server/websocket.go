@@ -45,15 +45,17 @@ type ExecMeta struct {
 
 // WebSocketHandler handles WebSocket connections for interactive blocks.
 type WebSocketHandler struct {
-	page       *livemdtools.Page
-	mu         sync.RWMutex
-	instances  map[string]*BlockInstance // blockID -> instance
-	debug      bool
-	server     *Server // Reference to server for connection tracking
-	compiler   *compiler.ServerBlockCompiler
+	page           *livemdtools.Page
+	mu             sync.RWMutex
+	instances      map[string]*BlockInstance      // blockID -> instance
+	sourceFiles    map[string][]string            // blockID -> source file paths (for file watching)
+	debug          bool
+	server         *Server                        // Reference to server for connection tracking
+	compiler       *compiler.ServerBlockCompiler
 	stateFactories map[string]func() compiler.Store // Compiled state factories
-	rootDir    string // Site root directory for database path
-	config     *config.Config // Site configuration with sources
+	rootDir        string                          // Site root directory for database path
+	config         *config.Config                  // Site configuration with sources
+	conn           *websocket.Conn                 // Current connection for this handler
 }
 
 // BlockInstance represents a running LiveTemplate instance for an interactive block.
@@ -76,6 +78,7 @@ func NewWebSocketHandler(page *livemdtools.Page, server *Server, debug bool, roo
 	h := &WebSocketHandler{
 		page:           page,
 		instances:      make(map[string]*BlockInstance),
+		sourceFiles:    make(map[string][]string),
 		debug:          debug,
 		server:         server,
 		compiler:       compiler.NewServerBlockCompiler(debug),
@@ -148,7 +151,43 @@ func (h *WebSocketHandler) compileServerBlocks() {
 			if h.debug {
 				log.Printf("[WS] Compiling lvt-source block: %s (source: %s, type: %s)", blockID, sourceName, sourceCfg.Type)
 			}
-			factory, err = h.compiler.CompileLvtSource(blockID, sourceName, sourceCfg, h.rootDir, block.Metadata)
+			// Pass the current markdown file path for same-file markdown sources
+			currentFile := ""
+			if h.page != nil {
+				currentFile = h.page.SourceFile
+			}
+			factory, err = h.compiler.CompileLvtSource(blockID, sourceName, sourceCfg, h.rootDir, currentFile, block.Metadata)
+
+			// Track source files for markdown sources (for live refresh)
+			if sourceCfg.Type == "markdown" {
+				var sourceFilePath string
+				if sourceCfg.File != "" {
+					// External file - resolve relative to root or current file
+					if filepath.IsAbs(sourceCfg.File) {
+						sourceFilePath = sourceCfg.File
+					} else {
+						// Try relative to current file first, then root
+						if currentFile != "" {
+							sourceFilePath = filepath.Join(filepath.Dir(currentFile), sourceCfg.File)
+						} else {
+							sourceFilePath = filepath.Join(h.rootDir, sourceCfg.File)
+						}
+					}
+				} else {
+					// Same-file source
+					sourceFilePath = currentFile
+				}
+				if sourceFilePath != "" {
+					// Make path relative to rootDir for consistent matching with watcher events
+					if relPath, err := filepath.Rel(h.rootDir, sourceFilePath); err == nil {
+						sourceFilePath = relPath
+					}
+					h.sourceFiles[blockID] = append(h.sourceFiles[blockID], sourceFilePath)
+					if h.debug {
+						log.Printf("[WS] Block %s tracks source file: %s", blockID, sourceFilePath)
+					}
+				}
+			}
 		} else if block.Metadata["auto-persist"] == "true" {
 			// Auto-persist block - generate code from form fields
 			dbPath := filepath.Join(h.rootDir, "site.sqlite")
@@ -191,13 +230,15 @@ func (h *WebSocketHandler) getEffectiveSource(name string) (config.SourceConfig,
 		if src, ok := h.page.Config.Sources[name]; ok {
 			// Convert livemdtools.SourceConfig to config.SourceConfig
 			return config.SourceConfig{
-				Type:    src.Type,
-				Cmd:     src.Cmd,
-				Query:   src.Query,
-				URL:     src.URL,
-				File:    src.File,
-				Options: src.Options,
-				Manual:  src.Manual,
+				Type:     src.Type,
+				Cmd:      src.Cmd,
+				Query:    src.Query,
+				URL:      src.URL,
+				File:     src.File,
+				Anchor:   src.Anchor,
+				Readonly: src.Readonly,
+				Options:  src.Options,
+				Manual:   src.Manual,
 			}, true
 		}
 	}
@@ -220,6 +261,10 @@ func (h *WebSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		log.Printf("[WS] Failed to upgrade connection: %v", err)
 		return
 	}
+
+	// Store connection in handler for source refresh
+	h.conn = conn
+
 	defer func() {
 		// Unregister connection
 		if h.server != nil {
@@ -228,9 +273,9 @@ func (h *WebSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		conn.Close()
 	}()
 
-	// Register connection for reload broadcasts
+	// Register connection for reload broadcasts (with handler for source refresh)
 	if h.server != nil {
-		h.server.RegisterConnection(conn)
+		h.server.RegisterConnection(conn, h)
 	}
 
 	if h.debug {
@@ -613,7 +658,12 @@ func getComponentTemplates() []*livetemplate.TemplateSet {
 // getComponentFuncs returns all component-specific template functions
 // These need to be registered with tmpl.Funcs() for tree generation to work
 func getComponentFuncs() template.FuncMap {
-	funcs := template.FuncMap{}
+	funcs := template.FuncMap{
+		// Standard math functions used by components
+		"mod": func(a, b int) int {
+			return a % b
+		},
+	}
 	// Merge all component funcs
 	for _, set := range getComponentTemplates() {
 		for name, fn := range set.Funcs {
@@ -621,4 +671,61 @@ func getComponentFuncs() template.FuncMap {
 		}
 	}
 	return funcs
+}
+
+// RefreshSourcesForFile refreshes all sources that use the given file.
+// This is called by the server when a markdown source file changes externally.
+func (h *WebSocketHandler) RefreshSourcesForFile(filePath string) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	if h.debug {
+		log.Printf("[WS] RefreshSourcesForFile called for: %s", filePath)
+	}
+
+	// Find all server blocks that use this file
+	// Note: sourceFiles uses server block IDs (e.g., auto-persist-lvt-0)
+	// but instances uses interactive block IDs (e.g., lvt-0)
+	// We need to find the instance by matching StateRef
+	for serverBlockID, files := range h.sourceFiles {
+		for _, sourceFile := range files {
+			if sourceFile == filePath {
+				if h.debug {
+					log.Printf("[WS] Server block %s uses file %s, looking for matching instance", serverBlockID, filePath)
+				}
+
+				// Find the instance whose StateRef matches this server block ID
+				var instance *BlockInstance
+				for _, block := range h.page.InteractiveBlocks {
+					if block.StateRef == serverBlockID {
+						instance = h.instances[block.ID]
+						if h.debug && instance != nil {
+							log.Printf("[WS] Found instance %s for server block %s", block.ID, serverBlockID)
+						}
+						break
+					}
+				}
+
+				if instance == nil {
+					log.Printf("[WS] No instance found for server block %s", serverBlockID)
+					continue
+				}
+
+				// Trigger a Refresh action on the source
+				// This re-fetches data from the markdown file
+				if err := h.handleAction(instance, "Refresh", nil); err != nil {
+					log.Printf("[WS] Failed to refresh block %s: %v", instance.blockID, err)
+					continue
+				}
+
+				// Send the updated state to the client
+				h.sendUpdate(instance)
+
+				if h.debug {
+					log.Printf("[WS] Successfully refreshed block %s", instance.blockID)
+				}
+				break // File matched, no need to check other files for this block
+			}
+		}
+	}
 }

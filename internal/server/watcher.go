@@ -49,10 +49,12 @@ func (w *Watcher) addDirectoryRecursive(dir string) error {
 			return err
 		}
 
-		// Skip directories starting with _ or .
+		// Skip directories starting with . (hidden dirs like .git)
+		// Note: We DO watch directories starting with _ (like _data/) because
+		// they may contain external data files referenced by sources
 		if info.IsDir() {
 			name := info.Name()
-			if strings.HasPrefix(name, "_") || strings.HasPrefix(name, ".") {
+			if strings.HasPrefix(name, ".") {
 				return filepath.SkipDir
 			}
 

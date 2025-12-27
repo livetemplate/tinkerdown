@@ -29,12 +29,12 @@ type Server struct {
 	rootDir     string
 	config      *config.Config
 	routes      []*Route
-	siteManager *site.Manager             // For multi-page documentation sites
+	siteManager *site.Manager                           // For multi-page documentation sites
 	mu          sync.RWMutex
-	connections map[*websocket.Conn]bool // Track connected WebSocket clients
-	connMu      sync.RWMutex              // Separate mutex for connections
-	watcher     *Watcher                  // File watcher for live reload
-	playground  *PlaygroundHandler        // Playground for testing AI-generated apps
+	connections map[*websocket.Conn]*WebSocketHandler   // Track connected WebSocket clients with their handlers
+	connMu      sync.RWMutex                            // Separate mutex for connections
+	watcher     *Watcher                                // File watcher for live reload
+	playground  *PlaygroundHandler                      // Playground for testing AI-generated apps
 }
 
 // New creates a new server for the given root directory.
@@ -43,7 +43,7 @@ func New(rootDir string) *Server {
 		rootDir:     rootDir,
 		config:      config.DefaultConfig(),
 		routes:      make([]*Route, 0),
-		connections: make(map[*websocket.Conn]bool),
+		connections: make(map[*websocket.Conn]*WebSocketHandler),
 	}
 	srv.playground = NewPlaygroundHandler(srv)
 	return srv
@@ -55,7 +55,7 @@ func NewWithConfig(rootDir string, cfg *config.Config) *Server {
 		rootDir:     rootDir,
 		config:      cfg,
 		routes:      make([]*Route, 0),
-		connections: make(map[*websocket.Conn]bool),
+		connections: make(map[*websocket.Conn]*WebSocketHandler),
 	}
 
 	// Initialize site manager if in site mode
@@ -2061,10 +2061,10 @@ func shouldSwap(a, b *Route) bool {
 }
 
 // RegisterConnection adds a WebSocket connection to the tracked connections.
-func (s *Server) RegisterConnection(conn *websocket.Conn) {
+func (s *Server) RegisterConnection(conn *websocket.Conn, handler *WebSocketHandler) {
 	s.connMu.Lock()
 	defer s.connMu.Unlock()
-	s.connections[conn] = true
+	s.connections[conn] = handler
 	log.Printf("[Server] WebSocket connection registered: %d active connections", len(s.connections))
 }
 
@@ -2110,13 +2110,21 @@ func (s *Server) EnableWatch(debug bool) error {
 	watcher, err := NewWatcher(s.rootDir, func(filePath string) error {
 		log.Printf("[Watch] File changed: %s", filePath)
 
-		// Re-discover pages
-		if err := s.Discover(); err != nil {
-			return fmt.Errorf("failed to re-discover pages: %w", err)
-		}
+		// Check if this is a page file or a source file
+		isPageFile := s.isPageFile(filePath)
 
-		// Broadcast reload to all connected clients
-		s.BroadcastReload(filePath)
+		if isPageFile {
+			// Re-discover pages for page file changes
+			if err := s.Discover(); err != nil {
+				return fmt.Errorf("failed to re-discover pages: %w", err)
+			}
+
+			// Broadcast reload to all connected clients
+			s.BroadcastReload(filePath)
+		} else {
+			// For non-page files (external source files), just refresh affected sources
+			s.RefreshSourcesForFile(filePath)
+		}
 
 		return nil
 	}, debug)
@@ -2130,6 +2138,37 @@ func (s *Server) EnableWatch(debug bool) error {
 
 	log.Printf("[Watch] File watcher started for %s", s.rootDir)
 	return nil
+}
+
+// isPageFile checks if a file path corresponds to a page (vs an external data source file)
+func (s *Server) isPageFile(filePath string) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	for _, route := range s.routes {
+		if route.FilePath == filePath {
+			return true
+		}
+	}
+	return false
+}
+
+// RefreshSourcesForFile triggers a refresh on all sources that use the given file.
+func (s *Server) RefreshSourcesForFile(filePath string) {
+	s.connMu.RLock()
+	defer s.connMu.RUnlock()
+
+	if len(s.connections) == 0 {
+		return
+	}
+
+	log.Printf("[Server] Refreshing sources for file: %s (%d connections)", filePath, len(s.connections))
+
+	for _, handler := range s.connections {
+		if handler != nil {
+			handler.RefreshSourcesForFile(filePath)
+		}
+	}
 }
 
 // StopWatch stops the file watcher if it's running.
