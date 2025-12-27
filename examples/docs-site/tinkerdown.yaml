@@ -1,11 +1,11 @@
-title: "Livemdtools Documentation"
-description: "Multi-page documentation site for Livemdtools"
+title: "Tinkerdown Documentation"
+description: "Multi-page documentation site for Tinkerdown"
 type: "site"
 
 site:
   home: "index.md"
   logo: "/assets/logo.svg"
-  repository: "https://github.com/livetemplate/livemdtools"
+  repository: "https://github.com/livetemplate/tinkerdown"
 
 navigation:
   - title: "Getting Started"
