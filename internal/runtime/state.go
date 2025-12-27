@@ -13,6 +13,14 @@ import (
 	"github.com/livetemplate/tinkerdown/internal/source"
 )
 
+// Store is the interface for state objects that can handle actions.
+// All state types (GenericState for lvt-source) implement this interface.
+type Store interface {
+	HandleAction(action string, data map[string]interface{}) error
+	// Close releases resources. Optional - returns nil if not implemented.
+	Close() error
+}
+
 // GenericState holds runtime state for any source type.
 // It replaces the code-generated State structs that were previously compiled as plugins.
 type GenericState struct {
