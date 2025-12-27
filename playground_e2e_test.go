@@ -20,7 +20,7 @@ import (
 // TestPlaygroundPageLoads tests that the playground page loads correctly.
 func TestPlaygroundPageLoads(t *testing.T) {
 	// Create test server
-	srv := server.New("examples/autopersist-test")
+	srv := server.New("examples/lvt-source-file-test")
 	if err := srv.Discover(); err != nil {
 		t.Fatalf("Failed to discover pages: %v", err)
 	}
@@ -59,7 +59,7 @@ func TestPlaygroundPageLoads(t *testing.T) {
 // TestPlaygroundRenderAPI tests the /playground/render API endpoint.
 func TestPlaygroundRenderAPI(t *testing.T) {
 	// Create test server
-	srv := server.New("examples/autopersist-test")
+	srv := server.New("examples/lvt-source-file-test")
 	if err := srv.Discover(); err != nil {
 		t.Fatalf("Failed to discover pages: %v", err)
 	}
@@ -136,14 +136,14 @@ title: "Test App"
 	if !strings.Contains(previewStr, "Test App") {
 		t.Fatal("Preview missing page title")
 	}
-	if !strings.Contains(previewStr, "livemdtools-interactive-block") {
+	if !strings.Contains(previewStr, "tinkerdown-interactive-block") {
 		t.Fatal("Preview missing interactive block container")
 	}
 	// Check that PicoCSS and Livemdtools client are included
 	if !strings.Contains(previewStr, "picocss") {
 		t.Fatal("Preview missing PicoCSS")
 	}
-	if !strings.Contains(previewStr, "livemdtools-client.js") {
+	if !strings.Contains(previewStr, "tinkerdown-client.js") {
 		t.Fatal("Preview missing Livemdtools client JS")
 	}
 
@@ -153,7 +153,7 @@ title: "Test App"
 // TestPlaygroundRenderAPIValidation tests validation in the render API.
 func TestPlaygroundRenderAPIValidation(t *testing.T) {
 	// Create test server
-	srv := server.New("examples/autopersist-test")
+	srv := server.New("examples/lvt-source-file-test")
 	if err := srv.Discover(); err != nil {
 		t.Fatalf("Failed to discover pages: %v", err)
 	}
@@ -208,7 +208,7 @@ func TestPlaygroundRenderAPIValidation(t *testing.T) {
 // TestPlaygroundSessionExpiry tests that invalid session IDs return 404.
 func TestPlaygroundSessionExpiry(t *testing.T) {
 	// Create test server
-	srv := server.New("examples/autopersist-test")
+	srv := server.New("examples/lvt-source-file-test")
 	if err := srv.Discover(); err != nil {
 		t.Fatalf("Failed to discover pages: %v", err)
 	}
@@ -233,7 +233,7 @@ func TestPlaygroundSessionExpiry(t *testing.T) {
 // TestPlaygroundE2E performs an end-to-end browser test of the playground.
 func TestPlaygroundE2E(t *testing.T) {
 	// Create test server
-	srv := server.New("examples/autopersist-test")
+	srv := server.New("examples/lvt-source-file-test")
 	if err := srv.Discover(); err != nil {
 		t.Fatalf("Failed to discover pages: %v", err)
 	}

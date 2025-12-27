@@ -30,7 +30,7 @@ func TestExecToolbarManualMode(t *testing.T) {
 
 	// Verify source is configured with manual: true
 	if cfg.Sources == nil {
-		t.Fatal("No sources configured in livemdtools.yaml")
+		t.Fatal("No sources configured in tinkerdown.yaml")
 	}
 	source, ok := cfg.Sources["system-info"]
 	if !ok {
@@ -84,7 +84,7 @@ func TestExecToolbarManualMode(t *testing.T) {
 	err = chromedp.Run(ctx,
 		chromedp.Navigate(ts.URL+"/"),
 		chromedp.Sleep(3*time.Second),
-		chromedp.Evaluate(`document.querySelector('.livemdtools-interactive-block') !== null`, &hasInteractiveBlock),
+		chromedp.Evaluate(`document.querySelector('.tinkerdown-interactive-block') !== null`, &hasInteractiveBlock),
 	)
 	if err != nil {
 		t.Fatalf("Failed to navigate: %v", err)
@@ -173,7 +173,7 @@ func TestExecToolbarManualMode(t *testing.T) {
 		chromedp.Run(ctx, chromedp.Evaluate(`
 			(() => {
 				// Check if any console log contains 'Connected'
-				return window.livemdtools && window.livemdtools._client && window.livemdtools._client.isConnected ? true : false;
+				return window.tinkerdown && window.tinkerdown._client && window.tinkerdown._client.isConnected ? true : false;
 			})()
 		`, &isConnected))
 		if isConnected {

@@ -42,7 +42,7 @@ func TestLvtSourceRest(t *testing.T) {
 	// Create temporary directory with test config
 	tmpDir := t.TempDir()
 
-	// Write livemdtools.yaml with mock API URL
+	// Write tinkerdown.yaml with mock API URL
 	configContent := fmt.Sprintf(`title: "REST API Test"
 sources:
   users:
@@ -50,7 +50,7 @@ sources:
     url: %s/users
 `, mockAPI.URL)
 
-	if err := os.WriteFile(tmpDir+"/livemdtools.yaml", []byte(configContent), 0644); err != nil {
+	if err := os.WriteFile(tmpDir+"/tinkerdown.yaml", []byte(configContent), 0644); err != nil {
 		t.Fatalf("Failed to write config: %v", err)
 	}
 
@@ -94,7 +94,7 @@ title: "REST API Test"
 	}
 
 	// Load config
-	cfgContent, err := os.ReadFile(tmpDir + "/livemdtools.yaml")
+	cfgContent, err := os.ReadFile(tmpDir + "/tinkerdown.yaml")
 	if err != nil {
 		t.Fatalf("Failed to read config: %v", err)
 	}
@@ -156,7 +156,7 @@ title: "REST API Test"
 	err = chromedp.Run(ctx,
 		chromedp.Navigate(ts.URL+"/"),
 		chromedp.Sleep(3*time.Second),
-		chromedp.Evaluate(`document.querySelector('.livemdtools-interactive-block') !== null`, &hasInteractiveBlock),
+		chromedp.Evaluate(`document.querySelector('.tinkerdown-interactive-block') !== null`, &hasInteractiveBlock),
 	)
 	if err != nil {
 		t.Fatalf("Failed to navigate: %v", err)

@@ -21,7 +21,7 @@ import (
 // navigation (numbered sidebar with "CONTENTS" header and step counter) whenever
 // it found H2 headings, without checking if server-rendered site navigation exists.
 //
-// Fix: Added check for '.livemdtools-nav-sidebar' element before creating tutorial nav.
+// Fix: Added check for '.tinkerdown-nav-sidebar' element before creating tutorial nav.
 func TestTutorialNavigationDoesNotOverrideSiteNavigation(t *testing.T) {
 	// Setup: Start server with docs-site example
 	docsDir := "examples/docs-site"
@@ -100,7 +100,7 @@ func TestTutorialNavigationDoesNotOverrideSiteNavigation(t *testing.T) {
 		chromedp.Sleep(2*time.Second), // Give time for JavaScript to run
 
 		// Check for site navigation sidebar
-		chromedp.Evaluate(`document.querySelector('.livemdtools-nav-sidebar') !== null`, &siteNavExists),
+		chromedp.Evaluate(`document.querySelector('.tinkerdown-nav-sidebar') !== null`, &siteNavExists),
 
 		// Check for tutorial navigation elements
 		chromedp.Evaluate(`document.querySelectorAll('.nav-sidebar-steps').length`, &tutorialNavElements),

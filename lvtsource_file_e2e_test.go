@@ -25,7 +25,7 @@ func TestLvtSourceJSON(t *testing.T) {
 
 	// Verify sources are configured
 	if cfg.Sources == nil {
-		t.Fatal("No sources configured in livemdtools.yaml")
+		t.Fatal("No sources configured in tinkerdown.yaml")
 	}
 	userSource, ok := cfg.Sources["users"]
 	if !ok {

@@ -14,7 +14,7 @@ import (
 // TestMermaidDiagramsRendering verifies that Mermaid.js diagrams render correctly
 func TestMermaidDiagramsRendering(t *testing.T) {
 	// Start the server
-	serverCmd := exec.Command("./livemdtools", "serve", "examples/counter", "--port", "8090")
+	serverCmd := exec.Command("./tinkerdown", "serve", "examples/lvt-source-file-test", "--port", "8090")
 	serverCmd.Stdout = os.Stdout
 	serverCmd.Stderr = os.Stderr
 
