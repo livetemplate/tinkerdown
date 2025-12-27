@@ -76,10 +76,13 @@ func NewWasmSource(name, path, siteDir string, initConfig map[string]string) (*W
 	}
 
 	// Create module config with optional init data
+	// Use WithStartFunctions() to prevent auto-running _start,
+	// making this a "reactor" module that stays alive for function calls.
 	moduleConfig := wazero.NewModuleConfig().
 		WithStdout(os.Stdout).
 		WithStderr(os.Stderr).
-		WithArgs(name)
+		WithArgs(name).
+		WithStartFunctions()
 
 	// Add init config as environment variables
 	for k, v := range initConfig {

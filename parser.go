@@ -19,7 +19,7 @@ import (
 
 // SourceConfig represents a data source configuration for lvt-source blocks.
 type SourceConfig struct {
-	Type     string            `yaml:"type"`               // exec, pg, rest, csv, json, markdown, sqlite
+	Type     string            `yaml:"type"`               // exec, pg, rest, csv, json, markdown, sqlite, wasm
 	Cmd      string            `yaml:"cmd,omitempty"`      // For exec type
 	Query    string            `yaml:"query,omitempty"`    // For pg type
 	URL      string            `yaml:"url,omitempty"`      // For rest type
@@ -27,6 +27,7 @@ type SourceConfig struct {
 	Anchor   string            `yaml:"anchor,omitempty"`   // For markdown: section anchor (e.g., "#todos")
 	DB       string            `yaml:"db,omitempty"`       // For sqlite: database file path
 	Table    string            `yaml:"table,omitempty"`    // For sqlite: table name
+	Path     string            `yaml:"path,omitempty"`     // For wasm: path to .wasm file
 	Readonly *bool             `yaml:"readonly,omitempty"` // For markdown/sqlite: read-only mode (default: true)
 	Options  map[string]string `yaml:"options,omitempty"`
 	Manual   bool              `yaml:"manual,omitempty"`   // For exec: require Run button click
