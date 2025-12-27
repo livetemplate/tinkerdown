@@ -33,7 +33,7 @@ export class TutorialNavigation {
     }
 
     // Check if sidebar is disabled via config
-    const sidebarMeta = document.querySelector('meta[name="livemdtools-sidebar"]');
+    const sidebarMeta = document.querySelector('meta[name="tinkerdown-sidebar"]');
     if (sidebarMeta && sidebarMeta.getAttribute('content') === 'false') {
       return; // Sidebar disabled in config
     }

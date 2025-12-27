@@ -8,6 +8,7 @@ type Page struct {
 	Title             string
 	Type              string // tutorial, guide, reference, playground
 	SourceFile        string // Absolute path to source .md file (for error messages)
+	Sidebar           *bool  // nil = use default, true/false = explicit override
 	Config            PageConfig
 	StaticHTML        string
 	ServerBlocks      map[string]*ServerBlock

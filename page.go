@@ -36,6 +36,7 @@ func ParseFile(path string) (*Page, error) {
 	page.Type = fm.Type
 	page.StaticHTML = staticHTML
 	page.SourceFile = absPath // Track source file
+	page.Sidebar = fm.Sidebar // Page-level sidebar override
 	page.Config = PageConfig{
 		Persist:   fm.Persist,
 		MultiStep: fm.Steps > 0,
@@ -108,6 +109,7 @@ func ParseString(content string) (*Page, error) {
 	page.Type = fm.Type
 	page.StaticHTML = staticHTML
 	page.SourceFile = "playground"
+	page.Sidebar = fm.Sidebar // Page-level sidebar override
 	page.Config = PageConfig{
 		Persist:   fm.Persist,
 		MultiStep: fm.Steps > 0,

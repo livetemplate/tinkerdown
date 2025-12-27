@@ -1,5 +1,6 @@
 ---
 title: "WASM Data Source"
+sidebar: false
 sources:
   quotes:
     type: wasm

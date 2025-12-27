@@ -61,6 +61,9 @@ type Frontmatter struct {
 	Persist PersistMode `yaml:"persist"` // none, localstorage, server
 	Steps   int         `yaml:"steps"`
 
+	// Top-level convenience options
+	Sidebar *bool `yaml:"sidebar,omitempty"` // Show navigation sidebar (overrides features.sidebar)
+
 	// Config options (can override livemdtools.yaml)
 	Sources  map[string]SourceConfig `yaml:"sources,omitempty"`
 	Styling  *StylingConfig          `yaml:"styling,omitempty"`

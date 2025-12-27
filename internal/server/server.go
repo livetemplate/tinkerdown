@@ -308,9 +308,15 @@ func (s *Server) renderPage(page *tinkerdown.Page, currentPath string, host stri
 	// Render code blocks with metadata for client discovery
 	content := s.renderContent(page)
 
+	// Determine effective sidebar setting (page-level overrides site-level)
+	showSidebar := s.config.Features.Sidebar
+	if page.Sidebar != nil {
+		showSidebar = *page.Sidebar
+	}
+
 	// Render navigation sidebar if enabled in config
 	sidebar := ""
-	if s.siteManager != nil && s.config.Features.Sidebar {
+	if s.siteManager != nil && showSidebar {
 		sidebar = s.renderSidebar(currentPath)
 	}
 
@@ -1981,7 +1987,7 @@ func (s *Server) renderPage(page *tinkerdown.Page, currentPath string, host stri
         });
     </script>
 </body>
-</html>`, wsURL, s.config.Features.Sidebar, page.Title, sidebar, contentWithNav)
+</html>`, wsURL, showSidebar, page.Title, sidebar, contentWithNav)
 
 	return html
 }
