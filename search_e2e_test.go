@@ -66,7 +66,7 @@ func TestSearchFunctionality(t *testing.T) {
 
 	err = chromedp.Run(ctx,
 		chromedp.Navigate(ts.URL+"/"),
-		chromedp.WaitVisible(".livemdtools-nav-sidebar", chromedp.ByQuery),
+		chromedp.WaitVisible(".tinkerdown-nav-sidebar", chromedp.ByQuery),
 		chromedp.Sleep(500*time.Millisecond), // Wait for client to initialize
 		chromedp.OuterHTML("html", &htmlContent),
 
@@ -85,11 +85,11 @@ func TestSearchFunctionality(t *testing.T) {
 	}
 	t.Log("✓ Search button exists in sidebar")
 
-	// Test 2: Verify /search-index.json endpoint by checking window.livemdtoolsSearch loaded the index
+	// Test 2: Verify /search-index.json endpoint by checking window.tinkerdownSearch loaded the index
 	var searchIndexLength int
 	err = chromedp.Run(ctx,
 		chromedp.Sleep(1*time.Second), // Wait for search to initialize
-		chromedp.Evaluate(`window.livemdtoolsSearch ? window.livemdtoolsSearch.searchIndex.length : 0`, &searchIndexLength),
+		chromedp.Evaluate(`window.tinkerdownSearch ? window.tinkerdownSearch.searchIndex.length : 0`, &searchIndexLength),
 	)
 
 	if err != nil {
@@ -112,7 +112,7 @@ func TestSearchFunctionality(t *testing.T) {
 
 		// Debug: Check if button exists and search instance is available
 		chromedp.Evaluate(`document.querySelector('.search-button') !== null`, &buttonExists),
-		chromedp.Evaluate(`window.livemdtoolsSearch !== undefined`, &searchInstanceExists),
+		chromedp.Evaluate(`window.tinkerdownSearch !== undefined`, &searchInstanceExists),
 
 		// Use JavaScript click instead of chromedp Click
 		chromedp.Evaluate(`document.querySelector('.search-button').click()`, nil),
@@ -159,7 +159,7 @@ func TestSearchFunctionality(t *testing.T) {
 	var resultsCount int
 
 	err = chromedp.Run(ctx,
-		chromedp.SendKeys(".search-input", "livemdtools", chromedp.ByQuery),
+		chromedp.SendKeys(".search-input", "tinkerdown", chromedp.ByQuery),
 		chromedp.Sleep(500*time.Millisecond), // Wait for search to execute
 		chromedp.Evaluate(`document.querySelectorAll('.search-result').length`, &resultsCount),
 		chromedp.OuterHTML(".search-results", &resultsHTML),
@@ -362,7 +362,7 @@ func TestSearchFunctionality(t *testing.T) {
 
 	// Test 13: Verify search doesn't appear in non-site mode
 	// Create a separate test server for counter example
-	counterSrv := server.New("examples/counter")
+	counterSrv := server.New("examples/lvt-source-file-test")
 	if err := counterSrv.Discover(); err != nil {
 		t.Fatalf("Failed to discover counter pages: %v", err)
 	}

@@ -10,10 +10,10 @@ import (
 
 // TestSkillExamplesValidation runs the validation script on skill examples.
 // This is a golden file test - it ensures all skill examples remain valid
-// as the Livemdtools API evolves.
+// as the Tinkerdown API evolves.
 func TestSkillExamplesValidation(t *testing.T) {
 	// Find the validation script
-	scriptPath := "skills/livemdtools/scripts/validate.sh"
+	scriptPath := "skills/tinkerdown/scripts/validate.sh"
 	if _, err := os.Stat(scriptPath); os.IsNotExist(err) {
 		t.Skipf("Validation script not found at %s", scriptPath)
 	}
@@ -50,7 +50,7 @@ func TestSkillExamplesExist(t *testing.T) {
 		"10-status-page.md",
 	}
 
-	examplesDir := "skills/livemdtools/examples"
+	examplesDir := "skills/tinkerdown/examples"
 
 	for _, example := range expectedExamples {
 		path := filepath.Join(examplesDir, example)
@@ -63,9 +63,9 @@ func TestSkillExamplesExist(t *testing.T) {
 // TestSkillFilesExist verifies all skill documentation files exist
 func TestSkillFilesExist(t *testing.T) {
 	requiredFiles := []string{
-		"skills/livemdtools/SKILL.md",
-		"skills/livemdtools/reference.md",
-		"skills/livemdtools/scripts/validate.sh",
+		"skills/tinkerdown/SKILL.md",
+		"skills/tinkerdown/reference.md",
+		"skills/tinkerdown/scripts/validate.sh",
 	}
 
 	for _, file := range requiredFiles {
@@ -77,7 +77,7 @@ func TestSkillFilesExist(t *testing.T) {
 
 // TestSkillExampleStructure verifies each example has required elements
 func TestSkillExampleStructure(t *testing.T) {
-	examplesDir := "skills/livemdtools/examples"
+	examplesDir := "skills/tinkerdown/examples"
 
 	files, err := os.ReadDir(examplesDir)
 	if err != nil {
@@ -145,11 +145,9 @@ func TestLLMSTxtExists(t *testing.T) {
 	contentStr := string(content)
 
 	requiredSections := []string{
-		"# Livemdtools",
+		"# Tinkerdown",
 		"## Quick Start",
 		"## Key Attributes",
-		"lvt-submit",
-		"lvt-persist",
 		"lvt-click",
 		"lvt-source",
 	}

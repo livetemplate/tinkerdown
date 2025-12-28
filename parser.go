@@ -19,15 +19,18 @@ import (
 
 // SourceConfig represents a data source configuration for lvt-source blocks.
 type SourceConfig struct {
-	Type     string            `yaml:"type"`              // exec, pg, rest, csv, json, markdown
-	Cmd      string            `yaml:"cmd,omitempty"`     // For exec type
-	Query    string            `yaml:"query,omitempty"`   // For pg type
-	URL      string            `yaml:"url,omitempty"`     // For rest type
-	File     string            `yaml:"file,omitempty"`    // For csv/json/markdown types
-	Anchor   string            `yaml:"anchor,omitempty"`  // For markdown: section anchor (e.g., "#todos")
-	Readonly *bool             `yaml:"readonly,omitempty"` // For markdown: read-only mode (default: true)
+	Type     string            `yaml:"type"`               // exec, pg, rest, csv, json, markdown, sqlite, wasm
+	Cmd      string            `yaml:"cmd,omitempty"`      // For exec type
+	Query    string            `yaml:"query,omitempty"`    // For pg type
+	URL      string            `yaml:"url,omitempty"`      // For rest type
+	File     string            `yaml:"file,omitempty"`     // For csv/json/markdown types
+	Anchor   string            `yaml:"anchor,omitempty"`   // For markdown: section anchor (e.g., "#todos")
+	DB       string            `yaml:"db,omitempty"`       // For sqlite: database file path
+	Table    string            `yaml:"table,omitempty"`    // For sqlite: table name
+	Path     string            `yaml:"path,omitempty"`     // For wasm: path to .wasm file
+	Readonly *bool             `yaml:"readonly,omitempty"` // For markdown/sqlite: read-only mode (default: true)
 	Options  map[string]string `yaml:"options,omitempty"`
-	Manual   bool              `yaml:"manual,omitempty"`  // For exec: require Run button click
+	Manual   bool              `yaml:"manual,omitempty"`   // For exec: require Run button click
 }
 
 // StylingConfig represents styling/theme configuration.
@@ -57,6 +60,9 @@ type Frontmatter struct {
 	Type    string      `yaml:"type"`    // tutorial, guide, reference, playground
 	Persist PersistMode `yaml:"persist"` // none, localstorage, server
 	Steps   int         `yaml:"steps"`
+
+	// Top-level convenience options
+	Sidebar *bool `yaml:"sidebar,omitempty"` // Show navigation sidebar (overrides features.sidebar)
 
 	// Config options (can override livemdtools.yaml)
 	Sources  map[string]SourceConfig `yaml:"sources,omitempty"`
@@ -200,7 +206,7 @@ func injectBlockAttributes(html string, blocks []*CodeBlock, sources map[string]
 		if block.Type == "lvt" {
 			// Build container div with data attributes
 			container := fmt.Sprintf(
-				`<div class="livemdtools-interactive-block" data-livemdtools-block data-block-id="%s" data-block-type="lvt" data-language="lvt"`,
+				`<div class="tinkerdown-interactive-block" data-tinkerdown-block data-block-id="%s" data-block-type="lvt" data-language="lvt"`,
 				escapeHTML(blockID),
 			)
 
@@ -242,7 +248,7 @@ func injectBlockAttributes(html string, blocks []*CodeBlock, sources map[string]
 
 		// For server/wasm blocks, wrap the existing <pre><code> with attributes
 		wrapper := fmt.Sprintf(
-			`<div data-livemdtools-block data-block-id="%s" data-block-type="%s" data-language="%s"`,
+			`<div data-tinkerdown-block data-block-id="%s" data-block-type="%s" data-language="%s"`,
 			escapeHTML(blockID),
 			escapeHTML(block.Type),
 			escapeHTML(block.Language),

@@ -56,7 +56,7 @@ func TestLvtSourcePostgres(t *testing.T) {
 
 	// Verify source is configured
 	if cfg.Sources == nil {
-		t.Fatal("No sources configured in livemdtools.yaml")
+		t.Fatal("No sources configured in tinkerdown.yaml")
 	}
 	userSource, ok := cfg.Sources["users"]
 	if !ok {
@@ -107,7 +107,7 @@ func TestLvtSourcePostgres(t *testing.T) {
 	err = chromedp.Run(ctx,
 		chromedp.Navigate(ts.URL+"/"),
 		chromedp.Sleep(3*time.Second),
-		chromedp.Evaluate(`document.querySelector('.livemdtools-interactive-block') !== null`, &hasInteractiveBlock),
+		chromedp.Evaluate(`document.querySelector('.tinkerdown-interactive-block') !== null`, &hasInteractiveBlock),
 	)
 	if err != nil {
 		t.Fatalf("Failed to navigate: %v", err)

@@ -27,7 +27,7 @@ export class PageTOC {
 
   private init() {
     // Only run in site mode (when site navigation sidebar exists)
-    const siteNav = document.querySelector('.livemdtools-nav-sidebar');
+    const siteNav = document.querySelector('.tinkerdown-nav-sidebar');
     if (!siteNav) {
       return; // Not in site mode
     }
@@ -77,7 +77,7 @@ export class PageTOC {
   }
 
   private createTOC() {
-    const siteNav = document.querySelector('.livemdtools-nav-sidebar');
+    const siteNav = document.querySelector('.tinkerdown-nav-sidebar');
     if (!siteNav) return;
 
     // Find the current page link in the navigation

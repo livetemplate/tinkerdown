@@ -16,8 +16,8 @@ import (
 	"github.com/livetemplate/components/datatable"
 	"github.com/livetemplate/livetemplate"
 	"github.com/livetemplate/tinkerdown"
-	"github.com/livetemplate/tinkerdown/internal/compiler"
 	"github.com/livetemplate/tinkerdown/internal/config"
+	"github.com/livetemplate/tinkerdown/internal/runtime"
 )
 
 var upgrader = websocket.Upgrader{
@@ -51,8 +51,7 @@ type WebSocketHandler struct {
 	sourceFiles    map[string][]string            // blockID -> source file paths (for file watching)
 	debug          bool
 	server         *Server                        // Reference to server for connection tracking
-	compiler       *compiler.ServerBlockCompiler
-	stateFactories map[string]func() compiler.Store // Compiled state factories
+	stateFactories map[string]func() runtime.Store // State factories for lvt-source blocks
 	rootDir        string                          // Site root directory for database path
 	config         *config.Config                  // Site configuration with sources
 	conn           *websocket.Conn                 // Current connection for this handler
@@ -61,7 +60,7 @@ type WebSocketHandler struct {
 // BlockInstance represents a running LiveTemplate instance for an interactive block.
 type BlockInstance struct {
 	blockID  string
-	state    compiler.Store
+	state    runtime.Store
 	template *livetemplate.Template
 	conn     *websocket.Conn
 	mu       sync.Mutex
@@ -81,19 +80,18 @@ func NewWebSocketHandler(page *tinkerdown.Page, server *Server, debug bool, root
 		sourceFiles:    make(map[string][]string),
 		debug:          debug,
 		server:         server,
-		compiler:       compiler.NewServerBlockCompiler(debug),
-		stateFactories: make(map[string]func() compiler.Store),
+		stateFactories: make(map[string]func() runtime.Store),
 		rootDir:        rootDir,
 		config:         cfg,
 	}
 
-	// Compile all server blocks
-	h.compileServerBlocks()
+	// Initialize lvt-source blocks (no compilation needed)
+	h.initializeSourceBlocks()
 
 	return h
 }
 
-// Close cleans up all resources including plugin processes and build artifacts
+// Close cleans up all resources
 func (h *WebSocketHandler) Close() {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -102,7 +100,7 @@ func (h *WebSocketHandler) Close() {
 		log.Printf("[WS] Closing WebSocket handler, cleaning up %d instances", len(h.instances))
 	}
 
-	// Close all state instances (kills plugin processes)
+	// Close all state instances
 	for blockID, instance := range h.instances {
 		if instance.state != nil {
 			if err := instance.state.Close(); err != nil && h.debug {
@@ -113,15 +111,11 @@ func (h *WebSocketHandler) Close() {
 
 	// Clear instances map
 	h.instances = make(map[string]*BlockInstance)
-
-	// Cleanup compiler build artifacts
-	if h.compiler != nil {
-		h.compiler.Cleanup()
-	}
 }
 
-// compileServerBlocks compiles all server blocks into loadable plugins
-func (h *WebSocketHandler) compileServerBlocks() {
+// initializeSourceBlocks initializes all lvt-source blocks with runtime state.
+// Regular server blocks (Go code) are no longer supported.
+func (h *WebSocketHandler) initializeSourceBlocks() {
 	// Debug: list all server block IDs first
 	if h.debug {
 		var blockIDs []string
@@ -133,92 +127,96 @@ func (h *WebSocketHandler) compileServerBlocks() {
 
 	for blockID, block := range h.page.ServerBlocks {
 		if h.debug {
-			log.Printf("[WS] Compiling server block: %s (metadata: %v)", blockID, block.Metadata)
+			log.Printf("[WS] Processing server block: %s (metadata: %v)", blockID, block.Metadata)
 		}
 
-		var factory func() compiler.Store
-		var err error
-
-		// Check if this is an lvt-source block (takes precedence if both are present)
-		if sourceName := block.Metadata["lvt-source"]; sourceName != "" {
-			// lvt-source block - generate code to fetch from source
-			// Check page-level sources first (from frontmatter), then site-level (from tinkerdown.yaml)
-			sourceCfg, found := h.getEffectiveSource(sourceName)
-			if !found {
-				log.Printf("[WS] Source %q not found (checked frontmatter and tinkerdown.yaml) for block %s", sourceName, blockID)
-				continue
-			}
-			if h.debug {
-				log.Printf("[WS] Compiling lvt-source block: %s (source: %s, type: %s)", blockID, sourceName, sourceCfg.Type)
-			}
-			// Pass the current markdown file path for same-file markdown sources
-			currentFile := ""
-			if h.page != nil {
-				currentFile = h.page.SourceFile
-			}
-			factory, err = h.compiler.CompileLvtSource(blockID, sourceName, sourceCfg, h.rootDir, currentFile, block.Metadata)
-
-			// Track source files for markdown sources (for live refresh)
-			if sourceCfg.Type == "markdown" {
-				var sourceFilePath string
-				if sourceCfg.File != "" {
-					// External file - resolve relative to root or current file
-					if filepath.IsAbs(sourceCfg.File) {
-						sourceFilePath = sourceCfg.File
-					} else {
-						// Try relative to current file first, then root
-						if currentFile != "" {
-							sourceFilePath = filepath.Join(filepath.Dir(currentFile), sourceCfg.File)
-						} else {
-							sourceFilePath = filepath.Join(h.rootDir, sourceCfg.File)
-						}
-					}
-				} else {
-					// Same-file source
-					sourceFilePath = currentFile
-				}
-				if sourceFilePath != "" {
-					// Make path relative to rootDir for consistent matching with watcher events
-					if relPath, err := filepath.Rel(h.rootDir, sourceFilePath); err == nil {
-						sourceFilePath = relPath
-					}
-					h.sourceFiles[blockID] = append(h.sourceFiles[blockID], sourceFilePath)
-					if h.debug {
-						log.Printf("[WS] Block %s tracks source file: %s", blockID, sourceFilePath)
-					}
-				}
-			}
-		} else if block.Metadata["auto-persist"] == "true" {
-			// Auto-persist block - generate code from form fields
-			dbPath := filepath.Join(h.rootDir, "site.sqlite")
-			if h.debug {
-				log.Printf("[WS] Compiling auto-persist block: %s (db: %s)", blockID, dbPath)
-			}
-			factory, err = h.compiler.CompileAutoPersist(blockID, block.Content, dbPath)
-		} else {
-			// Regular server block
-			factory, err = h.compiler.CompileServerBlock(block)
-		}
-
-		if err != nil {
-			log.Printf("[WS] Failed to compile block %s: %v", blockID, err)
+		// Only lvt-source blocks are supported
+		sourceName := block.Metadata["lvt-source"]
+		if sourceName == "" {
+			// Regular server blocks (Go code) are no longer supported
+			log.Printf("[WS] ERROR: Server block %s is not an lvt-source block. Go code blocks are no longer supported.", blockID)
+			log.Printf("[WS] Please migrate to lvt-source by defining a source in frontmatter or tinkerdown.yaml")
 			continue
+		}
+
+		// lvt-source block - use runtime.GenericState (no compilation needed!)
+		// Check page-level sources first (from frontmatter), then site-level (from tinkerdown.yaml)
+		sourceCfg, found := h.getEffectiveSource(sourceName)
+		if !found {
+			log.Printf("[WS] Source %q not found (checked frontmatter and tinkerdown.yaml) for block %s", sourceName, blockID)
+			continue
+		}
+		if h.debug {
+			log.Printf("[WS] Creating runtime state for lvt-source block: %s (source: %s, type: %s)", blockID, sourceName, sourceCfg.Type)
+		}
+		// Pass the current markdown file path for same-file markdown sources
+		currentFile := ""
+		if h.page != nil {
+			currentFile = h.page.SourceFile
+		}
+
+		// Create runtime state factory
+		// Capture variables for closure
+		srcName, srcCfg, rootDir, curFile := sourceName, sourceCfg, h.rootDir, currentFile
+		// Copy metadata for closure
+		blockMeta := make(map[string]string)
+		for k, v := range block.Metadata {
+			blockMeta[k] = v
+		}
+		factory := func() runtime.Store {
+			state, err := runtime.NewGenericStateWithMetadata(srcName, srcCfg, rootDir, curFile, blockMeta)
+			if err != nil {
+				log.Printf("[WS] Failed to create runtime state for %s: %v", srcName, err)
+				return nil
+			}
+			return state
 		}
 
 		h.stateFactories[blockID] = factory
 
+		// Track source files for markdown sources (for live refresh)
+		if sourceCfg.Type == "markdown" {
+			var sourceFilePath string
+			if sourceCfg.File != "" {
+				// External file - resolve relative to root or current file
+				if filepath.IsAbs(sourceCfg.File) {
+					sourceFilePath = sourceCfg.File
+				} else {
+					// Try relative to current file first, then root
+					if currentFile != "" {
+						sourceFilePath = filepath.Join(filepath.Dir(currentFile), sourceCfg.File)
+					} else {
+						sourceFilePath = filepath.Join(h.rootDir, sourceCfg.File)
+					}
+				}
+			} else {
+				// Same-file source
+				sourceFilePath = currentFile
+			}
+			if sourceFilePath != "" {
+				// Make path relative to rootDir for consistent matching with watcher events
+				if relPath, err := filepath.Rel(h.rootDir, sourceFilePath); err == nil {
+					sourceFilePath = relPath
+				}
+				h.sourceFiles[blockID] = append(h.sourceFiles[blockID], sourceFilePath)
+				if h.debug {
+					log.Printf("[WS] Block %s tracks source file: %s", blockID, sourceFilePath)
+				}
+			}
+		}
+
 		if h.debug {
-			log.Printf("[WS] Successfully compiled block: %s", blockID)
+			log.Printf("[WS] Successfully initialized block: %s", blockID)
 		}
 	}
 
-	// Debug: list all compiled state factories
+	// Debug: list all state factories
 	if h.debug {
 		var factoryIDs []string
 		for id := range h.stateFactories {
 			factoryIDs = append(factoryIDs, id)
 		}
-		log.Printf("[WS] Compiled state factories: %v", factoryIDs)
+		log.Printf("[WS] State factories: %v", factoryIDs)
 	}
 }
 
@@ -236,6 +234,9 @@ func (h *WebSocketHandler) getEffectiveSource(name string) (config.SourceConfig,
 				URL:      src.URL,
 				File:     src.File,
 				Anchor:   src.Anchor,
+				DB:       src.DB,
+				Table:    src.Table,
+				Path:     src.Path,
 				Readonly: src.Readonly,
 				Options:  src.Options,
 				Manual:   src.Manual,

@@ -15,7 +15,7 @@ import (
 )
 
 // TestFrontmatterSources tests that sources defined in markdown frontmatter work correctly
-// without requiring a livemdtools.yaml file.
+// without requiring a tinkerdown.yaml file.
 func TestFrontmatterSources(t *testing.T) {
 	// Create test server - no config file needed, sources are in frontmatter
 	srv := server.New("examples/lvt-source-file-test")

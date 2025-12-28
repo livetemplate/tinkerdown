@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -15,6 +16,24 @@ import (
 	"github.com/chromedp/chromedp"
 	"github.com/livetemplate/tinkerdown/internal/server"
 )
+
+// threadSafeLogs provides thread-safe access to console logs
+type threadSafeLogs struct {
+	mu   sync.RWMutex
+	logs []string
+}
+
+func (l *threadSafeLogs) append(msg string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.logs = append(l.logs, msg)
+}
+
+func (l *threadSafeLogs) get() []string {
+	l.mu.RLock()
+	defer l.mu.RUnlock()
+	return append([]string{}, l.logs...)
+}
 
 // createTempMarkdownExample creates a temporary copy of the markdown-data-todo example
 // for testing write operations without modifying the original files.
@@ -27,13 +46,34 @@ func createTempMarkdownExample(t *testing.T) (string, func()) {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
 
-	// Create index.md with test content
+	// Create _data directory for separate data file
+	dataDir := filepath.Join(tempDir, "_data")
+	if err := os.MkdirAll(dataDir, 0755); err != nil {
+		os.RemoveAll(tempDir)
+		t.Fatalf("Failed to create _data dir: %v", err)
+	}
+
+	// Create data file with tasks
+	dataContent := `# Tasks {#tasks}
+
+- [ ] First task <!-- id:task1 -->
+- [x] Second task completed <!-- id:task2 -->
+- [ ] Third task <!-- id:task3 -->
+`
+	dataPath := filepath.Join(dataDir, "tasks.md")
+	if err := os.WriteFile(dataPath, []byte(dataContent), 0644); err != nil {
+		os.RemoveAll(tempDir)
+		t.Fatalf("Failed to write tasks.md: %v", err)
+	}
+
+	// Create index.md with test content - using file: for separate data file
 	indexContent := `---
 title: "Markdown Data Todo Test"
 sources:
   tasks:
     type: markdown
-    anchor: "#data-section"
+    file: "_data/tasks.md"
+    anchor: "#tasks"
     readonly: false
 ---
 
@@ -77,14 +117,6 @@ sources:
     <button lvt-click="Refresh" style="margin-top: 8px;">Refresh</button>
 </main>
 ` + "```" + `
-
----
-
-## Data Section {#data-section}
-
-- [ ] First task <!-- id:task1 -->
-- [x] Second task completed <!-- id:task2 -->
-- [ ] Third task <!-- id:task3 -->
 `
 
 	indexPath := filepath.Join(tempDir, "index.md")
@@ -101,17 +133,17 @@ sources:
 }
 
 // setupMarkdownTest creates a test server and chromedp context for markdown tests
-func setupMarkdownTest(t *testing.T, exampleDir string) (*httptest.Server, context.Context, context.CancelFunc, *[]string) {
+func setupMarkdownTest(t *testing.T, exampleDir string) (*httptest.Server, context.Context, context.CancelFunc, *threadSafeLogs) {
 	return setupMarkdownTestInternal(t, exampleDir, false)
 }
 
 // setupMarkdownTestWithWatch creates a test server with file watching enabled
-func setupMarkdownTestWithWatch(t *testing.T, exampleDir string) (*httptest.Server, context.Context, context.CancelFunc, *[]string) {
+func setupMarkdownTestWithWatch(t *testing.T, exampleDir string) (*httptest.Server, context.Context, context.CancelFunc, *threadSafeLogs) {
 	return setupMarkdownTestInternal(t, exampleDir, true)
 }
 
 // setupMarkdownTestInternal is the internal helper for setting up test servers
-func setupMarkdownTestInternal(t *testing.T, exampleDir string, enableWatch bool) (*httptest.Server, context.Context, context.CancelFunc, *[]string) {
+func setupMarkdownTestInternal(t *testing.T, exampleDir string, enableWatch bool) (*httptest.Server, context.Context, context.CancelFunc, *threadSafeLogs) {
 	t.Helper()
 
 	// Create test server - sources are defined in frontmatter
@@ -150,12 +182,12 @@ func setupMarkdownTestInternal(t *testing.T, exampleDir string, enableWatch bool
 		ts.Close()
 	}
 
-	// Store console logs for debugging
-	consoleLogs := &[]string{}
+	// Store console logs for debugging (thread-safe)
+	consoleLogs := &threadSafeLogs{}
 	chromedp.ListenTarget(ctx, func(ev interface{}) {
 		if ev, ok := ev.(*runtime.EventConsoleAPICalled); ok {
 			for _, arg := range ev.Args {
-				*consoleLogs = append(*consoleLogs, fmt.Sprintf("[Console] %s", arg.Value))
+				consoleLogs.append(fmt.Sprintf("[Console] %s", arg.Value))
 			}
 		}
 	})
@@ -323,7 +355,7 @@ func TestLvtSourceMarkdownToggle(t *testing.T) {
 		var htmlContent string
 		chromedp.Run(ctx, chromedp.OuterHTML("html", &htmlContent))
 		t.Logf("HTML (first 2000 chars): %s", htmlContent[:min(2000, len(htmlContent))])
-		t.Logf("Console logs: %v", *consoleLogs)
+		t.Logf("Console logs: %v", consoleLogs.get())
 		t.Fatal("Task list was not rendered")
 	}
 	t.Log("Task list rendered")
@@ -374,13 +406,13 @@ func TestLvtSourceMarkdownToggle(t *testing.T) {
 	}
 
 	if !afterChecked {
-		t.Logf("Console logs: %v", *consoleLogs)
+		t.Logf("Console logs: %v", consoleLogs.get())
 		t.Fatal("Checkbox should be checked after toggle")
 	}
 	t.Log("Checkbox is now checked")
 
-	// Verify the file was updated
-	content, err := os.ReadFile(filepath.Join(tempDir, "index.md"))
+	// Verify the data file was updated
+	content, err := os.ReadFile(filepath.Join(tempDir, "_data", "tasks.md"))
 	if err != nil {
 		t.Fatalf("Failed to read file: %v", err)
 	}
@@ -421,7 +453,7 @@ func TestLvtSourceMarkdownToggleBack(t *testing.T) {
 		var htmlContent string
 		chromedp.Run(ctx, chromedp.OuterHTML("html", &htmlContent))
 		t.Logf("HTML (first 2000 chars): %s", htmlContent[:min(2000, len(htmlContent))])
-		t.Logf("Console logs: %v", *consoleLogs)
+		t.Logf("Console logs: %v", consoleLogs.get())
 		t.Fatal("Task list was not rendered")
 	}
 	t.Log("Task list rendered")
@@ -472,13 +504,13 @@ func TestLvtSourceMarkdownToggleBack(t *testing.T) {
 	}
 
 	if afterChecked {
-		t.Logf("Console logs: %v", *consoleLogs)
+		t.Logf("Console logs: %v", consoleLogs.get())
 		t.Fatal("Checkbox should be UNCHECKED after toggle")
 	}
 	t.Log("Checkbox is now unchecked")
 
-	// Verify the file was updated - should now have [ ] instead of [x]
-	content, err := os.ReadFile(filepath.Join(tempDir, "index.md"))
+	// Verify the data file was updated - should now have [ ] instead of [x]
+	content, err := os.ReadFile(filepath.Join(tempDir, "_data", "tasks.md"))
 	if err != nil {
 		t.Fatalf("Failed to read file: %v", err)
 	}
@@ -518,7 +550,7 @@ func TestLvtSourceMarkdownAdd(t *testing.T) {
 		var htmlContent string
 		chromedp.Run(ctx, chromedp.OuterHTML("html", &htmlContent))
 		t.Logf("HTML (first 2000 chars): %s", htmlContent[:min(2000, len(htmlContent))])
-		t.Logf("Console logs: %v", *consoleLogs)
+		t.Logf("Console logs: %v", consoleLogs.get())
 		t.Fatal("Add form was not rendered")
 	}
 	t.Log("Add form rendered")
@@ -557,7 +589,7 @@ func TestLvtSourceMarkdownAdd(t *testing.T) {
 	}
 
 	if newCount != initialCount+1 {
-		t.Logf("Console logs: %v", *consoleLogs)
+		t.Logf("Console logs: %v", consoleLogs.get())
 		t.Fatalf("Expected %d tasks after add, got %d", initialCount+1, newCount)
 	}
 	t.Logf("Task count increased to %d", newCount)
@@ -586,8 +618,8 @@ func TestLvtSourceMarkdownAdd(t *testing.T) {
 	}
 	t.Log("New task found in DOM")
 
-	// Verify file was updated
-	content, err := os.ReadFile(filepath.Join(tempDir, "index.md"))
+	// Verify data file was updated
+	content, err := os.ReadFile(filepath.Join(tempDir, "_data", "tasks.md"))
 	if err != nil {
 		t.Fatalf("Failed to read file: %v", err)
 	}
@@ -627,7 +659,7 @@ func TestLvtSourceMarkdownDelete(t *testing.T) {
 		var htmlContent string
 		chromedp.Run(ctx, chromedp.OuterHTML("html", &htmlContent))
 		t.Logf("HTML (first 2000 chars): %s", htmlContent[:min(2000, len(htmlContent))])
-		t.Logf("Console logs: %v", *consoleLogs)
+		t.Logf("Console logs: %v", consoleLogs.get())
 		t.Fatal("Task list was not rendered")
 	}
 	t.Log("Task list rendered")
@@ -676,7 +708,7 @@ func TestLvtSourceMarkdownDelete(t *testing.T) {
 	}
 
 	if newCount != initialCount-1 {
-		t.Logf("Console logs: %v", *consoleLogs)
+		t.Logf("Console logs: %v", consoleLogs.get())
 		t.Fatalf("Expected %d tasks after delete, got %d", initialCount-1, newCount)
 	}
 	t.Logf("Task count decreased to %d", newCount)
@@ -695,8 +727,8 @@ func TestLvtSourceMarkdownDelete(t *testing.T) {
 	}
 	t.Log("task1 removed from DOM")
 
-	// Verify file was updated
-	content, err := os.ReadFile(filepath.Join(tempDir, "index.md"))
+	// Verify data file was updated
+	content, err := os.ReadFile(filepath.Join(tempDir, "_data", "tasks.md"))
 	if err != nil {
 		t.Fatalf("Failed to read file: %v", err)
 	}
@@ -719,12 +751,33 @@ func createTempBulletListExample(t *testing.T) (string, func()) {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
 
+	// Create _data directory for separate data file
+	dataDir := filepath.Join(tempDir, "_data")
+	if err := os.MkdirAll(dataDir, 0755); err != nil {
+		os.RemoveAll(tempDir)
+		t.Fatalf("Failed to create _data dir: %v", err)
+	}
+
+	// Create data file with items
+	dataContent := `# Items {#items}
+
+- First item <!-- id:item1 -->
+- Second item <!-- id:item2 -->
+- Third item <!-- id:item3 -->
+`
+	dataPath := filepath.Join(dataDir, "items.md")
+	if err := os.WriteFile(dataPath, []byte(dataContent), 0644); err != nil {
+		os.RemoveAll(tempDir)
+		t.Fatalf("Failed to write items.md: %v", err)
+	}
+
 	indexContent := `---
 title: "Bullet List Test"
 sources:
   items:
     type: markdown
-    anchor: "#items-section"
+    file: "_data/items.md"
+    anchor: "#items"
     readonly: false
 ---
 
@@ -753,14 +806,6 @@ sources:
     </form>
 </main>
 ` + "```" + `
-
----
-
-## Items Section {#items-section}
-
-- First item <!-- id:item1 -->
-- Second item <!-- id:item2 -->
-- Third item <!-- id:item3 -->
 `
 
 	indexPath := filepath.Join(tempDir, "index.md")
@@ -797,7 +842,7 @@ func TestLvtSourceMarkdownBulletList(t *testing.T) {
 		var htmlContent string
 		chromedp.Run(ctx, chromedp.OuterHTML("html", &htmlContent))
 		t.Logf("HTML (first 2000 chars): %s", htmlContent[:min(2000, len(htmlContent))])
-		t.Logf("Console logs: %v", *consoleLogs)
+		t.Logf("Console logs: %v", consoleLogs.get())
 		t.Fatal("Item list was not rendered")
 	}
 	t.Log("Bullet list rendered")
@@ -841,12 +886,35 @@ func createTempTableExample(t *testing.T) (string, func()) {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
 
+	// Create _data directory for separate data file
+	dataDir := filepath.Join(tempDir, "_data")
+	if err := os.MkdirAll(dataDir, 0755); err != nil {
+		os.RemoveAll(tempDir)
+		t.Fatalf("Failed to create _data dir: %v", err)
+	}
+
+	// Create data file with products table
+	dataContent := `# Products {#products}
+
+| Name | Price |
+|------|-------|
+| Widget | $10 | <!-- id:prod1 -->
+| Gadget | $25 | <!-- id:prod2 -->
+| Gizmo | $15 | <!-- id:prod3 -->
+`
+	dataPath := filepath.Join(dataDir, "products.md")
+	if err := os.WriteFile(dataPath, []byte(dataContent), 0644); err != nil {
+		os.RemoveAll(tempDir)
+		t.Fatalf("Failed to write products.md: %v", err)
+	}
+
 	indexContent := `---
 title: "Table Test"
 sources:
   products:
     type: markdown
-    anchor: "#products-section"
+    file: "_data/products.md"
+    anchor: "#products"
     readonly: false
 ---
 
@@ -882,16 +950,6 @@ sources:
     </form>
 </main>
 ` + "```" + `
-
----
-
-## Products Section {#products-section}
-
-| Name | Price |
-|------|-------|
-| Widget | $10 | <!-- id:prod1 -->
-| Gadget | $25 | <!-- id:prod2 -->
-| Gizmo | $15 | <!-- id:prod3 -->
 `
 
 	indexPath := filepath.Join(tempDir, "index.md")
@@ -928,7 +986,7 @@ func TestLvtSourceMarkdownTable(t *testing.T) {
 		var htmlContent string
 		chromedp.Run(ctx, chromedp.OuterHTML("html", &htmlContent))
 		t.Logf("HTML (first 2000 chars): %s", htmlContent[:min(2000, len(htmlContent))])
-		t.Logf("Console logs: %v", *consoleLogs)
+		t.Logf("Console logs: %v", consoleLogs.get())
 		t.Fatal("Table was not rendered")
 	}
 	t.Log("Table rendered")
@@ -1072,7 +1130,7 @@ func TestLvtSourceMarkdownExternalFile(t *testing.T) {
 		var htmlContent string
 		chromedp.Run(ctx, chromedp.OuterHTML("html", &htmlContent))
 		t.Logf("HTML (first 2000 chars): %s", htmlContent[:min(2000, len(htmlContent))])
-		t.Logf("Console logs: %v", *consoleLogs)
+		t.Logf("Console logs: %v", consoleLogs.get())
 		t.Fatal("Note list was not rendered")
 	}
 	t.Log("External file data rendered")
@@ -1116,12 +1174,31 @@ func createTempMissingAnchorExample(t *testing.T) (string, func()) {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
 
+	// Create _data directory for separate data file
+	dataDir := filepath.Join(tempDir, "_data")
+	if err := os.MkdirAll(dataDir, 0755); err != nil {
+		os.RemoveAll(tempDir)
+		t.Fatalf("Failed to create _data dir: %v", err)
+	}
+
+	// Create data file with a different anchor than referenced
+	dataContent := `# Some Other Section {#other-section}
+
+- This is a different section
+`
+	dataPath := filepath.Join(dataDir, "items.md")
+	if err := os.WriteFile(dataPath, []byte(dataContent), 0644); err != nil {
+		os.RemoveAll(tempDir)
+		t.Fatalf("Failed to write items.md: %v", err)
+	}
+
 	// Create index.md that references non-existent anchor
 	indexContent := `---
 title: "Missing Anchor Test"
 sources:
   items:
     type: markdown
+    file: "_data/items.md"
     anchor: "#nonexistent-section"
 ---
 
@@ -1143,10 +1220,6 @@ sources:
     {{end}}
 </main>
 ` + "```" + `
-
-## Some Other Section {#other-section}
-
-- This is a different section
 `
 
 	indexPath := filepath.Join(tempDir, "index.md")
@@ -1249,7 +1322,7 @@ func TestLvtSourceMarkdownUpdate(t *testing.T) {
 		var htmlContent string
 		chromedp.Run(ctx, chromedp.OuterHTML("html", &htmlContent))
 		t.Logf("HTML (first 2000 chars): %s", htmlContent[:min(2000, len(htmlContent))])
-		t.Logf("Console logs: %v", *consoleLogs)
+		t.Logf("Console logs: %v", consoleLogs.get())
 		t.Fatal("Update button not found")
 	}
 	t.Log("Update button rendered")
@@ -1264,8 +1337,8 @@ func TestLvtSourceMarkdownUpdate(t *testing.T) {
 	}
 	t.Log("Update button clicked")
 
-	// Verify file was updated
-	content, err := os.ReadFile(filepath.Join(tempDir, "index.md"))
+	// Verify data file was updated
+	content, err := os.ReadFile(filepath.Join(tempDir, "_data", "tasks.md"))
 	if err != nil {
 		t.Fatalf("Failed to read file: %v", err)
 	}
@@ -1286,13 +1359,31 @@ func TestLvtSourceMarkdownMissingID(t *testing.T) {
 	}
 	defer os.RemoveAll(tempDir)
 
+	// Create _data directory for separate data file
+	dataDir := filepath.Join(tempDir, "_data")
+	if err := os.MkdirAll(dataDir, 0755); err != nil {
+		t.Fatalf("Failed to create _data dir: %v", err)
+	}
+
+	// Create data file with tasks that have NO IDs
+	dataContent := `# Tasks {#tasks}
+
+- [ ] Task without ID
+- [x] Another task without ID
+`
+	dataPath := filepath.Join(dataDir, "tasks.md")
+	if err := os.WriteFile(dataPath, []byte(dataContent), 0644); err != nil {
+		t.Fatalf("Failed to write tasks.md: %v", err)
+	}
+
 	// Create index.md with items that have NO IDs
 	indexContent := `---
 title: "Missing ID Test"
 sources:
   tasks:
     type: markdown
-    anchor: "#tasks-section"
+    file: "_data/tasks.md"
+    anchor: "#tasks"
     readonly: false
 ---
 
@@ -1310,13 +1401,6 @@ sources:
     <p><small>Total: {{len .Data}} tasks</small></p>
 </main>
 ` + "```" + `
-
----
-
-## Tasks Section {#tasks-section}
-
-- [ ] Task without ID
-- [x] Another task without ID
 `
 
 	indexPath := filepath.Join(tempDir, "index.md")
@@ -1344,7 +1428,7 @@ sources:
 		var htmlContent string
 		chromedp.Run(ctx, chromedp.OuterHTML("html", &htmlContent))
 		t.Logf("HTML (first 2000 chars): %s", htmlContent[:min(2000, len(htmlContent))])
-		t.Logf("Console logs: %v", *consoleLogs)
+		t.Logf("Console logs: %v", consoleLogs.get())
 		t.Fatal("Tasks not rendered")
 	}
 	t.Log("Tasks rendered")
@@ -1382,13 +1466,32 @@ func TestLvtSourceMarkdownSpecialChars(t *testing.T) {
 	}
 	defer os.RemoveAll(tempDir)
 
+	// Create _data directory for separate data file
+	dataDir := filepath.Join(tempDir, "_data")
+	if err := os.MkdirAll(dataDir, 0755); err != nil {
+		t.Fatalf("Failed to create _data dir: %v", err)
+	}
+
+	// Create data file with special characters
+	dataContent := `# Items {#items}
+
+- Item with <angle> brackets <!-- id:special1 -->
+- Item with "quotes" and 'apostrophes' <!-- id:special2 -->
+- Item with & ampersand <!-- id:special3 -->
+`
+	dataPath := filepath.Join(dataDir, "items.md")
+	if err := os.WriteFile(dataPath, []byte(dataContent), 0644); err != nil {
+		t.Fatalf("Failed to write items.md: %v", err)
+	}
+
 	// Create index.md with special characters in data
 	indexContent := `---
 title: "Special Chars Test"
 sources:
   items:
     type: markdown
-    anchor: "#items-section"
+    file: "_data/items.md"
+    anchor: "#items"
     readonly: false
 ---
 
@@ -1405,14 +1508,6 @@ sources:
     </ul>
 </main>
 ` + "```" + `
-
----
-
-## Items Section {#items-section}
-
-- Item with <angle> brackets <!-- id:special1 -->
-- Item with "quotes" and 'apostrophes' <!-- id:special2 -->
-- Item with & ampersand <!-- id:special3 -->
 `
 
 	indexPath := filepath.Join(tempDir, "index.md")
@@ -1440,7 +1535,7 @@ sources:
 		var htmlContent string
 		chromedp.Run(ctx, chromedp.OuterHTML("html", &htmlContent))
 		t.Logf("HTML (first 2000 chars): %s", htmlContent[:min(2000, len(htmlContent))])
-		t.Logf("Console logs: %v", *consoleLogs)
+		t.Logf("Console logs: %v", consoleLogs.get())
 		t.Fatal("Items not rendered")
 	}
 	t.Log("Items with special chars rendered")
@@ -1499,7 +1594,7 @@ func TestLvtSourceMarkdownExternalEdit(t *testing.T) {
 		var htmlContent string
 		chromedp.Run(ctx, chromedp.OuterHTML("html", &htmlContent))
 		t.Logf("HTML (first 2000 chars): %s", htmlContent[:min(2000, len(htmlContent))])
-		t.Logf("Console logs: %v", *consoleLogs)
+		t.Logf("Console logs: %v", consoleLogs.get())
 		t.Fatal("Notes list not rendered initially")
 	}
 	t.Log("Initial notes rendered")
@@ -1561,7 +1656,7 @@ func TestLvtSourceMarkdownExternalEdit(t *testing.T) {
 
 	if finalCount != 3 {
 		t.Logf("Expected 3 notes after external edit, got %d", finalCount)
-		t.Logf("Console logs: %v", *consoleLogs)
+		t.Logf("Console logs: %v", consoleLogs.get())
 		// This is expected if file watching is not working yet
 		t.Skip("File watching not fully implemented - test would pass when Phase 3 is complete")
 	}
@@ -1648,7 +1743,7 @@ func TestLvtSourceMarkdownConflictCopy(t *testing.T) {
 	}
 
 	// Log console for debugging
-	t.Logf("Console logs: %v", *consoleLogs)
+	t.Logf("Console logs: %v", consoleLogs.get())
 
 	if len(files) > 0 {
 		t.Logf("Conflict file(s) created: %v", files)

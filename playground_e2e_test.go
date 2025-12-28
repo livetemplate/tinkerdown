@@ -20,7 +20,7 @@ import (
 // TestPlaygroundPageLoads tests that the playground page loads correctly.
 func TestPlaygroundPageLoads(t *testing.T) {
 	// Create test server
-	srv := server.New("examples/autopersist-test")
+	srv := server.New("examples/lvt-source-file-test")
 	if err := srv.Discover(); err != nil {
 		t.Fatalf("Failed to discover pages: %v", err)
 	}
@@ -59,7 +59,7 @@ func TestPlaygroundPageLoads(t *testing.T) {
 // TestPlaygroundRenderAPI tests the /playground/render API endpoint.
 func TestPlaygroundRenderAPI(t *testing.T) {
 	// Create test server
-	srv := server.New("examples/autopersist-test")
+	srv := server.New("examples/lvt-source-file-test")
 	if err := srv.Discover(); err != nil {
 		t.Fatalf("Failed to discover pages: %v", err)
 	}
@@ -67,24 +67,29 @@ func TestPlaygroundRenderAPI(t *testing.T) {
 	ts := httptest.NewServer(srv)
 	defer ts.Close()
 
-	// The lvt block needs lvt-persist to auto-generate a server block
+	// The lvt block needs lvt-source with a source defined in frontmatter
 	markdown := `---
 title: "Test App"
+sources:
+  items:
+    type: sqlite
+    table: items
+    readonly: false
 ---
 
 # Test App
 
 ` + "```lvt" + `
-<div class="p-4">
+<main lvt-source="items">
     <h1 class="text-xl">Hello World</h1>
-    <form lvt-submit="save" lvt-persist="items">
+    <form lvt-submit="Add">
         <input type="text" name="title" required>
         <button type="submit">Add</button>
     </form>
-    {{range .Items}}
+    {{range .Data}}
     <div>{{.Title}}</div>
     {{end}}
-</div>
+</main>
 ` + "```"
 
 	// Send render request
@@ -136,14 +141,14 @@ title: "Test App"
 	if !strings.Contains(previewStr, "Test App") {
 		t.Fatal("Preview missing page title")
 	}
-	if !strings.Contains(previewStr, "livemdtools-interactive-block") {
+	if !strings.Contains(previewStr, "tinkerdown-interactive-block") {
 		t.Fatal("Preview missing interactive block container")
 	}
 	// Check that PicoCSS and Livemdtools client are included
 	if !strings.Contains(previewStr, "picocss") {
 		t.Fatal("Preview missing PicoCSS")
 	}
-	if !strings.Contains(previewStr, "livemdtools-client.js") {
+	if !strings.Contains(previewStr, "tinkerdown-client.js") {
 		t.Fatal("Preview missing Livemdtools client JS")
 	}
 
@@ -153,7 +158,7 @@ title: "Test App"
 // TestPlaygroundRenderAPIValidation tests validation in the render API.
 func TestPlaygroundRenderAPIValidation(t *testing.T) {
 	// Create test server
-	srv := server.New("examples/autopersist-test")
+	srv := server.New("examples/lvt-source-file-test")
 	if err := srv.Discover(); err != nil {
 		t.Fatalf("Failed to discover pages: %v", err)
 	}
@@ -208,7 +213,7 @@ func TestPlaygroundRenderAPIValidation(t *testing.T) {
 // TestPlaygroundSessionExpiry tests that invalid session IDs return 404.
 func TestPlaygroundSessionExpiry(t *testing.T) {
 	// Create test server
-	srv := server.New("examples/autopersist-test")
+	srv := server.New("examples/lvt-source-file-test")
 	if err := srv.Discover(); err != nil {
 		t.Fatalf("Failed to discover pages: %v", err)
 	}
@@ -233,7 +238,7 @@ func TestPlaygroundSessionExpiry(t *testing.T) {
 // TestPlaygroundE2E performs an end-to-end browser test of the playground.
 func TestPlaygroundE2E(t *testing.T) {
 	// Create test server
-	srv := server.New("examples/autopersist-test")
+	srv := server.New("examples/lvt-source-file-test")
 	if err := srv.Discover(); err != nil {
 		t.Fatalf("Failed to discover pages: %v", err)
 	}
@@ -293,25 +298,30 @@ func TestPlaygroundE2E(t *testing.T) {
 	t.Log("✓ Playground preview frame found")
 
 	// Test 2: Enter markdown and run preview
-	// The lvt block needs lvt-persist to auto-generate a server block
+	// The lvt block needs lvt-source with a source defined in frontmatter
 	testMarkdown := `---
 title: "E2E Test App"
+sources:
+  testdata:
+    type: sqlite
+    table: testdata
+    readonly: false
 ---
 
 # E2E Test
 
 ` + "```lvt" + `
-<div class="test-content p-4">
+<main lvt-source="testdata" class="test-content p-4">
     <h1>E2E Test Content</h1>
     <p class="test-message">This is a test message</p>
-    <form lvt-submit="save" lvt-persist="testdata">
+    <form lvt-submit="Add">
         <input type="text" name="content" required>
         <button type="submit">Add</button>
     </form>
-    {{range .Testdata}}
+    {{range .Data}}
     <div>{{.Content}}</div>
     {{end}}
-</div>
+</main>
 ` + "```"
 
 	err = chromedp.Run(ctx,

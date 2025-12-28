@@ -36,6 +36,7 @@ func ParseFile(path string) (*Page, error) {
 	page.Type = fm.Type
 	page.StaticHTML = staticHTML
 	page.SourceFile = absPath // Track source file
+	page.Sidebar = fm.Sidebar // Page-level sidebar override
 	page.Config = PageConfig{
 		Persist:   fm.Persist,
 		MultiStep: fm.Steps > 0,
@@ -108,6 +109,7 @@ func ParseString(content string) (*Page, error) {
 	page.Type = fm.Type
 	page.StaticHTML = staticHTML
 	page.SourceFile = "playground"
+	page.Sidebar = fm.Sidebar // Page-level sidebar override
 	page.Config = PageConfig{
 		Persist:   fm.Persist,
 		MultiStep: fm.Steps > 0,
@@ -157,7 +159,6 @@ func (p *Page) buildBlocks(codeBlocks []*CodeBlock, sourceFile string) error {
 			// IMPORTANT: Extract lvt-source metadata from ORIGINAL content BEFORE template processing
 			// because autoGenerateTableTemplate() strips the lvt-source attribute
 			stateRef := cb.Metadata["state"]
-			hasAutoPersist := hasAutoPersistForm(cb.Content)
 			sourceName := getLvtSource(cb.Content)
 			elementType := getLvtSourceElementType(cb.Content)
 			columns := getTableColumns(cb.Content)
@@ -167,28 +168,23 @@ func (p *Page) buildBlocks(codeBlocks []*CodeBlock, sourceFile string) error {
 			processedContent := autoGenerateTableTemplate(cb.Content)
 			processedContent = autoGenerateSelectTemplate(processedContent)
 
-			if stateRef == "" && (hasAutoPersist || sourceName != "") {
-				// Create auto-generated server block
+			if stateRef == "" && sourceName != "" {
+				// Create auto-generated server block for lvt-source
 				blockID := getBlockID(cb, i)
 				autoID := "auto-persist-" + blockID
 
 				// Build metadata for the generated server block
-				metadata := map[string]string{}
-				if hasAutoPersist {
-					metadata["auto-persist"] = "true"
+				metadata := map[string]string{
+					"lvt-source":  sourceName,
+					"lvt-element": elementType,
 				}
-				if sourceName != "" {
-					metadata["lvt-source"] = sourceName
-					// Add element type info for code generation
-					metadata["lvt-element"] = elementType
-					if elementType == "table" {
-						// Pass column and action info for datatable generation
-						if columns != "" {
-							metadata["lvt-columns"] = columns
-						}
-						if actions != "" {
-							metadata["lvt-actions"] = actions
-						}
+				if elementType == "table" {
+					// Pass column and action info for datatable generation
+					if columns != "" {
+						metadata["lvt-columns"] = columns
+					}
+					if actions != "" {
+						metadata["lvt-actions"] = actions
 					}
 				}
 
@@ -283,12 +279,7 @@ func getBlockID(cb *CodeBlock, index int) string {
 	return fmt.Sprintf("%s-%d", cb.Type, index)
 }
 
-// hasAutoPersistForm checks if LVT content contains a form with lvt-persist attribute
-func hasAutoPersistForm(content string) bool {
-	// Look for <form ... lvt-persist="...">
-	formRegex := regexp.MustCompile(`<form[^>]*lvt-persist="[^"]+"[^>]*>`)
-	return formRegex.MatchString(content)
-}
+// NOTE: lvt-persist has been removed. Use lvt-source with type: sqlite instead.
 
 // getLvtSource extracts the lvt-source attribute value from LVT content
 // Returns empty string if not found
