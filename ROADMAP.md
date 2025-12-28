@@ -243,7 +243,7 @@ Auto-rendering is for common patterns only. Use Go templates when you need:
 
 ---
 
-### 1.2 Source Caching Layer
+### 2.2 Source Caching Layer
 **Current State:** Every page view refetches all data.
 
 **Work Required:**
@@ -265,7 +265,7 @@ Auto-rendering is for common patterns only. Use Go templates when you need:
 
 ---
 
-### 1.3 Multi-Page WebSocket Support
+### 2.3 Multi-Page WebSocket Support
 **Files:** `internal/server/server.go`
 
 **Current State:** WebSocket handler only serves first route - multi-page sites limited.
@@ -285,7 +285,7 @@ Auto-rendering is for common patterns only. Use Go templates when you need:
 ### Value Proposition
 > "Reduce time from idea to working app by 10x"
 
-### 2.1 Enhanced CLI Scaffolding
+### 3.1 Enhanced CLI Scaffolding
 **Files:** `cmd/tinkerdown/commands/new.go`
 
 **Current State:** `new` command creates minimal template only.
@@ -306,7 +306,7 @@ Auto-rendering is for common patterns only. Use Go templates when you need:
 
 ---
 
-### 2.2 Expanded Validation
+### 3.2 Expanded Validation
 **Files:** `cmd/tinkerdown/commands/validate.go`
 
 **Current State:** Only validates markdown parsing and Mermaid syntax.
@@ -323,7 +323,7 @@ Auto-rendering is for common patterns only. Use Go templates when you need:
 
 ---
 
-### 2.3 Debug Mode & Logging
+### 3.3 Debug Mode & Logging
 **Files:** `internal/server/server.go`
 
 **Work Required:**
@@ -338,7 +338,7 @@ Auto-rendering is for common patterns only. Use Go templates when you need:
 
 ---
 
-### 2.4 Hot Reload for Configuration
+### 3.4 Hot Reload for Configuration
 **Current State:** Config changes require server restart.
 
 **Work Required:**
@@ -351,7 +351,7 @@ Auto-rendering is for common patterns only. Use Go templates when you need:
 
 ---
 
-### 2.5 WASM Source Development Kit
+### 3.5 WASM Source Development Kit
 **New Feature** - Critical for ecosystem growth
 
 **Work Required:**
@@ -365,7 +365,7 @@ Auto-rendering is for common patterns only. Use Go templates when you need:
 
 ---
 
-### 2.6 Documentation Cleanup & Consolidation
+### 3.6 Documentation Cleanup & Consolidation
 
 **Current State:** Documentation is scattered across root files, `docs/`, `skills/`, and examples. Some docs are outdated or redundant.
 
@@ -449,7 +449,7 @@ docs/
 ### Value Proposition
 > "Connect to any data source in minutes, not days"
 
-### 3.1 GraphQL Source
+### 4.1 GraphQL Source
 **Work Required:**
 - [ ] New source type: `graphql`
 - [ ] Config: `url`, `query`, `variables`
@@ -461,7 +461,7 @@ docs/
 
 ---
 
-### 3.2 MongoDB Source
+### 4.2 MongoDB Source
 **Work Required:**
 - [ ] New source type: `mongodb`
 - [ ] Config: `uri`, `database`, `collection`, `filter`
@@ -472,7 +472,7 @@ docs/
 
 ---
 
-### 3.3 Source Composition
+### 4.3 Source Composition
 **New Feature**
 
 **Work Required:**
@@ -499,7 +499,7 @@ docs/
 
 ---
 
-### 3.4 Webhook Source
+### 4.4 Webhook Source
 **Work Required:**
 - [ ] Source that receives HTTP POST
 - [ ] Store latest N events
@@ -510,7 +510,7 @@ docs/
 
 ---
 
-### 3.5 S3/Cloud Storage Source
+### 4.5 S3/Cloud Storage Source
 **Work Required:**
 - [ ] New source type: `s3`
 - [ ] List objects, read JSON/CSV files
@@ -526,7 +526,7 @@ docs/
 ### Value Proposition
 > "Deploy with confidence to real users"
 
-### 4.1 Authentication Middleware
+### 5.1 Authentication Middleware
 **Work Required:**
 - [ ] Built-in auth strategies:
   - API key (header-based)
@@ -547,7 +547,7 @@ docs/
 
 ---
 
-### 4.2 Request Rate Limiting
+### 5.2 Request Rate Limiting
 **Work Required:**
 - [ ] Per-IP rate limiting
 - [ ] Per-source rate limiting (protect external APIs)
@@ -558,7 +558,7 @@ docs/
 
 ---
 
-### 4.3 Health & Metrics Endpoints
+### 5.3 Health & Metrics Endpoints
 **Work Required:**
 - [ ] `/health` - Basic liveness check
 - [ ] `/ready` - Readiness including source connectivity
@@ -572,7 +572,7 @@ docs/
 
 ---
 
-### 4.4 Graceful Shutdown
+### 5.4 Graceful Shutdown
 **Work Required:**
 - [ ] Track in-flight requests
 - [ ] Drain WebSocket connections
@@ -584,7 +584,7 @@ docs/
 
 ---
 
-### 4.5 Single Binary Distribution
+### 5.5 Single Binary Distribution
 **Work Required:**
 - [ ] Embed client assets in Go binary
 - [ ] `tinkerdown build <dir>` command producing standalone binary
@@ -595,7 +595,7 @@ docs/
 
 ---
 
-### 4.6 Security Hardening
+### 5.6 Security Hardening
 
 **Work Required:**
 
@@ -650,7 +650,7 @@ docs/
 ### Value Proposition
 > "Beautiful apps without CSS expertise"
 
-### 5.1 Component Library
+### 6.1 Component Library
 **Work Required:**
 - [ ] Chart component (line, bar, pie via Chart.js or similar)
 - [ ] Modal/dialog component with `lvt-modal`
@@ -664,7 +664,7 @@ docs/
 
 ---
 
-### 5.2 Built-in Pagination
+### 6.2 Built-in Pagination
 **Current State:** Must render all data; large datasets slow.
 
 **Work Required:**
@@ -677,7 +677,7 @@ docs/
 
 ---
 
-### 5.3 Built-in Sorting & Filtering
+### 6.3 Built-in Sorting & Filtering
 **Work Required:**
 - [ ] `lvt-sortable` attribute on tables
 - [ ] `lvt-filter="field"` for search input
@@ -688,7 +688,7 @@ docs/
 
 ---
 
-### 5.4 Theme System Expansion
+### 6.4 Theme System Expansion
 **Current State:** Only "clean" theme fully implemented.
 
 **Work Required:**
@@ -707,7 +707,7 @@ docs/
 
 ---
 
-### 5.5 UX Improvements
+### 6.5 UX Improvements
 
 **Navigation Enhancements:**
 - [ ] Sticky table of contents in right sidebar (auto-generated from headings)
@@ -748,7 +748,7 @@ docs/
 ### Value Proposition
 > "Handle complex real-world scenarios"
 
-### 6.1 Multi-User State Broadcasting
+### 7.1 Multi-User State Broadcasting
 **Work Required:**
 - [ ] Shared state mode for collaborative apps:
   ```yaml
@@ -765,7 +765,7 @@ docs/
 
 ---
 
-### 6.2 Scheduled Tasks
+### 7.2 Scheduled Tasks
 **Work Required:**
 - [ ] Cron-like syntax in config:
   ```yaml
@@ -782,7 +782,7 @@ docs/
 
 ---
 
-### 6.3 API Endpoint Mode
+### 7.3 API Endpoint Mode
 **Work Required:**
 - [ ] Expose sources as REST endpoints:
   ```yaml
@@ -800,7 +800,7 @@ docs/
 
 ---
 
-### 6.4 Offline Support
+### 7.4 Offline Support
 **Work Required:**
 - [ ] Service worker for asset caching
 - [ ] Offline indicator component
@@ -812,7 +812,7 @@ docs/
 
 ---
 
-### 6.5 WASM Source Marketplace
+### 7.5 WASM Source Marketplace
 **Work Required:**
 - [ ] Registry of community WASM sources
 - [ ] `tinkerdown source add <name>` command
@@ -829,7 +829,7 @@ docs/
 ### Value Proposition
 > "Production-grade performance and reliability"
 
-### 7.1 Bundle Size Optimization
+### 8.1 Bundle Size Optimization
 **Current State:** Client bundle includes Monaco for code blocks.
 
 **Work Required:**
@@ -840,7 +840,7 @@ docs/
 
 ---
 
-### 7.2 Accessibility Audit
+### 8.2 Accessibility Audit
 **Work Required:**
 - [ ] WCAG 2.1 AA compliance
 - [ ] Full keyboard navigation
@@ -851,7 +851,7 @@ docs/
 
 ---
 
-### 7.3 Performance Profiling
+### 8.3 Performance Profiling
 **Work Required:**
 - [ ] Built-in performance tracing
 - [ ] Slow source warnings (>500ms)
@@ -861,7 +861,7 @@ docs/
 
 ---
 
-### 7.4 Comprehensive Test Suite
+### 8.4 Comprehensive Test Suite
 **Work Required:**
 - [ ] Unit tests for all sources (including SQLite, WASM)
 - [ ] Integration tests for GenericState action dispatch
@@ -879,7 +879,7 @@ Priority Order (based on user impact and dependencies):
 HIGH IMPACT, LOW EFFORT (Quick Wins)
 ├── 1.1 Auto-rendering tables (lvt-source + lvt-columns)
 ├── 1.3 Document existing select auto-rendering
-├── 2.6A Docs cleanup (delete redundant files)
+├── 3.6A Docs cleanup (delete redundant files)
 ├── 3.3 Debug mode CLI flag
 ├── 3.2 Source reference validation
 └── 3.1 CLI templates (todo, dashboard)
@@ -888,22 +888,22 @@ HIGH IMPACT, MEDIUM EFFORT (Core Features)
 ├── 1.2 Auto-rendering lists
 ├── 2.2 Source caching
 ├── 2.1 Error handling improvements
-├── 2.6B-C Docs structure + guides
+├── 3.6B-C Docs structure + guides
 ├── 3.5 WASM source dev kit
-├── 5.2 Health endpoints
+├── 5.3 Health endpoints
 └── 4.1 GraphQL source
 
 HIGH IMPACT, HIGH EFFORT (Major Features)
 ├── 5.1 Authentication
 ├── 7.1 Multi-user broadcasting
-├── 5.3 Single binary distribution
+├── 5.5 Single binary distribution
 └── 7.3 API endpoint mode
 
 MEDIUM IMPACT (Nice to Have)
 ├── 6.1 Chart component (future)
 ├── 4.3 Source composition
 ├── 7.2 Scheduled tasks
-└── 8.1-8.3 Polish items
+└── 8.1-8.4 Polish items
 ```
 
 ---
@@ -975,14 +975,14 @@ These high-impact, low-effort items can be tackled immediately. See referenced s
 3. **Document existing `<select lvt-source>`** → See [Phase 1, Section 1.3](#13-auto-rendering-selects)
 
 **Developer Experience:**
-4. **Add `--debug` flag** → See [Phase 3, Section 2.3](#23-debug-mode--logging)
-5. **CLI templates** → See [Phase 3, Section 2.1](#21-enhanced-cli-scaffolding)
-6. **Source reference validation** → See [Phase 3, Section 2.2](#22-expanded-validation)
+4. **Add `--debug` flag** → See [Phase 3, Section 3.3](#33-debug-mode--logging)
+5. **CLI templates** → See [Phase 3, Section 3.1](#31-enhanced-cli-scaffolding)
+6. **Source reference validation** → See [Phase 3, Section 3.2](#32-expanded-validation)
 
 **Documentation Cleanup:**
-7. **Delete redundant docs** → See [Phase 3, Section 2.6 Phase A](#26-documentation-cleanup--consolidation)
-8. **Create docs structure** → See [Phase 3, Section 2.6 Phase B](#26-documentation-cleanup--consolidation)
-9. **Write quickstart guide** → See [Phase 3, Section 2.6 Phase C](#26-documentation-cleanup--consolidation)
+7. **Delete redundant docs** → See [Phase 3, Section 3.6 Phase A](#36-documentation-cleanup--consolidation)
+8. **Create docs structure** → See [Phase 3, Section 3.6 Phase B](#36-documentation-cleanup--consolidation)
+9. **Write quickstart guide** → See [Phase 3, Section 3.6 Phase C](#36-documentation-cleanup--consolidation)
 
 ---
 
@@ -2316,7 +2316,7 @@ Each example should include:
 
 ---
 
-## Phase 3.6: Documentation Cleanup - Implementation Plan
+## 3.6 Documentation Cleanup - Implementation Plan
 
 ### Phase A: Cleanup Redundant Docs
 
