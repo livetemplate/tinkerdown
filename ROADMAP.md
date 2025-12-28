@@ -23,6 +23,74 @@ Transform Tinkerdown into a **full-featured platform for building micro apps and
 
 ---
 
+## Migration Guide (v0.x → v1.0)
+
+If you're upgrading from an earlier version of Tinkerdown that used Go plugin compilation, this guide covers the key changes.
+
+### Architecture Changes
+
+**Before (v0.x):** Custom logic required compiling Go plugins at runtime.
+
+**After (v1.0):** GenericState handles all standard CRUD operations; custom logic uses WASM modules.
+
+### Migration Steps
+
+1. **Remove plugin compilation**
+   - Delete `*.so` files and plugin source directories
+   - Remove `plugin:` references from source configurations
+
+2. **Convert custom sources to WASM**
+   - Rewrite custom Go plugins as TinyGo WASM modules
+   - Update source configuration:
+     ```yaml
+     # Before
+     sources:
+       custom:
+         type: plugin
+         path: ./plugins/custom.so
+
+     # After
+     sources:
+       custom:
+         type: wasm
+         module: ./wasm/custom.wasm
+     ```
+   - See `docs/wasm-sources.md` for WASM module interface
+
+3. **Update SQLite sources**
+   - SQLite source is now built-in with full CRUD support
+   - Remove custom plugins that only wrapped SQLite:
+     ```yaml
+     sources:
+       tasks:
+         type: sqlite
+         db: ./tasks.db
+         table: tasks
+         readonly: false  # Enables Add, Update, Delete, Toggle
+     ```
+
+4. **Verify standard actions work**
+   - `Add`, `Update`, `Delete`, `Toggle`, `Refresh` are built-in
+   - Remove custom action handlers for these operations
+
+### Breaking Changes
+
+| Feature | v0.x | v1.0 |
+|---------|------|------|
+| Custom logic | Go plugins (`.so`) | WASM modules (`.wasm`) |
+| Plugin compilation | Runtime | Build-time (TinyGo) |
+| SQLite support | Plugin required | Built-in |
+| Cross-platform | Limited (CGO) | Full (pure Go + wazero) |
+
+### Benefits of Migration
+
+- **Cross-platform builds:** No CGO dependency, works on all platforms
+- **Faster startup:** No plugin compilation at runtime
+- **Simpler deployment:** Single binary with embedded WASM
+- **Better sandboxing:** WASM modules run in isolated environment
+
+---
+
 ## Phase 1: Zero-Template Development (P0)
 
 ### Value Proposition
@@ -520,6 +588,56 @@ lvt-class="done: item.done" → class="{{if .done}}done{{end}}"
 
 ---
 
+### 4.6 Security Hardening
+
+**Work Required:**
+
+**CSRF Protection:**
+- [ ] Generate CSRF tokens for all forms
+- [ ] Validate tokens on POST/PUT/DELETE requests
+- [ ] Auto-inject token into `lvt-submit` forms
+- [ ] Cookie-based double-submit pattern for WebSocket actions
+
+**Content Security Policy (CSP):**
+- [ ] Default restrictive CSP headers
+- [ ] Configurable CSP via `tinkerdown.yaml`:
+  ```yaml
+  security:
+    csp:
+      default-src: "'self'"
+      script-src: "'self' 'unsafe-inline'"  # Required for inline event handlers
+      style-src: "'self' 'unsafe-inline'"
+      connect-src: "'self' ws: wss:"
+  ```
+- [ ] Nonce-based script loading for stricter environments
+
+**Input Sanitization:**
+- [ ] HTML escape all template output by default (Go templates do this)
+- [ ] Validate source configuration values at startup
+- [ ] Sanitize file paths in `exec` source to prevent path traversal
+- [ ] SQL parameterization enforced in SQLite source (already implemented)
+- [ ] Validate and sanitize REST API URL templates
+
+**WASM Resource Limits:**
+- [ ] Memory limits per WASM module (default: 64MB)
+- [ ] CPU time limits per execution (default: 30s)
+- [ ] Configuration via source definition:
+  ```yaml
+  sources:
+    custom_source:
+      type: wasm
+      module: ./custom.wasm
+      limits:
+        memory: 128MB
+        timeout: 60s
+  ```
+- [ ] Graceful termination on limit exceeded
+- [ ] Logging of resource usage for debugging
+
+**Impact:** Secure deployment for internal tools; defense in depth
+
+---
+
 ## Phase 6: UI & Components (P2)
 
 ### Value Proposition
@@ -582,17 +700,39 @@ lvt-class="done: item.done" → class="{{if .done}}done{{end}}"
 
 ---
 
-### 5.5 UX Improvements (from UX_IMPROVEMENTS.md)
-**Work Required:**
-- [ ] Sticky table of contents (right sidebar)
-- [ ] Previous/Next navigation buttons
-- [ ] Code copy buttons on all code blocks
-- [ ] Sidebar collapse/expand toggle
-- [ ] Active page indicator improvements
-- [ ] Loading states/skeleton screens
-- [ ] Better search result previews (120+ chars)
+### 5.5 UX Improvements
 
-**Impact:** Professional documentation sites
+**Navigation Enhancements:**
+- [ ] Sticky table of contents in right sidebar (auto-generated from headings)
+- [ ] Previous/Next page navigation buttons at bottom of content
+- [ ] Sidebar collapse/expand toggle for small screens
+- [ ] Active page indicator with visual highlighting
+- [ ] Breadcrumb navigation for deep hierarchies
+
+**Code Block Improvements:**
+- [ ] Copy-to-clipboard button on all code blocks
+- [ ] Syntax highlighting for 20+ languages
+- [ ] Line numbers (optional, configurable)
+- [ ] Code block titles/filenames
+
+**Loading & Feedback:**
+- [ ] Loading skeleton screens during data fetch
+- [ ] Smooth transitions between page states
+- [ ] Toast notifications for action success/failure
+- [ ] Progress indicators for long operations
+
+**Search Enhancements:**
+- [ ] Extended search result previews (120+ characters)
+- [ ] Keyboard navigation in search results (arrow keys, Enter)
+- [ ] Search result highlighting in content
+- [ ] Recent searches history
+
+**Mobile Experience:**
+- [ ] Responsive sidebar with swipe gestures
+- [ ] Touch-friendly interactive elements
+- [ ] Optimized table scrolling on mobile
+
+**Impact:** Professional documentation sites with excellent user experience
 
 ---
 
@@ -760,27 +900,58 @@ MEDIUM IMPACT (Nice to Have)
 ## Success Metrics
 
 ### Phase 1-2 Complete
+**Functionality:**
 - [ ] All 8 example apps work reliably
 - [ ] Zero crashes on source errors (graceful degradation)
 - [ ] New app scaffolded in <1 minute
 - [ ] 90% of config errors caught at validation time
 
+**Testing Requirements:**
+- [ ] Unit tests for all new lvt-* attribute transformations
+- [ ] E2E tests for auto-rendering components (table, list, select)
+- [ ] Integration tests for error handling and retry logic
+- [ ] Test coverage ≥70% for new code
+
 ### Phase 3-4 Complete
+**Functionality:**
 - [ ] Apps load <500ms with caching
 - [ ] 8+ data source types available
 - [ ] Apps deployable to Kubernetes with health checks
 - [ ] Auth-protected internal tools working
 
+**Testing Requirements:**
+- [ ] E2E tests for each new data source type
+- [ ] Integration tests for caching layer
+- [ ] Security tests for authentication middleware
+- [ ] Performance benchmarks for source operations
+- [ ] Test coverage ≥80% for core modules
+
 ### Phase 5-6 Complete
+**Functionality:**
 - [ ] 10+ reusable components
 - [ ] 10k row tables render smoothly
 - [ ] Real-time collaborative demo working
 - [ ] REST API generation from sources
 
-### Phase 7 Complete
+**Testing Requirements:**
+- [ ] E2E browser tests for all UI components
+- [ ] Cross-browser testing (Chrome, Firefox, Safari)
+- [ ] Accessibility tests (axe-core integration)
+- [ ] Load tests for pagination and large datasets
+- [ ] Test coverage ≥85% for component library
+
+### Phase 7-8 Complete
+**Functionality:**
 - [ ] <200KB initial bundle size
 - [ ] WCAG 2.1 AA compliant
-- [ ] 95%+ test coverage on core
+- [ ] Production-ready security hardening
+
+**Testing Requirements:**
+- [ ] Security audit tests (CSRF, CSP validation)
+- [ ] WASM resource limit tests
+- [ ] Performance regression test suite
+- [ ] Full accessibility audit with manual testing
+- [ ] Test coverage ≥95% on core (unit + integration + E2E)
 
 ---
 
@@ -1817,6 +1988,115 @@ func TestBuiltBinaryRuns(t *testing.T) {
     // Test: Built binary serves app correctly
 }
 ```
+
+---
+
+### 5.4 Security Hardening
+
+#### Implementation Steps
+
+**Step 1: CSRF Protection (`internal/server/csrf.go`)**
+```go
+type CSRFMiddleware struct {
+    tokenStore TokenStore
+}
+
+func (m *CSRFMiddleware) GenerateToken(sessionID string) string {
+    // Generate secure random token
+    // Store in session-scoped map
+}
+
+func (m *CSRFMiddleware) ValidateToken(r *http.Request) bool {
+    // Check X-CSRF-Token header or form field
+    // Compare with stored token for session
+}
+```
+
+- [ ] Generate CSRF tokens per session
+- [ ] Auto-inject token into forms via template function
+- [ ] Validate on all state-changing requests
+- [ ] WebSocket: Use double-submit cookie pattern
+
+**Step 2: Content Security Policy (`internal/server/security.go`)**
+```go
+func CSPMiddleware(config CSPConfig) func(http.Handler) http.Handler {
+    return func(next http.Handler) http.Handler {
+        return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+            w.Header().Set("Content-Security-Policy", config.String())
+            next.ServeHTTP(w, r)
+        })
+    }
+}
+```
+
+- [ ] Default restrictive CSP for new projects
+- [ ] Configuration via `tinkerdown.yaml`
+- [ ] Nonce generation for inline scripts (optional)
+
+**Step 3: Input Sanitization**
+- [ ] Validate source configuration at startup
+- [ ] Path traversal prevention in `exec` source
+- [ ] URL validation in `rest` source
+- [ ] Ensure SQL parameterization (verify existing implementation)
+
+**Step 4: WASM Resource Limits (`internal/source/wasm.go`)**
+```go
+type WASMConfig struct {
+    MemoryLimit int64         // Default: 64MB
+    Timeout     time.Duration // Default: 30s
+}
+
+func (s *WASMSource) executeWithLimits(ctx context.Context) ([]byte, error) {
+    ctx, cancel := context.WithTimeout(ctx, s.config.Timeout)
+    defer cancel()
+
+    // Set memory limit via wazero configuration
+    // Monitor execution, cancel if exceeded
+}
+```
+
+- [ ] Parse limits from source configuration
+- [ ] Integrate with wazero runtime limits
+- [ ] Log resource usage for debugging
+- [ ] Graceful error on limit exceeded
+
+#### E2E Tests
+
+```go
+func TestCSRFProtection(t *testing.T) {
+    // Test: POST without token returns 403
+}
+
+func TestCSRFTokenAutoInjection(t *testing.T) {
+    // Test: Forms automatically include CSRF token
+}
+
+func TestCSPHeaders(t *testing.T) {
+    // Test: Response includes correct CSP headers
+}
+
+func TestPathTraversalPrevention(t *testing.T) {
+    // Test: exec source rejects ../../../etc/passwd
+}
+
+func TestWASMMemoryLimit(t *testing.T) {
+    // Test: WASM module terminated when exceeding memory
+}
+
+func TestWASMTimeout(t *testing.T) {
+    // Test: WASM execution cancelled after timeout
+}
+```
+
+#### Documentation Updates
+
+- [ ] `docs/security.md` - Comprehensive security guide
+- [ ] Add security checklist to deployment guide
+- [ ] Document WASM sandboxing model
+
+#### Example Updates
+
+- [ ] `examples/secure-app/` - Demo with all security features enabled
 
 ---
 
