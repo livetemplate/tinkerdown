@@ -365,6 +365,85 @@ Auto-rendering is for common patterns only. Use Go templates when you need:
 
 ---
 
+### 2.6 Documentation Cleanup & Consolidation
+
+**Current State:** Documentation is scattered across root files, `docs/`, `skills/`, and examples. Some docs are outdated or redundant.
+
+**Audit of Current Docs:**
+```
+Root level (review for redundancy):
+├── PROGRESS.md          # May be redundant with ROADMAP.md
+├── UX_IMPROVEMENTS.md   # Should be consolidated into ROADMAP.md
+├── README.md            # Keep - entry point
+└── ROADMAP.md           # Keep - feature planning
+
+docs/ (needs structure):
+├── implementation-plan.md      # Review - may be outdated
+├── internal-tools-saas.md      # Review - unclear purpose
+├── launch-page.md              # Marketing - consider moving
+├── pmf-one-file-ai-builder.md  # Product - consider moving
+└── plans/                      # Keep - design documents
+
+skills/tinkerdown/ (AI reference):
+├── SKILL.md             # Keep - skill definition
+├── reference.md         # Keep - AI reference
+└── examples/            # Keep - example apps
+```
+
+**Work Required:**
+
+**Phase A: Cleanup Redundant Docs**
+- [ ] Review `PROGRESS.md` - merge relevant content into ROADMAP, delete
+- [ ] Review `UX_IMPROVEMENTS.md` - merge into ROADMAP Phase 6, delete
+- [ ] Review `docs/implementation-plan.md` - archive or delete if outdated
+- [ ] Move marketing/product docs to separate location or archive
+
+**Phase B: Create User-Facing Documentation Structure**
+```
+docs/
+├── getting-started/
+│   ├── installation.md        # CLI install, prerequisites
+│   ├── quickstart.md          # First app in 5 minutes
+│   └── project-structure.md   # File layout, conventions
+├── guides/
+│   ├── data-sources.md        # All source types with examples
+│   ├── auto-rendering.md      # lvt-source tables, lists, selects
+│   ├── go-templates.md        # Template syntax, helpers
+│   ├── styling.md             # Themes, CSS customization
+│   ├── deployment.md          # Production deployment guide
+│   └── debugging.md           # Debug mode, logging, troubleshooting
+├── reference/
+│   ├── cli.md                 # All CLI commands and flags
+│   ├── config.md              # tinkerdown.yaml schema
+│   ├── lvt-attributes.md      # All lvt-* attributes reference
+│   └── frontmatter.md         # Page frontmatter options
+├── sources/
+│   ├── sqlite.md              # SQLite source reference
+│   ├── rest.md                # REST API source reference
+│   ├── exec.md                # Exec source reference
+│   ├── graphql.md             # GraphQL source (when added)
+│   ├── wasm.md                # WASM source authoring guide
+│   └── ...                    # Other sources
+└── plans/                     # Keep design documents
+    └── *.md
+```
+
+**Phase C: Create Missing Guides**
+- [ ] `docs/getting-started/quickstart.md` - 5-minute first app
+- [ ] `docs/guides/auto-rendering.md` - Tables, lists, selects with lvt-source
+- [ ] `docs/guides/data-sources.md` - Overview of all source types
+- [ ] `docs/reference/lvt-attributes.md` - Complete attribute reference
+- [ ] `docs/reference/config.md` - tinkerdown.yaml schema reference
+
+**Phase D: Keep Examples and Docs in Sync**
+- [ ] Each feature in docs links to working example
+- [ ] Each example has inline comments explaining concepts
+- [ ] Examples serve as E2E test fixtures
+
+**Impact:** Clear learning path; reduced confusion; maintainable documentation
+
+---
+
 ## Phase 4: Data Ecosystem (P1)
 
 ### Value Proposition
@@ -796,6 +875,7 @@ Priority Order (based on user impact and dependencies):
 HIGH IMPACT, LOW EFFORT (Quick Wins)
 ├── 1.1 Auto-rendering tables (lvt-source + lvt-columns)
 ├── 1.3 Document existing select auto-rendering
+├── 2.6A Docs cleanup (delete redundant files)
 ├── 3.3 Debug mode CLI flag
 ├── 3.2 Source reference validation
 └── 3.1 CLI templates (todo, dashboard)
@@ -804,6 +884,7 @@ HIGH IMPACT, MEDIUM EFFORT (Core Features)
 ├── 1.2 Auto-rendering lists
 ├── 2.2 Source caching
 ├── 2.1 Error handling improvements
+├── 2.6B-C Docs structure + guides
 ├── 3.5 WASM source dev kit
 ├── 5.2 Health endpoints
 └── 4.1 GraphQL source
@@ -893,6 +974,11 @@ These high-impact, low-effort items can be tackled immediately:
 4. **Add `--debug` flag** - Expose debug logging via CLI
 5. **CLI templates** - Add todo and dashboard templates to `new` command
 6. **Source reference validation** - Check sources exist in validate command
+
+**Documentation Cleanup:**
+7. **Delete redundant docs** - Remove PROGRESS.md, UX_IMPROVEMENTS.md after merging
+8. **Create docs structure** - Set up `docs/getting-started/`, `docs/guides/`, `docs/reference/`
+9. **Write quickstart guide** - 5-minute first app tutorial
 
 ---
 
@@ -2223,3 +2309,124 @@ Each example should include:
 3. `tinkerdown.yaml` - Configuration (if needed)
 4. `_data/` - Sample data files (if needed)
 5. Working E2E test in `*_e2e_test.go`
+
+---
+
+## Phase 3.6: Documentation Cleanup - Implementation Plan
+
+### Phase A: Cleanup Redundant Docs
+
+#### Step 1: Audit and Merge PROGRESS.md
+- [ ] Review `PROGRESS.md` content
+- [ ] Migrate any uncaptured items to ROADMAP.md
+- [ ] Delete `PROGRESS.md`
+
+#### Step 2: Audit and Merge UX_IMPROVEMENTS.md
+- [ ] Review `UX_IMPROVEMENTS.md` content
+- [ ] Verify all items are in Phase 6 (UI & Components)
+- [ ] Delete `UX_IMPROVEMENTS.md`
+
+#### Step 3: Audit docs/ folder
+- [ ] Review `docs/implementation-plan.md` - archive if outdated
+- [ ] Review `docs/internal-tools-saas.md` - determine if still relevant
+- [ ] Review `docs/launch-page.md` - move to marketing/ or archive
+- [ ] Review `docs/pmf-one-file-ai-builder.md` - move to marketing/ or archive
+
+### Phase B: Create Documentation Structure
+
+#### Step 1: Create folder structure
+```bash
+mkdir -p docs/getting-started
+mkdir -p docs/guides
+mkdir -p docs/reference
+mkdir -p docs/sources
+# Keep docs/plans/ as-is
+```
+
+#### Step 2: Create placeholder files
+```bash
+# Getting Started
+touch docs/getting-started/installation.md
+touch docs/getting-started/quickstart.md
+touch docs/getting-started/project-structure.md
+
+# Guides
+touch docs/guides/data-sources.md
+touch docs/guides/auto-rendering.md
+touch docs/guides/go-templates.md
+touch docs/guides/styling.md
+touch docs/guides/deployment.md
+touch docs/guides/debugging.md
+
+# Reference
+touch docs/reference/cli.md
+touch docs/reference/config.md
+touch docs/reference/lvt-attributes.md
+touch docs/reference/frontmatter.md
+
+# Sources (one per source type)
+touch docs/sources/sqlite.md
+touch docs/sources/rest.md
+touch docs/sources/exec.md
+touch docs/sources/json.md
+touch docs/sources/csv.md
+touch docs/sources/markdown.md
+touch docs/sources/wasm.md
+```
+
+### Phase C: Write Priority Documentation
+
+#### Priority 1: Getting Started (enables new users)
+1. **`docs/getting-started/quickstart.md`**
+   - Install tinkerdown CLI
+   - Create first app with `tinkerdown new`
+   - Run with `tinkerdown serve`
+   - Make first interactive change
+
+2. **`docs/getting-started/installation.md`**
+   - Prerequisites (Go 1.21+)
+   - Installation methods (go install, binary, brew)
+   - Verify installation
+
+3. **`docs/getting-started/project-structure.md`**
+   - File layout explanation
+   - `tinkerdown.yaml` purpose
+   - `_data/` folder convention
+   - Frontmatter options
+
+#### Priority 2: Core Guides (enables productive use)
+1. **`docs/guides/auto-rendering.md`**
+   - Tables with `lvt-source` + `lvt-columns`
+   - Lists with `lvt-source` + `lvt-field`
+   - Selects with `lvt-source` + `lvt-value` + `lvt-label`
+   - When to use Go templates instead
+
+2. **`docs/guides/data-sources.md`**
+   - Overview of all source types
+   - Quick examples for each
+   - Links to detailed source docs
+
+#### Priority 3: Reference (enables self-service)
+1. **`docs/reference/lvt-attributes.md`**
+   - Complete list of all `lvt-*` attributes
+   - Which are in core vs. Tinkerdown-specific
+   - Examples for each
+
+2. **`docs/reference/config.md`**
+   - Full `tinkerdown.yaml` schema
+   - All source type configurations
+   - Environment variable substitution
+
+### Phase D: Ongoing Documentation Maintenance
+
+#### Per-Feature Documentation Checklist
+When implementing a new feature, update:
+- [ ] Relevant guide in `docs/guides/`
+- [ ] Reference documentation in `docs/reference/`
+- [ ] Example in `examples/`
+- [ ] Link from example to docs and vice versa
+
+#### Documentation Review Triggers
+- Before each release: review all docs for accuracy
+- After breaking changes: update migration notes
+- Quarterly: audit for outdated content
