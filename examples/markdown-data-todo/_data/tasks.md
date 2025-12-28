@@ -1,7 +1,7 @@
 # Tasks
 
-- [ ] Clean the house
-- [x] Walk the dog
-- [ ] Call mom
-- [ ] Finish project report
-- [ ] sasas <!-- id:0a556327 -->
+- [ ] Buy groceries <!-- id:task1 -->
+- [x] Walk the dog <!-- id:task2 -->
+- [ ] Call mom <!-- id:task3 -->
+- [x] Finish project report <!-- id:task4 -->
+- [ ] Clean the house <!-- id:task5 -->

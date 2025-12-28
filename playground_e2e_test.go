@@ -67,24 +67,29 @@ func TestPlaygroundRenderAPI(t *testing.T) {
 	ts := httptest.NewServer(srv)
 	defer ts.Close()
 
-	// The lvt block needs lvt-persist to auto-generate a server block
+	// The lvt block needs lvt-source with a source defined in frontmatter
 	markdown := `---
 title: "Test App"
+sources:
+  items:
+    type: sqlite
+    table: items
+    readonly: false
 ---
 
 # Test App
 
 ` + "```lvt" + `
-<div class="p-4">
+<main lvt-source="items">
     <h1 class="text-xl">Hello World</h1>
-    <form lvt-submit="save" lvt-persist="items">
+    <form lvt-submit="Add">
         <input type="text" name="title" required>
         <button type="submit">Add</button>
     </form>
-    {{range .Items}}
+    {{range .Data}}
     <div>{{.Title}}</div>
     {{end}}
-</div>
+</main>
 ` + "```"
 
 	// Send render request
@@ -293,25 +298,30 @@ func TestPlaygroundE2E(t *testing.T) {
 	t.Log("✓ Playground preview frame found")
 
 	// Test 2: Enter markdown and run preview
-	// The lvt block needs lvt-persist to auto-generate a server block
+	// The lvt block needs lvt-source with a source defined in frontmatter
 	testMarkdown := `---
 title: "E2E Test App"
+sources:
+  testdata:
+    type: sqlite
+    table: testdata
+    readonly: false
 ---
 
 # E2E Test
 
 ` + "```lvt" + `
-<div class="test-content p-4">
+<main lvt-source="testdata" class="test-content p-4">
     <h1>E2E Test Content</h1>
     <p class="test-message">This is a test message</p>
-    <form lvt-submit="save" lvt-persist="testdata">
+    <form lvt-submit="Add">
         <input type="text" name="content" required>
         <button type="submit">Add</button>
     </form>
-    {{range .Testdata}}
+    {{range .Data}}
     <div>{{.Content}}</div>
     {{end}}
-</div>
+</main>
 ` + "```"
 
 	err = chromedp.Run(ctx,

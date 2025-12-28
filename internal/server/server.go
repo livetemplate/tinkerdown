@@ -1714,7 +1714,7 @@ func (s *Server) renderPage(page *tinkerdown.Page, currentPath string, host stri
             const observer = new MutationObserver((mutations) => {
                 for (const mutation of mutations) {
                     for (const node of mutation.addedNodes) {
-                        if (node.nodeType === 1 && node.classList?.contains('livemdtools-nav-sidebar')) {
+                        if (node.nodeType === 1 && node.classList?.contains('tinkerdown-nav-sidebar')) {
                             moveToolbarToSidebar();
                             return;
                         }
@@ -2197,7 +2197,7 @@ func (s *Server) renderSidebar(currentPath string) string {
 	}
 
 	var html strings.Builder
-	html.WriteString(`<nav class="livemdtools-nav-sidebar">`)
+	html.WriteString(`<nav class="tinkerdown-nav-sidebar">`)
 
 	// Site title/logo
 	if s.config.Site != nil && s.config.Title != "" {

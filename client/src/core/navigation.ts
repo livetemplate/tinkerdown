@@ -28,7 +28,7 @@ export class TutorialNavigation {
 
   private init() {
     // Skip tutorial navigation if site navigation exists
-    if (document.querySelector('.livemdtools-nav-sidebar')) {
+    if (document.querySelector('.tinkerdown-nav-sidebar')) {
       return; // Site mode - navigation already rendered by server
     }
 
@@ -90,7 +90,7 @@ export class TutorialNavigation {
   private createSidebar() {
     // Create sidebar container
     this.sidebar = document.createElement('nav');
-    this.sidebar.className = 'livemdtools-nav-sidebar';
+    this.sidebar.className = 'tinkerdown-nav-sidebar';
     this.sidebar.innerHTML = `
       <div class="nav-sidebar-header">
         <h3>Contents</h3>

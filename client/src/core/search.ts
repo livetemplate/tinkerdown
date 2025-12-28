@@ -32,7 +32,7 @@ export class SiteSearch {
 
   constructor() {
     // Only initialize in site mode
-    if (!document.querySelector('.livemdtools-nav-sidebar')) {
+    if (!document.querySelector('.tinkerdown-nav-sidebar')) {
       return;
     }
 
@@ -124,7 +124,7 @@ export class SiteSearch {
   }
 
   private addSearchButton() {
-    const sidebar = document.querySelector('.livemdtools-nav-sidebar');
+    const sidebar = document.querySelector('.tinkerdown-nav-sidebar');
     if (!sidebar) return;
 
     const header = sidebar.querySelector('.nav-header');

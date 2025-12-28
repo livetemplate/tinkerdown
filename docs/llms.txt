@@ -1,10 +1,10 @@
-# Livemdtools - One-File AI App Builder
+# Tinkerdown - One-File AI App Builder
 
 > Build working web apps in a single markdown file. No React. No build step. No CSS classes. Just run.
 
 ## Overview
 
-Livemdtools outputs working apps in a single markdown file:
+Tinkerdown outputs working apps in a single markdown file:
 - Single file = easy to generate, share, modify
 - No build step = instant feedback loop
 - No npm/React = LLMs generate simpler code
@@ -39,7 +39,7 @@ title: "My App"
 \`\`\`
 ```
 
-Run: `livemdtools serve myapp.md`
+Run: `tinkerdown serve myapp.md`
 
 ## Key Attributes
 
@@ -109,7 +109,7 @@ Creates SQLite table automatically from form fields:
 
 Auto-generates: Id, CreatedAt, Save action, Delete action.
 
-## Data Sources (livemdtools.yaml)
+## Data Sources (tinkerdown.yaml)
 
 ### PostgreSQL
 ```yaml
@@ -236,14 +236,14 @@ Script outputs JSON array:
 ## CLI Commands
 
 ```bash
-livemdtools serve myapp.md           # Serve single file
-livemdtools serve ./myapp/           # Serve directory
-livemdtools serve . --port 8080      # Custom port
+tinkerdown serve myapp.md           # Serve single file
+tinkerdown serve ./myapp/           # Serve directory
+tinkerdown serve . --port 8080      # Custom port
 ```
 
 ## Links
 
-- Documentation: https://livemdtools.dev
-- Playground: https://livemdtools.dev/playground
-- Examples: https://github.com/livetemplate/livemdtools/tree/main/examples
-- Source: https://github.com/livetemplate/livemdtools
+- Documentation: https://tinkerdown.dev
+- Playground: https://tinkerdown.dev/playground
+- Examples: https://github.com/livetemplate/tinkerdown/tree/main/examples
+- Source: https://github.com/livetemplate/tinkerdown

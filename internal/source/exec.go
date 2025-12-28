@@ -114,6 +114,48 @@ func (s *ExecSource) Close() error {
 	return nil
 }
 
+// FetchWithArgs executes the command with custom argument values
+// The args map contains argument name -> value pairs that override the defaults
+func (s *ExecSource) FetchWithArgs(ctx context.Context, args map[string]string) ([]map[string]interface{}, error) {
+	// Parse original command to get executable
+	parts := strings.Fields(s.cmd)
+	if len(parts) == 0 {
+		return nil, fmt.Errorf("exec source %q: empty command", s.name)
+	}
+
+	cmdName := parts[0]
+
+	// Build new arguments from the provided map
+	var newArgs []string
+	for name, value := range args {
+		// Handle boolean args specially - convert "on" to "true"
+		if value == "on" {
+			value = "true"
+		}
+		newArgs = append(newArgs, "--"+name, value)
+	}
+
+	// Create command with context and timeout
+	cmdCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(cmdCtx, cmdName, newArgs...)
+	cmd.Dir = s.siteDir
+
+	// Execute and capture output
+	output, err := cmd.Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			return nil, fmt.Errorf("exec source %q: command failed: %s\nstderr: %s",
+				s.name, err, string(exitErr.Stderr))
+		}
+		return nil, fmt.Errorf("exec source %q: %w", s.name, err)
+	}
+
+	// Parse JSON output
+	return s.parseJSON(output)
+}
+
 // resolvePath makes a path absolute relative to siteDir
 func (s *ExecSource) resolvePath(path string) string {
 	if filepath.IsAbs(path) {

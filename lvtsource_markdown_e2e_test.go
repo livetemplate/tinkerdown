@@ -27,13 +27,34 @@ func createTempMarkdownExample(t *testing.T) (string, func()) {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
 
-	// Create index.md with test content
+	// Create _data directory for separate data file
+	dataDir := filepath.Join(tempDir, "_data")
+	if err := os.MkdirAll(dataDir, 0755); err != nil {
+		os.RemoveAll(tempDir)
+		t.Fatalf("Failed to create _data dir: %v", err)
+	}
+
+	// Create data file with tasks
+	dataContent := `# Tasks {#tasks}
+
+- [ ] First task <!-- id:task1 -->
+- [x] Second task completed <!-- id:task2 -->
+- [ ] Third task <!-- id:task3 -->
+`
+	dataPath := filepath.Join(dataDir, "tasks.md")
+	if err := os.WriteFile(dataPath, []byte(dataContent), 0644); err != nil {
+		os.RemoveAll(tempDir)
+		t.Fatalf("Failed to write tasks.md: %v", err)
+	}
+
+	// Create index.md with test content - using file: for separate data file
 	indexContent := `---
 title: "Markdown Data Todo Test"
 sources:
   tasks:
     type: markdown
-    anchor: "#data-section"
+    file: "_data/tasks.md"
+    anchor: "#tasks"
     readonly: false
 ---
 
@@ -77,14 +98,6 @@ sources:
     <button lvt-click="Refresh" style="margin-top: 8px;">Refresh</button>
 </main>
 ` + "```" + `
-
----
-
-## Data Section {#data-section}
-
-- [ ] First task <!-- id:task1 -->
-- [x] Second task completed <!-- id:task2 -->
-- [ ] Third task <!-- id:task3 -->
 `
 
 	indexPath := filepath.Join(tempDir, "index.md")
@@ -379,8 +392,8 @@ func TestLvtSourceMarkdownToggle(t *testing.T) {
 	}
 	t.Log("Checkbox is now checked")
 
-	// Verify the file was updated
-	content, err := os.ReadFile(filepath.Join(tempDir, "index.md"))
+	// Verify the data file was updated
+	content, err := os.ReadFile(filepath.Join(tempDir, "_data", "tasks.md"))
 	if err != nil {
 		t.Fatalf("Failed to read file: %v", err)
 	}
@@ -477,8 +490,8 @@ func TestLvtSourceMarkdownToggleBack(t *testing.T) {
 	}
 	t.Log("Checkbox is now unchecked")
 
-	// Verify the file was updated - should now have [ ] instead of [x]
-	content, err := os.ReadFile(filepath.Join(tempDir, "index.md"))
+	// Verify the data file was updated - should now have [ ] instead of [x]
+	content, err := os.ReadFile(filepath.Join(tempDir, "_data", "tasks.md"))
 	if err != nil {
 		t.Fatalf("Failed to read file: %v", err)
 	}
@@ -586,8 +599,8 @@ func TestLvtSourceMarkdownAdd(t *testing.T) {
 	}
 	t.Log("New task found in DOM")
 
-	// Verify file was updated
-	content, err := os.ReadFile(filepath.Join(tempDir, "index.md"))
+	// Verify data file was updated
+	content, err := os.ReadFile(filepath.Join(tempDir, "_data", "tasks.md"))
 	if err != nil {
 		t.Fatalf("Failed to read file: %v", err)
 	}
@@ -695,8 +708,8 @@ func TestLvtSourceMarkdownDelete(t *testing.T) {
 	}
 	t.Log("task1 removed from DOM")
 
-	// Verify file was updated
-	content, err := os.ReadFile(filepath.Join(tempDir, "index.md"))
+	// Verify data file was updated
+	content, err := os.ReadFile(filepath.Join(tempDir, "_data", "tasks.md"))
 	if err != nil {
 		t.Fatalf("Failed to read file: %v", err)
 	}
@@ -719,12 +732,33 @@ func createTempBulletListExample(t *testing.T) (string, func()) {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
 
+	// Create _data directory for separate data file
+	dataDir := filepath.Join(tempDir, "_data")
+	if err := os.MkdirAll(dataDir, 0755); err != nil {
+		os.RemoveAll(tempDir)
+		t.Fatalf("Failed to create _data dir: %v", err)
+	}
+
+	// Create data file with items
+	dataContent := `# Items {#items}
+
+- First item <!-- id:item1 -->
+- Second item <!-- id:item2 -->
+- Third item <!-- id:item3 -->
+`
+	dataPath := filepath.Join(dataDir, "items.md")
+	if err := os.WriteFile(dataPath, []byte(dataContent), 0644); err != nil {
+		os.RemoveAll(tempDir)
+		t.Fatalf("Failed to write items.md: %v", err)
+	}
+
 	indexContent := `---
 title: "Bullet List Test"
 sources:
   items:
     type: markdown
-    anchor: "#items-section"
+    file: "_data/items.md"
+    anchor: "#items"
     readonly: false
 ---
 
@@ -753,14 +787,6 @@ sources:
     </form>
 </main>
 ` + "```" + `
-
----
-
-## Items Section {#items-section}
-
-- First item <!-- id:item1 -->
-- Second item <!-- id:item2 -->
-- Third item <!-- id:item3 -->
 `
 
 	indexPath := filepath.Join(tempDir, "index.md")
@@ -841,12 +867,35 @@ func createTempTableExample(t *testing.T) (string, func()) {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
 
+	// Create _data directory for separate data file
+	dataDir := filepath.Join(tempDir, "_data")
+	if err := os.MkdirAll(dataDir, 0755); err != nil {
+		os.RemoveAll(tempDir)
+		t.Fatalf("Failed to create _data dir: %v", err)
+	}
+
+	// Create data file with products table
+	dataContent := `# Products {#products}
+
+| Name | Price |
+|------|-------|
+| Widget | $10 | <!-- id:prod1 -->
+| Gadget | $25 | <!-- id:prod2 -->
+| Gizmo | $15 | <!-- id:prod3 -->
+`
+	dataPath := filepath.Join(dataDir, "products.md")
+	if err := os.WriteFile(dataPath, []byte(dataContent), 0644); err != nil {
+		os.RemoveAll(tempDir)
+		t.Fatalf("Failed to write products.md: %v", err)
+	}
+
 	indexContent := `---
 title: "Table Test"
 sources:
   products:
     type: markdown
-    anchor: "#products-section"
+    file: "_data/products.md"
+    anchor: "#products"
     readonly: false
 ---
 
@@ -882,16 +931,6 @@ sources:
     </form>
 </main>
 ` + "```" + `
-
----
-
-## Products Section {#products-section}
-
-| Name | Price |
-|------|-------|
-| Widget | $10 | <!-- id:prod1 -->
-| Gadget | $25 | <!-- id:prod2 -->
-| Gizmo | $15 | <!-- id:prod3 -->
 `
 
 	indexPath := filepath.Join(tempDir, "index.md")
@@ -1116,12 +1155,31 @@ func createTempMissingAnchorExample(t *testing.T) (string, func()) {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
 
+	// Create _data directory for separate data file
+	dataDir := filepath.Join(tempDir, "_data")
+	if err := os.MkdirAll(dataDir, 0755); err != nil {
+		os.RemoveAll(tempDir)
+		t.Fatalf("Failed to create _data dir: %v", err)
+	}
+
+	// Create data file with a different anchor than referenced
+	dataContent := `# Some Other Section {#other-section}
+
+- This is a different section
+`
+	dataPath := filepath.Join(dataDir, "items.md")
+	if err := os.WriteFile(dataPath, []byte(dataContent), 0644); err != nil {
+		os.RemoveAll(tempDir)
+		t.Fatalf("Failed to write items.md: %v", err)
+	}
+
 	// Create index.md that references non-existent anchor
 	indexContent := `---
 title: "Missing Anchor Test"
 sources:
   items:
     type: markdown
+    file: "_data/items.md"
     anchor: "#nonexistent-section"
 ---
 
@@ -1143,10 +1201,6 @@ sources:
     {{end}}
 </main>
 ` + "```" + `
-
-## Some Other Section {#other-section}
-
-- This is a different section
 `
 
 	indexPath := filepath.Join(tempDir, "index.md")
@@ -1264,8 +1318,8 @@ func TestLvtSourceMarkdownUpdate(t *testing.T) {
 	}
 	t.Log("Update button clicked")
 
-	// Verify file was updated
-	content, err := os.ReadFile(filepath.Join(tempDir, "index.md"))
+	// Verify data file was updated
+	content, err := os.ReadFile(filepath.Join(tempDir, "_data", "tasks.md"))
 	if err != nil {
 		t.Fatalf("Failed to read file: %v", err)
 	}
@@ -1286,13 +1340,31 @@ func TestLvtSourceMarkdownMissingID(t *testing.T) {
 	}
 	defer os.RemoveAll(tempDir)
 
+	// Create _data directory for separate data file
+	dataDir := filepath.Join(tempDir, "_data")
+	if err := os.MkdirAll(dataDir, 0755); err != nil {
+		t.Fatalf("Failed to create _data dir: %v", err)
+	}
+
+	// Create data file with tasks that have NO IDs
+	dataContent := `# Tasks {#tasks}
+
+- [ ] Task without ID
+- [x] Another task without ID
+`
+	dataPath := filepath.Join(dataDir, "tasks.md")
+	if err := os.WriteFile(dataPath, []byte(dataContent), 0644); err != nil {
+		t.Fatalf("Failed to write tasks.md: %v", err)
+	}
+
 	// Create index.md with items that have NO IDs
 	indexContent := `---
 title: "Missing ID Test"
 sources:
   tasks:
     type: markdown
-    anchor: "#tasks-section"
+    file: "_data/tasks.md"
+    anchor: "#tasks"
     readonly: false
 ---
 
@@ -1310,13 +1382,6 @@ sources:
     <p><small>Total: {{len .Data}} tasks</small></p>
 </main>
 ` + "```" + `
-
----
-
-## Tasks Section {#tasks-section}
-
-- [ ] Task without ID
-- [x] Another task without ID
 `
 
 	indexPath := filepath.Join(tempDir, "index.md")
@@ -1382,13 +1447,32 @@ func TestLvtSourceMarkdownSpecialChars(t *testing.T) {
 	}
 	defer os.RemoveAll(tempDir)
 
+	// Create _data directory for separate data file
+	dataDir := filepath.Join(tempDir, "_data")
+	if err := os.MkdirAll(dataDir, 0755); err != nil {
+		t.Fatalf("Failed to create _data dir: %v", err)
+	}
+
+	// Create data file with special characters
+	dataContent := `# Items {#items}
+
+- Item with <angle> brackets <!-- id:special1 -->
+- Item with "quotes" and 'apostrophes' <!-- id:special2 -->
+- Item with & ampersand <!-- id:special3 -->
+`
+	dataPath := filepath.Join(dataDir, "items.md")
+	if err := os.WriteFile(dataPath, []byte(dataContent), 0644); err != nil {
+		t.Fatalf("Failed to write items.md: %v", err)
+	}
+
 	// Create index.md with special characters in data
 	indexContent := `---
 title: "Special Chars Test"
 sources:
   items:
     type: markdown
-    anchor: "#items-section"
+    file: "_data/items.md"
+    anchor: "#items"
     readonly: false
 ---
 
@@ -1405,14 +1489,6 @@ sources:
     </ul>
 </main>
 ` + "```" + `
-
----
-
-## Items Section {#items-section}
-
-- Item with <angle> brackets <!-- id:special1 -->
-- Item with "quotes" and 'apostrophes' <!-- id:special2 -->
-- Item with & ampersand <!-- id:special3 -->
 `
 
 	indexPath := filepath.Join(tempDir, "index.md")

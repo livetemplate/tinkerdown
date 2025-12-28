@@ -158,8 +158,13 @@ func (h *WebSocketHandler) initializeSourceBlocks() {
 		// Create runtime state factory
 		// Capture variables for closure
 		srcName, srcCfg, rootDir, curFile := sourceName, sourceCfg, h.rootDir, currentFile
+		// Copy metadata for closure
+		blockMeta := make(map[string]string)
+		for k, v := range block.Metadata {
+			blockMeta[k] = v
+		}
 		factory := func() runtime.Store {
-			state, err := runtime.NewGenericState(srcName, srcCfg, rootDir, curFile)
+			state, err := runtime.NewGenericStateWithMetadata(srcName, srcCfg, rootDir, curFile, blockMeta)
 			if err != nil {
 				log.Printf("[WS] Failed to create runtime state for %s: %v", srcName, err)
 				return nil

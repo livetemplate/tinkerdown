@@ -8,6 +8,23 @@ import (
 	"github.com/livetemplate/tinkerdown/internal/source"
 )
 
+// buildCommandString rebuilds the command string from executable and current arg values
+func buildCommandString(origCmd string, args []Arg) string {
+	// Get executable from original command
+	parts := strings.Fields(origCmd)
+	if len(parts) == 0 {
+		return origCmd
+	}
+	executable := parts[0]
+
+	// Build new command with current arg values
+	cmdParts := []string{executable}
+	for _, arg := range args {
+		cmdParts = append(cmdParts, "--"+arg.Name, arg.Value)
+	}
+	return strings.Join(cmdParts, " ")
+}
+
 // runExec handles the Run action for exec sources
 func (s *GenericState) runExec(data map[string]interface{}) error {
 	if s.sourceType != "exec" {
@@ -21,9 +38,40 @@ func (s *GenericState) runExec(data map[string]interface{}) error {
 
 	s.Status = "running"
 
-	// Execute the command
 	ctx := context.Background()
-	result, err := execSrc.Fetch(ctx)
+	var result []map[string]interface{}
+	var err error
+
+	// Check if form data was submitted
+	if len(data) > 0 {
+		// Update Args with submitted values
+		for i := range s.Args {
+			if val, ok := data[s.Args[i].Name]; ok {
+				valStr := fmt.Sprintf("%v", val)
+				// Convert checkbox "on" to "true"
+				if valStr == "on" {
+					valStr = "true"
+				}
+				s.Args[i].Value = valStr
+			}
+		}
+
+		// Build args map from submitted data
+		argsMap := make(map[string]string)
+		for k, v := range data {
+			argsMap[k] = fmt.Sprintf("%v", v)
+		}
+
+		// Update the Command string to show current argument values
+		s.Command = buildCommandString(s.sourceCfg.Cmd, s.Args)
+
+		// Execute with custom arguments
+		result, err = execSrc.FetchWithArgs(ctx, argsMap)
+	} else {
+		// No form data - use default command
+		result, err = execSrc.Fetch(ctx)
+	}
+
 	if err != nil {
 		s.Status = "error"
 		s.Error = err.Error()

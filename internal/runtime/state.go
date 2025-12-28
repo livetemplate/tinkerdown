@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/livetemplate/components/datatable"
+
 	"github.com/livetemplate/tinkerdown/internal/config"
 	"github.com/livetemplate/tinkerdown/internal/source"
 	"github.com/livetemplate/tinkerdown/internal/wasm"
@@ -30,6 +32,9 @@ type GenericState struct {
 	Error  string                   `json:"error,omitempty"`
 	Errors map[string]string        `json:"errors,omitempty"`
 
+	// Datatable field - used when source is rendered in a table element
+	Table *datatable.DataTable `json:"table,omitempty"`
+
 	// Exec-specific fields
 	Output     string   `json:"output,omitempty"`
 	Stderr     string   `json:"stderr,omitempty"`
@@ -40,17 +45,20 @@ type GenericState struct {
 	Executable string   `json:"executable,omitempty"`
 
 	// Private runtime fields (not serialized)
-	source     source.Source
-	sourceCfg  config.SourceConfig
-	sourceType string
-	sourceName string
-	siteDir    string
-	mu         sync.RWMutex
+	source       source.Source
+	sourceCfg    config.SourceConfig
+	sourceType   string
+	sourceName   string
+	siteDir      string
+	elementType  string   // "table", "select", or "div"
+	tableColumns []string // columns for datatable rendering
+	mu           sync.RWMutex
 }
 
 // Arg represents an exec source argument
 type Arg struct {
 	Name        string `json:"name"`
+	Label       string `json:"label"`
 	Type        string `json:"type"`
 	Description string `json:"description"`
 	Required    bool   `json:"required"`
@@ -61,6 +69,12 @@ type Arg struct {
 // NewGenericState creates a new state for the given source configuration.
 // This replaces the plugin compilation step - state is created directly in-process.
 func NewGenericState(name string, cfg config.SourceConfig, siteDir, currentFile string) (*GenericState, error) {
+	return NewGenericStateWithMetadata(name, cfg, siteDir, currentFile, nil)
+}
+
+// NewGenericStateWithMetadata creates a new state with block metadata for datatable support.
+// Metadata should include "lvt-element" ("table", "select", or "div") and "lvt-columns" for tables.
+func NewGenericStateWithMetadata(name string, cfg config.SourceConfig, siteDir, currentFile string, metadata map[string]string) (*GenericState, error) {
 	// Create the underlying source using the existing factory
 	src, err := createSource(name, cfg, siteDir, currentFile)
 	if err != nil {
@@ -76,10 +90,26 @@ func NewGenericState(name string, cfg config.SourceConfig, siteDir, currentFile 
 		Errors:     make(map[string]string),
 	}
 
+	// Parse metadata for element type and columns
+	if metadata != nil {
+		s.elementType = metadata["lvt-element"]
+		if columns := metadata["lvt-columns"]; columns != "" {
+			// Parse "name:Name,email:Email" format
+			for _, pair := range strings.Split(columns, ",") {
+				parts := strings.SplitN(pair, ":", 2)
+				if len(parts) > 0 {
+					s.tableColumns = append(s.tableColumns, parts[0])
+				}
+			}
+		}
+	}
+
 	// Set exec-specific fields if applicable
 	if cfg.Type == "exec" {
 		s.Command = cfg.Cmd
 		s.Status = "ready"
+		// Parse command-line arguments for form rendering
+		s.Args = parseExecArgs(cfg.Cmd)
 		// If manual mode, don't auto-fetch
 		if cfg.Manual {
 			return s, nil
@@ -294,5 +324,171 @@ func (s *GenericState) refresh() error {
 
 	s.Data = data
 	s.Error = ""
+
+	// Build DataTable if this is a table element
+	if s.elementType == "table" {
+		s.Table = s.buildDataTable()
+	}
+
 	return nil
+}
+
+// buildDataTable creates a datatable.DataTable from the current Data
+func (s *GenericState) buildDataTable() *datatable.DataTable {
+	if len(s.Data) == 0 {
+		return nil
+	}
+
+	// Determine columns - use explicit columns or auto-discover from first row
+	var columns []datatable.Column
+	if len(s.tableColumns) > 0 {
+		for _, col := range s.tableColumns {
+			label := col
+			if len(label) > 0 {
+				label = strings.ToUpper(label[:1]) + label[1:]
+			}
+			columns = append(columns, datatable.Column{
+				ID:       col,
+				Label:    label,
+				Sortable: true,
+			})
+		}
+	} else {
+		// Auto-discover columns from first row
+		for key := range s.Data[0] {
+			// Skip internal fields starting with uppercase (title-cased duplicates)
+			if len(key) > 0 && key[0] >= 'A' && key[0] <= 'Z' {
+				continue
+			}
+			label := key
+			if len(label) > 0 {
+				label = strings.ToUpper(label[:1]) + label[1:]
+			}
+			columns = append(columns, datatable.Column{
+				ID:       key,
+				Label:    label,
+				Sortable: true,
+			})
+		}
+	}
+
+	// Build rows
+	var rows []datatable.Row
+	for i, item := range s.Data {
+		data := make(map[string]any)
+		for _, col := range columns {
+			if val, ok := item[col.ID]; ok {
+				data[col.ID] = val
+			} else {
+				// Try titlecase key
+				titleKey := col.ID
+				if len(titleKey) > 0 {
+					titleKey = strings.ToUpper(titleKey[:1]) + titleKey[1:]
+				}
+				if val, ok := item[titleKey]; ok {
+					data[col.ID] = val
+				}
+			}
+		}
+		// Generate row ID
+		rowID := fmt.Sprintf("row-%d", i)
+		if id, ok := item["id"]; ok {
+			rowID = fmt.Sprintf("%v", id)
+		} else if id, ok := item["Id"]; ok {
+			rowID = fmt.Sprintf("%v", id)
+		}
+		rows = append(rows, datatable.Row{ID: rowID, Data: data})
+	}
+
+	return datatable.New(s.sourceName, datatable.WithColumns(columns), datatable.WithRows(rows))
+}
+
+// parseExecArgs parses command-line arguments from a command string.
+// It extracts --flag value pairs and infers types from values.
+// Example: "./script.sh --name World --count 3 --verbose true"
+// Returns Args with Name, Label, Type, and Value set.
+func parseExecArgs(cmd string) []Arg {
+	parts := strings.Fields(cmd)
+	if len(parts) == 0 {
+		return nil
+	}
+
+	var args []Arg
+
+	// Skip the executable (first part)
+	for i := 1; i < len(parts); i++ {
+		part := parts[i]
+
+		// Check for --flag or -flag
+		if !strings.HasPrefix(part, "-") {
+			continue
+		}
+
+		// Extract flag name (remove leading dashes)
+		name := strings.TrimLeft(part, "-")
+		if name == "" {
+			continue
+		}
+
+		// Get the value (next part if available and doesn't start with -)
+		value := ""
+		if i+1 < len(parts) && !strings.HasPrefix(parts[i+1], "-") {
+			i++
+			value = parts[i]
+		}
+
+		// Infer type from value
+		argType := "string"
+		if value == "true" || value == "false" {
+			argType = "bool"
+		} else if isNumeric(value) {
+			argType = "number"
+		}
+
+		// Create label from name (capitalize first letter)
+		label := name
+		if len(label) > 0 {
+			label = strings.ToUpper(label[:1]) + label[1:]
+		}
+
+		args = append(args, Arg{
+			Name:    name,
+			Label:   label,
+			Type:    argType,
+			Value:   value,
+			Default: value,
+		})
+	}
+
+	return args
+}
+
+// isNumeric checks if a string represents a number
+func isNumeric(s string) bool {
+	if s == "" {
+		return false
+	}
+	// Allow optional leading minus sign
+	start := 0
+	if s[0] == '-' || s[0] == '+' {
+		start = 1
+	}
+	if start >= len(s) {
+		return false
+	}
+	hasDecimal := false
+	for i := start; i < len(s); i++ {
+		c := s[i]
+		if c == '.' {
+			if hasDecimal {
+				return false
+			}
+			hasDecimal = true
+			continue
+		}
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return true
 }
