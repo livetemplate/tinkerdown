@@ -91,37 +91,32 @@ If you're upgrading from an earlier version of Tinkerdown that used Go plugin co
 
 ---
 
-## Phase 1: Zero-Template Development (P0)
+## Phase 1: Web Components & Developer Ergonomics (P0)
 
 ### Value Proposition
-> "Build interactive apps without learning Go templates"
+> "Rich UI with web standards. Go templates you already know. Less boilerplate for common patterns."
 
-The biggest barrier to adoption is requiring users to learn Go's `html/template` syntax. This phase introduces `lvt-*` attributes as **compile-time sugar** that transforms to Go templates during parsing. Server-side rendering remains the core—the client stays simple.
+Go developers already know Go templates—we shouldn't replace that with another DSL. Instead, this phase focuses on:
 
-### Implementation Approach
+1. **Web Components** - Beautiful UI via Shoelace, a standards-based component library
+2. **Auto-rendering** - Reduce boilerplate for tables/lists/selects (not a new templating language)
+3. **Go templates remain primary** - The known quantity for server-side rendering
 
-**Where:** Core LiveTemplate library (not Tinkerdown-specific)
-
-This ensures the same `lvt-*` attributes work for both:
-- **Full apps** built directly with LiveTemplate
-- **Micro apps** built with Tinkerdown
+### Design Principles
 
 ```
-lvt-* attributes in HTML
-        ↓ (LiveTemplate core: parse time)
-Transform to Go templates
-        ↓
-Server-side rendering (unchanged)
-        ↓
-HTML to client
+┌─────────────────────────────────────────────────────────────┐
+│                    What you write                            │
+├─────────────────────────────────────────────────────────────┤
+│  Go templates      │  Web Components    │  Auto-rendering   │
+│  {{range .tasks}}  │  <sl-button>       │  lvt-source="x"   │
+│  {{if .done}}      │  <sl-input>        │  lvt-columns="a,b"│
+│  {{.field}}        │  <sl-dialog>       │                   │
+├─────────────────────────────────────────────────────────────┤
+│  Known syntax      │  W3C standard      │  Convenience only │
+│  Full control      │  Rich UI free      │  Common patterns  │
+└─────────────────────────────────────────────────────────────┘
 ```
-
-**Benefits:**
-- Single implementation in core library
-- Consistent syntax across full and micro apps
-- No new rendering engine
-- Client remains lightweight
-- SSR advantages preserved (security, performance, no JS required)
 
 ### Current Attribute Ownership
 
@@ -149,15 +144,14 @@ HTML to client
 - `lvt-focus-trap` - Modal focus trapping
 - `lvt-modal-open`, `lvt-modal-close` - Modal controls
 
-**New for Core (server-side template sugar):**
-- `lvt-for`, `lvt-if`, `lvt-text` - Loop/conditional/text binding
-- `lvt-checked`, `lvt-disabled`, `lvt-selected` - Boolean attributes
-- `lvt-class` - Dynamic class binding
+**New: `lvt-action` for Web Components:**
+- `lvt-action` - Connect any element to server action (smart event detection)
+- `lvt-event` - Override default event (optional)
 
-**Tinkerdown-specific (micro-app data binding):**
+**Tinkerdown-specific (auto-rendering):**
 - `lvt-source` - Data source binding
 - `lvt-columns`, `lvt-actions` - Auto-table generation
-- `lvt-value`, `lvt-label` - Select field mapping (for lvt-source)
+- `lvt-value`, `lvt-label` - Select field mapping
 - `lvt-template`, `lvt-empty` - Custom rendering
 
 **⚠️ Cleanup: Remove duplicates from Tinkerdown client**
@@ -165,19 +159,80 @@ HTML to client
 
 ---
 
-### 1.1 Auto-Rendering Components
+### 1.1 Web Components with Shoelace
 
-**Problem:** Users must write `{{range .Data}}...{{end}}` loops manually.
+**Problem:** Building nice UI requires CSS expertise or pulling in heavy frameworks.
 
-**Solution:** HTML elements that auto-render from data sources:
+**Solution:** Zero-config Web Components support using Shoelace as the default library:
 
 ```html
-<!-- Instead of writing Go template loops -->
+<sl-button lvt-action="Increment" variant="primary">
+  Count: {{.Count}}
+</sl-button>
+
+<sl-input lvt-action="SetName" placeholder="Your name" value="{{.Name}}"></sl-input>
+
+<sl-dialog label="Confirm Delete">
+  <p>Are you sure?</p>
+  <sl-button slot="footer" variant="danger" lvt-action="Delete">Delete</sl-button>
+</sl-dialog>
+```
+
+**How it works:**
+1. Tinkerdown detects `sl-*` elements in your markdown
+2. Automatically injects Shoelace CDN (CSS + JS)
+3. `lvt-action` binds to appropriate Shoelace events automatically
+4. Server renders Go templates → client enhances with Web Components
+
+**Two-Layer State Model:**
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Server: Business State (Count=5, Name="Alice")             │
+│              │ template render              ▲ action        │
+└──────────────┼──────────────────────────────┼───────────────┘
+               │ WebSocket                    │
+┌──────────────┼──────────────────────────────┼───────────────┐
+│  Client: UI State (focus, cursor, animation)                │
+│  <sl-input value="Alice"> ──sl-change──> lvt-action="SetName"│
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Smart Event Mapping:**
+| Component | Default Event | Value Extracted |
+|-----------|---------------|-----------------|
+| `sl-button` | `click` | - |
+| `sl-input` | `sl-change` | `value` |
+| `sl-select` | `sl-change` | `value` |
+| `sl-checkbox` | `sl-change` | `checked` |
+| `sl-switch` | `sl-change` | `checked` |
+| `sl-rating` | `sl-change` | `value` |
+
+Override when needed: `<sl-input lvt-action="Draft" lvt-event="sl-input">`
+
+**Work Required:**
+- [ ] Detect `sl-*` elements during markdown parsing
+- [ ] Auto-inject Shoelace CDN into page head
+- [ ] Implement `lvt-action` with smart event mapping
+- [ ] Handle value extraction per component type
+- [ ] E2E tests with chromedp
+
+**Impact:** Professional UI without CSS knowledge, using web standards
+
+---
+
+### 1.2 Auto-Rendering Components
+
+**Problem:** Common patterns (data tables, lists, selects) require repetitive Go template loops.
+
+**Solution:** Convenience attributes that auto-generate common structures:
+
+```html
+<!-- Instead of writing {{range}} loops for tables -->
 <table lvt-source="tasks" lvt-columns="done,text,priority">
   <!-- Auto-generates thead, tbody, and rows -->
 </table>
 
-<ul lvt-source="items" lvt-template="card">
+<ul lvt-source="items">
   <!-- Auto-generates list items -->
 </ul>
 
@@ -186,115 +241,54 @@ HTML to client
 </select>
 ```
 
+**This is NOT a templating language.** It's shorthand for common patterns. For anything custom, use Go templates directly:
+
+```html
+<!-- Custom rendering? Use Go templates -->
+{{range .tasks}}
+<div class="card {{if .done}}completed{{end}}">
+  <h3>{{.text}}</h3>
+  <span class="priority-{{.priority}}">{{.priority}}</span>
+</div>
+{{end}}
+```
+
 **Work Required:**
 - [ ] `<table lvt-source>` auto-generates full table from data
 - [ ] `<ul/ol lvt-source>` auto-generates list items
 - [ ] `<select lvt-source>` already works - document it
-- [ ] `lvt-template` attribute for card/row/custom layouts
 - [ ] `lvt-columns` for table column selection and ordering
 - [ ] `lvt-empty` for empty state message
+- [ ] `lvt-actions` for action columns (delete, toggle buttons)
 
-**Impact:** 80% of apps need no template knowledge
-
----
-
-### 1.2 Declarative Attributes (Alpine.js-style)
-
-**Problem:** Go template syntax `{{if .Done}}checked{{end}}` is unfamiliar.
-
-**Solution:** HTML attributes that express logic declaratively:
-
-```html
-<!-- Instead of Go templates -->
-<tr lvt-for="item in tasks">
-  <td lvt-text="item.text"></td>
-  <td lvt-if="item.done">✓</td>
-  <td lvt-class="{'completed': item.done}"></td>
-  <input type="checkbox" lvt-checked="item.done">
-  <button lvt-click="Delete" lvt-data-id="item.id">Delete</button>
-</tr>
-
-<!-- Conditionals -->
-<div lvt-if="error" class="error" lvt-text="error"></div>
-<div lvt-if="!data.length">No items yet</div>
-```
-
-**Transformations:**
-```
-lvt-for="item in tasks"     → {{range .tasks}}...{{end}}
-lvt-text="item.text"        → {{.text}}
-lvt-if="item.done"          → {{if .done}}...{{end}}
-lvt-checked="item.done"     → {{if .done}}checked{{end}}
-lvt-class="done: item.done" → class="{{if .done}}done{{end}}"
-```
-
-**Work Required (in LiveTemplate core):**
-- [ ] `lvt-for="item in source"` - Loop over data
-- [ ] `lvt-text="field"` - Set text content
-- [ ] `lvt-if="condition"` - Conditional rendering
-- [ ] `lvt-checked`, `lvt-disabled`, `lvt-selected` - Boolean attributes
-- [ ] `lvt-class="name: condition"` - Dynamic classes
-- [ ] Attribute transformer in LiveTemplate's template processing
-
-**Impact:** Familiar syntax for frontend developers, zero runtime overhead, works in both full and micro apps
+**Impact:** 80% less boilerplate for data display; Go templates for everything else
 
 ---
 
-### 1.3 Form Auto-Binding
+### 1.3 Form Conveniences
 
-**Problem:** Forms require manual wiring of inputs to actions.
+**Problem:** CRUD forms require wiring inputs to actions manually.
 
-**Solution:** Smart form components that infer behavior:
+**Solution:** Smart form attributes that reduce boilerplate:
 
 ```html
-<!-- Auto-generates Add form from source schema -->
-<form lvt-source="tasks" lvt-action="Add">
-  <!-- Auto-creates inputs based on table columns -->
-</form>
-
-<!-- Or explicit but simple -->
-<form lvt-submit="Add" lvt-source="tasks">
-  <input lvt-field="text" placeholder="Task...">
-  <select lvt-field="priority" lvt-options="low,medium,high">
-  <button type="submit">Add</button>
+<form lvt-submit="Add">
+  <sl-input name="text" placeholder="Task..." required></sl-input>
+  <sl-select name="priority">
+    <sl-option value="low">Low</sl-option>
+    <sl-option value="medium">Medium</sl-option>
+    <sl-option value="high">High</sl-option>
+  </sl-select>
+  <sl-button type="submit" variant="primary">Add Task</sl-button>
 </form>
 ```
 
 **Work Required:**
-- [ ] `lvt-field` auto-binds input name and validation
-- [ ] `lvt-options` for simple select options
-- [ ] Form schema inference from SQLite tables
+- [ ] Form schema inference from SQLite tables (optional auto-generation)
+- [ ] Combine with Web Components for rich form inputs
 - [ ] Built-in validation display
 
-**Impact:** CRUD apps in minutes without template code
-
----
-
-### 1.4 Markdown-Native Data Binding
-
-**Problem:** Users want to stay in markdown, not write HTML.
-
-**Solution:** Extend markdown syntax for data display:
-
-```markdown
-## Tasks
-
-<!-- Markdown table that binds to source -->
-| Done | Task | Priority |
-|------|------|----------|
-{tasks}
-
-<!-- Or a simple list -->
-- {tasks: text} ({tasks: priority})
-```
-
-**Work Required:**
-- [ ] `{source}` syntax in markdown tables
-- [ ] `{source: field}` for inline field access
-- [ ] Automatic table generation from source
-- [ ] List binding syntax
-
-**Impact:** True markdown-first development
+**Impact:** CRUD apps in minutes using standard HTML forms + Web Components
 
 ---
 
@@ -870,29 +864,31 @@ lvt-class="done: item.done" → class="{{if .done}}done{{end}}"
 Priority Order (based on user impact and dependencies):
 
 HIGH IMPACT, LOW EFFORT (Quick Wins)
-├── 2.3 Debug mode CLI flag
-├── 2.2 Source reference validation
-├── 2.1 CLI templates (todo, dashboard)
-└── 5.5 Code copy buttons
+├── 1.1 Shoelace detection + CDN injection
+├── 1.1 lvt-action for Web Components
+├── 3.3 Debug mode CLI flag
+├── 3.2 Source reference validation
+└── 3.1 CLI templates (todo, dashboard)
 
 HIGH IMPACT, MEDIUM EFFORT (Core Features)
-├── 1.2 Source caching
-├── 1.1 Error handling improvements
-├── 2.5 WASM source dev kit
-├── 4.3 Health endpoints
-└── 3.1 GraphQL source
+├── 1.2 Auto-rendering components (table, list)
+├── 2.2 Source caching
+├── 2.1 Error handling improvements
+├── 3.5 WASM source dev kit
+├── 5.2 Health endpoints
+└── 4.1 GraphQL source
 
 HIGH IMPACT, HIGH EFFORT (Major Features)
-├── 4.1 Authentication
-├── 6.1 Multi-user broadcasting
-├── 4.5 Single binary distribution
-└── 6.3 API endpoint mode
+├── 5.1 Authentication
+├── 7.1 Multi-user broadcasting
+├── 5.3 Single binary distribution
+└── 7.3 API endpoint mode
 
 MEDIUM IMPACT (Nice to Have)
-├── 5.1-5.4 Component library
-├── 3.3 Source composition
-├── 6.2 Scheduled tasks
-└── 7.1-7.4 Polish items
+├── 6.1 Shoelace component library integration
+├── 4.3 Source composition
+├── 7.2 Scheduled tasks
+└── 8.1-8.3 Polish items
 ```
 
 ---
@@ -907,7 +903,7 @@ MEDIUM IMPACT (Nice to Have)
 - [ ] 90% of config errors caught at validation time
 
 **Testing Requirements:**
-- [ ] Unit tests for all new lvt-* attribute transformations
+- [ ] E2E tests for Web Components with Shoelace (lvt-action)
 - [ ] E2E tests for auto-rendering components (table, list, select)
 - [ ] Integration tests for error handling and retry logic
 - [ ] Test coverage ≥70% for new code
@@ -959,16 +955,19 @@ MEDIUM IMPACT (Nice to Have)
 
 These high-impact, low-effort items can be tackled immediately:
 
-**Zero-Template (Highest Priority):**
-1. **Auto-table rendering** - `<table lvt-source="x" lvt-columns="a,b,c">` generates full table
-2. **Document existing `<select lvt-source>`** - Already works, just undocumented
-3. **`lvt-for` attribute** - Simple loop syntax without Go templates
-4. **`lvt-text` attribute** - Set text content from field
+**Web Components (Highest Priority):**
+1. **Shoelace detection** - Auto-detect `sl-*` elements and inject CDN
+2. **`lvt-action` attribute** - Connect Shoelace components to server actions
+3. **Document Web Components** - Guide for using Shoelace with Tinkerdown
+
+**Auto-Rendering:**
+4. **Auto-table rendering** - `<table lvt-source="x" lvt-columns="a,b,c">` generates full table
+5. **Document existing `<select lvt-source>`** - Already works, just undocumented
 
 **Developer Experience:**
-5. **Add `--debug` flag** - Expose debug logging via CLI
-6. **CLI templates** - Add todo and dashboard templates to `new` command
-7. **Source reference validation** - Check sources exist in validate command
+6. **Add `--debug` flag** - Expose debug logging via CLI
+7. **CLI templates** - Add todo and dashboard templates to `new` command
+8. **Source reference validation** - Check sources exist in validate command
 
 ---
 
@@ -986,9 +985,118 @@ Each feature should have:
 
 # Detailed Implementation Plans
 
-## Phase 1: Zero-Template Development - Implementation Plan
+## Phase 1: Web Components & Developer Ergonomics - Implementation Plan
 
-### 1.1 Auto-Rendering Components
+### 1.1 Web Components with Shoelace
+
+#### Implementation Steps
+
+**Step 1: Shoelace detection (`parser.go`)**
+```go
+// Scan HTML content for elements matching sl-* pattern
+func DetectShoelaceElements(html string) []string {
+    // Use regex or HTML parser to find all sl-* tags
+    // Return list of unique component names
+}
+```
+
+- [ ] Add `UsesShoelace bool` field to Page struct
+- [ ] Scan HTML during markdown parsing for `sl-*` elements
+- [ ] Store detected components for later CDN injection
+
+**Step 2: CDN injection (`internal/server/server.go`)**
+```go
+// If page uses Shoelace, inject into <head>:
+// <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2/cdn/themes/light.css">
+// <script type="module" src="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2/cdn/shoelace-autoloader.js"></script>
+```
+
+- [ ] Check `page.UsesShoelace` before rendering
+- [ ] Inject CSS and JS CDN links into page head
+- [ ] Support version configuration (default: latest stable)
+
+**Step 3: `lvt-action` attribute (`client/src/components/shoelace-events.ts`)**
+```typescript
+const SHOELACE_EVENT_MAP = {
+  'sl-input':    { event: 'sl-change', value: 'value' },
+  'sl-select':   { event: 'sl-change', value: 'value' },
+  'sl-checkbox': { event: 'sl-change', value: 'checked' },
+  'sl-switch':   { event: 'sl-change', value: 'checked' },
+  'sl-button':   { event: 'click',     value: null },
+  'sl-rating':   { event: 'sl-change', value: 'value' },
+};
+
+function setupLvtAction(element: HTMLElement): void {
+  const action = element.getAttribute('lvt-action');
+  const tagName = element.tagName.toLowerCase();
+  const config = SHOELACE_EVENT_MAP[tagName] || { event: 'click', value: null };
+  const eventOverride = element.getAttribute('lvt-event');
+
+  element.addEventListener(eventOverride || config.event, (e) => {
+    const value = config.value ? element[config.value] : null;
+    sendAction(action, { value });
+  });
+}
+```
+
+- [ ] Create event mapping for Shoelace components
+- [ ] Implement `lvt-action` handler in client
+- [ ] Support `lvt-event` override attribute
+- [ ] Extract values per component type
+
+#### E2E Tests
+
+**File:** `webcomponents_e2e_test.go`
+
+```go
+func TestShoelaceCDNInjection(t *testing.T) {
+    // Test: Page with sl-* elements includes Shoelace CDN
+}
+
+func TestNoCDNWithoutShoelace(t *testing.T) {
+    // Test: Page without sl-* elements has no Shoelace CDN
+}
+
+func TestLvtActionOnButton(t *testing.T) {
+    // Test: sl-button with lvt-action triggers server action on click
+}
+
+func TestLvtActionOnInput(t *testing.T) {
+    // Test: sl-input with lvt-action sends value on sl-change
+}
+
+func TestLvtActionOnSelect(t *testing.T) {
+    // Test: sl-select with lvt-action sends selected value
+}
+
+func TestLvtActionOnCheckbox(t *testing.T) {
+    // Test: sl-checkbox with lvt-action sends checked state
+}
+
+func TestLvtEventOverride(t *testing.T) {
+    // Test: lvt-event="sl-input" overrides default event
+}
+
+func TestServerStateUpdatesComponents(t *testing.T) {
+    // Test: Server state change re-renders Shoelace components correctly
+}
+```
+
+#### Documentation Updates
+
+- [ ] `docs/web-components.md` - Complete Web Components guide
+- [ ] `docs/shoelace.md` - Shoelace-specific component reference
+- [ ] Update README with Web Components example
+
+#### Example Updates
+
+- [ ] `examples/webcomponents-counter/` - Counter with sl-button
+- [ ] `examples/webcomponents-form/` - Form with Shoelace inputs
+- [ ] `examples/webcomponents-dialog/` - Modal dialog example
+
+---
+
+### 1.2 Auto-Rendering Components
 
 #### Implementation Steps
 
@@ -1013,8 +1121,8 @@ Each feature should have:
 ```
 
 - [ ] Detect `<ul lvt-source>` and `<ol lvt-source>` patterns
-- [ ] Support `lvt-template="card"` for custom item templates
-- [ ] Default to simple `<li>{{.Name}}</li>` or full object display
+- [ ] Default to simple list item rendering
+- [ ] Support custom templates via child content
 
 **Step 3: Document select auto-population**
 - [ ] Verify current `<select lvt-source>` implementation works
@@ -1022,7 +1130,7 @@ Each feature should have:
 
 #### E2E Tests
 
-**File:** `lvt_auto_render_e2e_test.go`
+**File:** `auto_render_e2e_test.go`
 
 ```go
 func TestAutoTableGeneration(t *testing.T) {
@@ -1048,204 +1156,49 @@ func TestAutoSelectPopulation(t *testing.T) {
 
 #### Documentation Updates
 
-- [ ] `docs/auto-rendering.md` - New guide for zero-template components
+- [ ] `docs/auto-rendering.md` - Auto-rendering components guide
 - [ ] Update `docs/lvt-source.md` with auto-rendering examples
-- [ ] Add "Zero-Template Quick Start" to README
 
 #### Example Updates
 
-- [ ] `examples/zero-template-table/` - Table without Go templates
-- [ ] `examples/zero-template-list/` - List rendering demo
+- [ ] `examples/auto-table/` - Table with lvt-source and lvt-columns
+- [ ] `examples/auto-list/` - List rendering demo
 - [ ] Update `examples/lvt-source-sqlite-test/` to use auto-table
 
 ---
 
-### 1.2 Declarative Attributes (lvt-for, lvt-if, lvt-text)
+### 1.3 Form Conveniences
 
 #### Implementation Steps
 
-**Step 1: Create attribute transformer (LiveTemplate core)**
-
-**File:** `livetemplate/template/transform.go`
-
-```go
-// TransformDeclarativeAttributes converts lvt-* attributes to Go template syntax
-func TransformDeclarativeAttributes(html string) string {
-    // 1. Find all lvt-for="item in source" and wrap content in {{range}}
-    // 2. Find all lvt-if="condition" and wrap in {{if}}
-    // 3. Replace lvt-text="field" with {{.field}}
-    // 4. Replace lvt-checked="field" with {{if .field}}checked{{end}}
-}
-```
-
-- [ ] Implement `lvt-for` → `{{range}}` transformation
-- [ ] Implement `lvt-if` → `{{if}}` transformation (including negation `!`)
-- [ ] Implement `lvt-text` → `{{.field}}` transformation
-- [ ] Implement boolean attributes: `lvt-checked`, `lvt-disabled`, `lvt-selected`
-- [ ] Implement `lvt-class="name: condition"` → `class="{{if .condition}}name{{end}}"`
-
-**Step 2: Integrate transformer into template pipeline**
-- [ ] Call `TransformDeclarativeAttributes()` before Go template parsing
-- [ ] Ensure transformed output is valid Go template syntax
-- [ ] Handle nested transformations correctly
-
-**Step 3: Error handling**
-- [ ] Provide helpful error messages for invalid syntax
-- [ ] Line number references for debugging
-
-#### E2E Tests
-
-**File:** `lvt_declarative_attrs_e2e_test.go`
-
-```go
-func TestLvtFor(t *testing.T) {
-    // Test: lvt-for="item in tasks" iterates over data
-}
-
-func TestLvtForNested(t *testing.T) {
-    // Test: Nested lvt-for loops work correctly
-}
-
-func TestLvtIf(t *testing.T) {
-    // Test: lvt-if="done" shows/hides content
-}
-
-func TestLvtIfNegation(t *testing.T) {
-    // Test: lvt-if="!error" negation works
-}
-
-func TestLvtText(t *testing.T) {
-    // Test: lvt-text="name" sets element text content
-}
-
-func TestLvtChecked(t *testing.T) {
-    // Test: lvt-checked="done" adds checked attribute when true
-}
-
-func TestLvtClass(t *testing.T) {
-    // Test: lvt-class="completed: done" adds class conditionally
-}
-
-func TestLvtCombined(t *testing.T) {
-    // Test: Multiple lvt-* attributes on same element
-}
-```
-
-#### Documentation Updates
-
-- [ ] `docs/declarative-attributes.md` - Full reference for lvt-for/if/text
-- [ ] `docs/migration-from-go-templates.md` - Side-by-side comparison
-- [ ] Add examples to main README
-
-#### Example Updates
-
-- [ ] `examples/declarative-todo/` - Todo app using only lvt-* attributes
-- [ ] `examples/declarative-dashboard/` - Dashboard without Go templates
-- [ ] Convert existing examples to use declarative syntax as alternative
-
----
-
-### 1.3 Form Auto-Binding
-
-#### Implementation Steps
-
-**Step 1: Implement `lvt-field` attribute**
-- [ ] Auto-set `name` attribute from `lvt-field` value
-- [ ] Add validation attributes based on SQLite column types
-- [ ] Support `lvt-field="email"` → `<input name="email" type="email">`
-
-**Step 2: Implement `lvt-options` for simple selects**
-- [ ] Parse `lvt-options="low,medium,high"` format
-- [ ] Generate `<option>` elements automatically
-
-**Step 3: Form schema inference**
+**Step 1: Form schema inference (optional)**
 - [ ] Read SQLite table schema for source
 - [ ] Generate form fields based on column types
-- [ ] Handle `<form lvt-source="x" lvt-action="Add">` auto-generation
+- [ ] Optional: `<form lvt-source="x" lvt-auto-fields>` auto-generates inputs
+
+**Step 2: Combine with Web Components**
+- [ ] Document using Shoelace form components with lvt-submit
+- [ ] Ensure form data extraction works with sl-input, sl-select, etc.
 
 #### E2E Tests
 
-**File:** `lvt_form_binding_e2e_test.go`
-
 ```go
-func TestLvtField(t *testing.T) {
-    // Test: lvt-field="email" sets name and infers type
-}
-
-func TestLvtOptions(t *testing.T) {
-    // Test: lvt-options generates select options
+func TestFormWithShoelaceInputs(t *testing.T) {
+    // Test: Form with sl-input elements submits correctly
 }
 
 func TestFormSchemaInference(t *testing.T) {
     // Test: Form auto-generates from SQLite schema
 }
-
-func TestFormSubmission(t *testing.T) {
-    // Test: Auto-bound form submits correctly
-}
 ```
 
 #### Documentation Updates
 
-- [ ] `docs/form-binding.md` - Form auto-binding guide
-- [ ] Add form examples to quick start
+- [ ] `docs/forms.md` - Forms guide covering standard + Shoelace inputs
 
 #### Example Updates
 
-- [ ] `examples/auto-form/` - Form generated from schema
-- [ ] Update contact form example to use auto-binding
-
----
-
-### 1.4 Markdown-Native Data Binding
-
-#### Implementation Steps
-
-**Step 1: Extend markdown parser**
-- [ ] Detect `{source}` syntax in table body
-- [ ] Replace with Go template iteration
-- [ ] Handle `{source: field}` for inline field access
-
-**Step 2: Table binding**
-```markdown
-| Name | Email |
-|------|-------|
-{users}
-```
-Transforms to Go template with `{{range .users}}` iteration.
-
-**Step 3: List binding**
-```markdown
-- {tasks: text}
-```
-Transforms to `{{range .tasks}}- {{.text}}{{end}}`
-
-#### E2E Tests
-
-**File:** `markdown_binding_e2e_test.go`
-
-```go
-func TestMarkdownTableBinding(t *testing.T) {
-    // Test: {source} in table generates rows
-}
-
-func TestMarkdownListBinding(t *testing.T) {
-    // Test: {source: field} in list generates items
-}
-
-func TestMarkdownInlineField(t *testing.T) {
-    // Test: Inline {source: field} access works
-}
-```
-
-#### Documentation Updates
-
-- [ ] `docs/markdown-binding.md` - Markdown data binding syntax
-- [ ] Update getting started guide
-
-#### Example Updates
-
-- [ ] `examples/pure-markdown-app/` - App using only markdown syntax
+- [ ] `examples/crud-form/` - Complete CRUD with Shoelace form
 
 ---
 
