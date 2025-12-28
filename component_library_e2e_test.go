@@ -11,12 +11,13 @@ import (
 
 	"github.com/chromedp/cdproto/runtime"
 	"github.com/chromedp/chromedp"
+	tinkerdown "github.com/livetemplate/tinkerdown"
 	"github.com/livetemplate/tinkerdown/internal/config"
 	"github.com/livetemplate/tinkerdown/internal/server"
 )
 
-// TestComponentLibrary tests the smart table and select auto-generation using the components library
-func TestComponentLibrary(t *testing.T) {
+// TestAutoTableRendering tests both simple and rich table auto-generation modes
+func TestAutoTableRendering(t *testing.T) {
 	// Load config from test example
 	cfg, err := config.LoadFromDir("examples/component-library-test")
 	if err != nil {
@@ -62,105 +63,131 @@ func TestComponentLibrary(t *testing.T) {
 	var htmlContent string
 	err = chromedp.Run(ctx,
 		chromedp.Navigate(ts.URL+"/"),
-		chromedp.Sleep(15*time.Second), // Wait longer for all blocks to compile and initialize
+		chromedp.Sleep(15*time.Second), // Wait for all blocks to compile and initialize
 		chromedp.OuterHTML("html", &htmlContent),
 	)
 	if err != nil {
 		t.Fatalf("Failed to navigate: %v", err)
 	}
 
-	// Debug: print HTML content
 	t.Logf("HTML content length: %d", len(htmlContent))
 
-	// Test 1: Verify datatable component renders with data-datatable attribute
-	if !strings.Contains(htmlContent, "data-datatable=") {
-		t.Logf("HTML content (first 5000 chars): %s", htmlContent[:min(5000, len(htmlContent))])
-		t.Fatal("Datatable component not found (missing data-datatable attribute)")
-	}
-	t.Log("Test 1: Datatable component found")
+	// Test 1: Simple table renders with <thead> and <tbody>
+	t.Run("simple_table_structure", func(t *testing.T) {
+		if !strings.Contains(htmlContent, "<thead>") {
+			t.Logf("HTML content (first 5000 chars): %s", htmlContent[:min(5000, len(htmlContent))])
+			t.Fatal("Simple table missing <thead>")
+		}
+		if !strings.Contains(htmlContent, "<tbody>") {
+			t.Fatal("Simple table missing <tbody>")
+		}
+		t.Log("Simple table structure verified")
+	})
 
-	// Check for column headers (Name and Email) - component uses span for sorting
-	if !strings.Contains(htmlContent, "Name") {
-		t.Logf("Console logs: %v", consoleLogs)
-		t.Fatal("Name column not found in datatable")
-	}
-	if !strings.Contains(htmlContent, "Email") {
-		t.Fatal("Email column not found in datatable")
-	}
-	t.Log("Test 1: Column headers rendered correctly")
+	// Test 2: Simple table renders user data
+	t.Run("simple_table_data", func(t *testing.T) {
+		if !strings.Contains(htmlContent, "Alice") {
+			t.Logf("HTML content: %s", htmlContent)
+			t.Fatal("Alice user not found in table")
+		}
+		if !strings.Contains(htmlContent, "alice@example.com") {
+			t.Fatal("Alice email not found in table")
+		}
+		if !strings.Contains(htmlContent, "Bob") {
+			t.Fatal("Bob user not found in table")
+		}
+		t.Log("User data rendered correctly")
+	})
 
-	// Test 2: Verify datatable renders user data
-	if !strings.Contains(htmlContent, "Alice") {
-		t.Logf("HTML content: %s", htmlContent)
-		t.Fatal("Alice user not found in datatable")
-	}
-	if !strings.Contains(htmlContent, "alice@example.com") {
-		t.Fatal("Alice email not found in datatable")
-	}
-	if !strings.Contains(htmlContent, "Bob") {
-		t.Fatal("Bob user not found in datatable")
-	}
-	t.Log("Test 2: User data rendered correctly")
+	// Test 3: Simple table with actions renders action buttons
+	t.Run("simple_table_actions", func(t *testing.T) {
+		if !strings.Contains(htmlContent, "lvt-click=\"delete\"") {
+			t.Logf("Console logs: %v", consoleLogs)
+			t.Fatal("Delete action button not found")
+		}
+		if !strings.Contains(htmlContent, "lvt-click=\"edit\"") {
+			t.Fatal("Edit action button not found")
+		}
+		if !strings.Contains(htmlContent, ">Delete</button>") {
+			t.Fatal("Delete button label not found")
+		}
+		t.Log("Action buttons rendered correctly")
+	})
 
-	// Test 3: Verify datatable has sorting capability (lvt-click on headers)
-	// The datatable component generates lvt-click="sort_TABLEID" lvt-data-column="COLUMNID" on sortable headers
-	if !strings.Contains(htmlContent, "lvt-click=\"sort_") {
-		t.Logf("HTML content: %s", htmlContent)
-		t.Fatal("Sort click handler not found on datatable headers")
-	}
-	if !strings.Contains(htmlContent, "lvt-data-column=") {
-		t.Fatal("Sort column data attribute not found")
-	}
-	t.Log("Test 3: Sorting capability rendered correctly")
+	// Test 4: Empty state message renders
+	t.Run("empty_state_message", func(t *testing.T) {
+		if !strings.Contains(htmlContent, "No users found") {
+			t.Logf("HTML content: %s", htmlContent)
+			t.Fatal("Empty state message 'No users found' not rendered")
+		}
+		t.Log("Empty state message rendered correctly")
+	})
 
-	// Test 4: Verify select dropdown has options
-	if !strings.Contains(htmlContent, "test-select") {
-		t.Fatal("Select dropdown not found")
-	}
-	t.Log("Test 4: Select dropdown found")
+	// Test 5: Rich mode with lvt-datatable renders datatable component
+	t.Run("rich_datatable_component", func(t *testing.T) {
+		if !strings.Contains(htmlContent, "data-datatable=") {
+			t.Logf("HTML content: %s", htmlContent)
+			t.Fatal("Datatable component not found (missing data-datatable attribute)")
+		}
+		t.Log("Rich datatable component found")
+	})
 
-	// Check for country options
-	if !strings.Contains(htmlContent, "value=\"US\"") {
-		t.Logf("HTML content: %s", htmlContent)
-		t.Fatal("US option not found in select")
-	}
-	if !strings.Contains(htmlContent, "United States") {
-		t.Fatal("United States label not found in select")
-	}
-	if !strings.Contains(htmlContent, "value=\"GB\"") {
-		t.Fatal("GB option not found in select")
-	}
-	t.Log("Test 4: Select options rendered correctly")
+	// Test 6: Rich mode has sorting capability
+	t.Run("rich_datatable_sorting", func(t *testing.T) {
+		if !strings.Contains(htmlContent, "lvt-click=\"sort_") {
+			t.Fatal("Sort click handler not found on datatable headers")
+		}
+		if !strings.Contains(htmlContent, "lvt-data-column=") {
+			t.Fatal("Sort column data attribute not found")
+		}
+		t.Log("Sorting capability rendered correctly")
+	})
 
-	// Test 5: Verify pagination controls (datatable has pagination by default)
-	if !strings.Contains(htmlContent, "Previous") && !strings.Contains(htmlContent, "prev_page_") {
-		t.Log("Warning: Pagination controls not found (may be disabled if data fits on one page)")
-	} else {
-		t.Log("Test 5: Pagination controls present")
-	}
+	// Test 7: Select dropdown renders with options
+	t.Run("select_dropdown", func(t *testing.T) {
+		if !strings.Contains(htmlContent, "test-select") {
+			t.Fatal("Select dropdown not found")
+		}
+		if !strings.Contains(htmlContent, "value=\"US\"") {
+			t.Logf("HTML content: %s", htmlContent)
+			t.Fatal("US option not found in select")
+		}
+		if !strings.Contains(htmlContent, "United States") {
+			t.Fatal("United States label not found in select")
+		}
+		t.Log("Select dropdown rendered correctly")
+	})
 
-	// Test 6: Verify multiple datatables on the page
-	// Count data-datatable occurrences
-	datatableCount := strings.Count(htmlContent, "data-datatable=")
-	if datatableCount < 2 {
-		t.Logf("Expected at least 2 datatables, found %d", datatableCount)
-		t.Fatal("Not enough datatable components rendered")
-	}
-	t.Logf("Test 6: Found %d datatable components", datatableCount)
+	// Test 8: Multiple tables (simple and rich) on the same page
+	t.Run("multiple_tables", func(t *testing.T) {
+		tableCount := strings.Count(htmlContent, "<table")
+		datatableCount := strings.Count(htmlContent, "data-datatable=")
 
-	t.Log("All component library tests passed!")
+		// We expect at least 4 simple tables and 2 rich datatables
+		if tableCount < 4 {
+			t.Logf("Expected at least 4 tables, found %d", tableCount)
+			t.Fatal("Not enough tables rendered")
+		}
+		if datatableCount < 2 {
+			t.Logf("Expected at least 2 datatables, found %d", datatableCount)
+			t.Fatal("Not enough datatable components rendered")
+		}
+		t.Logf("Found %d tables and %d datatable components", tableCount, datatableCount)
+	})
+
+	t.Log("All auto-table rendering tests passed!")
 }
 
-// TestAutoTableGeneration tests the table auto-generation function directly
+// TestAutoTableGeneration tests the autoGenerateTableTemplate function directly
 func TestAutoTableGeneration(t *testing.T) {
 	tests := []struct {
-		name     string
-		input    string
-		contains []string
+		name        string
+		input       string
+		contains    []string
 		notContains []string
 	}{
 		{
-			name:  "explicit columns",
+			name:  "simple mode with explicit columns",
 			input: `<table lvt-source="users" lvt-columns="name:Name,email:Email"></table>`,
 			contains: []string{
 				"<thead>",
@@ -172,10 +199,12 @@ func TestAutoTableGeneration(t *testing.T) {
 			},
 			notContains: []string{
 				"lvt-columns=",
+				"data-datatable",
+				"lvt:datatable",
 			},
 		},
 		{
-			name:  "with actions",
+			name:  "simple mode with actions",
 			input: `<table lvt-source="users" lvt-columns="name:Name" lvt-actions="delete:Delete"></table>`,
 			contains: []string{
 				"<th>Actions</th>",
@@ -185,6 +214,30 @@ func TestAutoTableGeneration(t *testing.T) {
 			},
 			notContains: []string{
 				"lvt-actions=",
+				"data-datatable",
+			},
+		},
+		{
+			name:  "simple mode with empty state",
+			input: `<table lvt-source="users" lvt-columns="name:Name" lvt-empty="No items"></table>`,
+			contains: []string{
+				"No items",
+				"{{if not .Data}}",
+			},
+			notContains: []string{
+				"lvt-empty=",
+			},
+		},
+		{
+			name:  "rich mode with lvt-datatable",
+			input: `<table lvt-source="users" lvt-columns="name:Name" lvt-datatable></table>`,
+			contains: []string{
+				`{{template "lvt:datatable:default:v1" .Table}}`,
+			},
+			notContains: []string{
+				"<thead>",
+				"<tbody>",
+				"lvt-datatable",
 			},
 		},
 		{
@@ -192,6 +245,7 @@ func TestAutoTableGeneration(t *testing.T) {
 			input: `<table lvt-source="users"><tbody>{{range .Data}}<tr><td>custom</td></tr>{{end}}</tbody></table>`,
 			contains: []string{
 				"custom",
+				"<tbody>",
 			},
 			notContains: []string{
 				"<thead>",
@@ -207,15 +261,46 @@ func TestAutoTableGeneration(t *testing.T) {
 				"{{$value}}",
 			},
 		},
+		{
+			name:  "preserves extra attributes",
+			input: `<table lvt-source="users" lvt-columns="name:Name" class="my-table" id="users-table"></table>`,
+			contains: []string{
+				`class="my-table"`,
+				`id="users-table"`,
+			},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// We need to import the function from page.go
-			// Since it's unexported, we'll test via parsing
-			// For now, just verify the test structure is correct
-			t.Logf("Test case: %s", tt.name)
-			t.Logf("Input: %s", tt.input)
+			// Parse the input as a page to trigger autoGenerateTableTemplate
+			page, err := tinkerdown.ParseString(fmt.Sprintf("---\ntitle: test\nsources:\n  users:\n    type: json\n    file: test.json\n---\n```lvt\n%s\n```", tt.input))
+			if err != nil {
+				t.Fatalf("Failed to parse: %v", err)
+			}
+
+			// Get the generated content from the interactive block
+			var generatedContent string
+			for _, block := range page.InteractiveBlocks {
+				generatedContent = block.Content
+				break
+			}
+
+			t.Logf("Generated content:\n%s", generatedContent)
+
+			// Check contains
+			for _, want := range tt.contains {
+				if !strings.Contains(generatedContent, want) {
+					t.Errorf("Expected generated content to contain %q", want)
+				}
+			}
+
+			// Check notContains
+			for _, notWant := range tt.notContains {
+				if strings.Contains(generatedContent, notWant) {
+					t.Errorf("Expected generated content NOT to contain %q", notWant)
+				}
+			}
 		})
 	}
 }
@@ -249,8 +334,35 @@ func TestAutoSelectGeneration(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			t.Logf("Test case: %s", tt.name)
-			t.Logf("Input: %s", tt.input)
+			// Parse the input as a page to trigger autoGenerateSelectTemplate
+			page, err := tinkerdown.ParseString(fmt.Sprintf("---\ntitle: test\nsources:\n  countries:\n    type: json\n    file: test.json\n  items:\n    type: json\n    file: test.json\n---\n```lvt\n%s\n```", tt.input))
+			if err != nil {
+				t.Fatalf("Failed to parse: %v", err)
+			}
+
+			// Get the generated content from the interactive block
+			var generatedContent string
+			for _, block := range page.InteractiveBlocks {
+				generatedContent = block.Content
+				break
+			}
+
+			t.Logf("Generated content:\n%s", generatedContent)
+
+			// Check contains
+			for _, want := range tt.contains {
+				if !strings.Contains(generatedContent, want) {
+					t.Errorf("Expected generated content to contain %q", want)
+				}
+			}
 		})
 	}
+}
+
+// Legacy test for backward compatibility
+func TestComponentLibrary(t *testing.T) {
+	// This test is kept for backward compatibility but delegates to the new test
+	t.Run("delegates to TestAutoTableRendering", func(t *testing.T) {
+		t.Skip("See TestAutoTableRendering for comprehensive tests")
+	})
 }

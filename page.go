@@ -331,8 +331,18 @@ func getTableActions(content string) string {
 	return ""
 }
 
-// autoGenerateTableTemplate transforms <table lvt-source="..."> into a datatable component template.
-// Uses the datatable component from livetemplate/components for rich features like sorting and pagination.
+// autoGenerateTableTemplate transforms <table lvt-source="..."> into generated HTML.
+//
+// Two modes:
+//   - Simple (default): Generates inline <thead>/<tbody> with {{range .Data}}
+//   - Rich (lvt-datatable): Uses datatable component with sorting/pagination
+//
+// Attributes:
+//   - lvt-source="name" - Required, specifies the data source
+//   - lvt-columns="field:Label,field2:Label2" - Column definitions (optional, auto-discovers if omitted)
+//   - lvt-actions="action:Label,action2:Label2" - Action buttons column
+//   - lvt-empty="No items" - Message when data is empty
+//   - lvt-datatable - Opt-in to rich datatable component mode
 func autoGenerateTableTemplate(content string) string {
 	// Check if this is a table with lvt-source and empty/minimal content
 	tableRegex := regexp.MustCompile(`(?s)<table([^>]*lvt-source="[^"]+[^>]*)>(.*?)</table>`)
@@ -349,28 +359,185 @@ func autoGenerateTableTemplate(content string) string {
 		return content
 	}
 
-	// Extract any extra classes or attributes we want to preserve (not lvt-source, lvt-columns, lvt-actions)
+	// Check if lvt-datatable is present (opt-in to rich mode)
+	useDatatable := strings.Contains(attrs, "lvt-datatable")
+
+	// Extract lvt-columns="field:Label,field2:Label2"
+	columns := getTableColumns(content)
+
+	// Extract lvt-actions="action:Label,action2:Label2"
+	actions := getTableActions(content)
+
+	// Extract lvt-empty="message"
+	emptyMessage := getTableEmpty(content)
+
+	// Clean attributes (remove lvt-* attributes we've processed)
 	cleanedAttrs := attrs
 	cleanedAttrs = regexp.MustCompile(`\s*lvt-source="[^"]*"`).ReplaceAllString(cleanedAttrs, "")
 	cleanedAttrs = regexp.MustCompile(`\s*lvt-columns="[^"]*"`).ReplaceAllString(cleanedAttrs, "")
 	cleanedAttrs = regexp.MustCompile(`\s*lvt-actions="[^"]*"`).ReplaceAllString(cleanedAttrs, "")
+	cleanedAttrs = regexp.MustCompile(`\s*lvt-empty="[^"]*"`).ReplaceAllString(cleanedAttrs, "")
+	cleanedAttrs = regexp.MustCompile(`\s*lvt-datatable`).ReplaceAllString(cleanedAttrs, "")
 	cleanedAttrs = strings.TrimSpace(cleanedAttrs)
 
-	// Generate simple datatable template call
-	// The datatable component handles all rendering, sorting, and pagination
 	var generated strings.Builder
 
-	// Wrap in a div with any extra attributes (like class) if present
-	if cleanedAttrs != "" {
-		generated.WriteString(fmt.Sprintf("<div%s>\n", cleanedAttrs))
-		generated.WriteString("{{template \"lvt:datatable:default:v1\" .Table}}\n")
-		generated.WriteString("</div>")
+	if useDatatable {
+		// Rich mode: use datatable component
+		if cleanedAttrs != "" {
+			generated.WriteString(fmt.Sprintf("<div%s>\n", cleanedAttrs))
+			generated.WriteString("{{template \"lvt:datatable:default:v1\" .Table}}\n")
+			generated.WriteString("</div>")
+		} else {
+			generated.WriteString("{{template \"lvt:datatable:default:v1\" .Table}}")
+		}
 	} else {
-		generated.WriteString("{{template \"lvt:datatable:default:v1\" .Table}}")
+		// Simple mode: generate inline HTML
+		if cleanedAttrs != "" {
+			generated.WriteString(fmt.Sprintf("<table %s>\n", cleanedAttrs))
+		} else {
+			generated.WriteString("<table>\n")
+		}
+		generateSimpleTable(&generated, columns, actions, emptyMessage)
+		generated.WriteString("</table>")
 	}
 
-	// Use ReplaceAllLiteralString to avoid special chars being interpreted as backreferences
 	return tableRegex.ReplaceAllLiteralString(content, generated.String())
+}
+
+// generateSimpleTable generates simple inline table HTML with thead/tbody
+func generateSimpleTable(w *strings.Builder, columns, actions, emptyMessage string) {
+	// Parse columns: "field:Label,field2:Label2" or "field,field2"
+	var cols []struct {
+		field string
+		label string
+	}
+
+	if columns != "" {
+		for _, pair := range strings.Split(columns, ",") {
+			parts := strings.SplitN(strings.TrimSpace(pair), ":", 2)
+			field := parts[0]
+			label := field
+			if len(parts) > 1 {
+				label = parts[1]
+			} else {
+				// Auto-titlecase the field name for label
+				label = titleCase(field)
+			}
+			cols = append(cols, struct {
+				field string
+				label string
+			}{field, label})
+		}
+	}
+
+	// Parse actions: "action:Label,action2:Label2"
+	var acts []struct {
+		action string
+		label  string
+	}
+	if actions != "" {
+		for _, pair := range strings.Split(actions, ",") {
+			parts := strings.SplitN(strings.TrimSpace(pair), ":", 2)
+			action := parts[0]
+			label := action
+			if len(parts) > 1 {
+				label = parts[1]
+			} else {
+				label = titleCase(action)
+			}
+			acts = append(acts, struct {
+				action string
+				label  string
+			}{action, label})
+		}
+	}
+
+	// If no columns specified, auto-discover from first row
+	if len(cols) == 0 {
+		w.WriteString("{{if .Data}}\n")
+		w.WriteString("  <thead>\n    <tr>\n")
+		w.WriteString("      {{range $key, $_ := index .Data 0}}\n")
+		w.WriteString("      <th>{{$key}}</th>\n")
+		w.WriteString("      {{end}}\n")
+		if len(acts) > 0 {
+			w.WriteString("      <th>Actions</th>\n")
+		}
+		w.WriteString("    </tr>\n  </thead>\n")
+		w.WriteString("  <tbody>\n")
+		w.WriteString("    {{range .Data}}\n    <tr>\n")
+		w.WriteString("      {{range $key, $value := .}}\n")
+		w.WriteString("      <td>{{$value}}</td>\n")
+		w.WriteString("      {{end}}\n")
+		if len(acts) > 0 {
+			w.WriteString("      <td>\n")
+			for _, act := range acts {
+				w.WriteString(fmt.Sprintf("        <button lvt-click=\"%s\" lvt-data-id=\"{{.Id}}\">%s</button>\n", act.action, act.label))
+			}
+			w.WriteString("      </td>\n")
+		}
+		w.WriteString("    </tr>\n    {{end}}\n")
+		w.WriteString("  </tbody>\n")
+		w.WriteString("{{else}}\n")
+		if emptyMessage != "" {
+			w.WriteString(fmt.Sprintf("  <tbody><tr><td>%s</td></tr></tbody>\n", emptyMessage))
+		} else {
+			w.WriteString("  <tbody><tr><td>No data</td></tr></tbody>\n")
+		}
+		w.WriteString("{{end}}\n")
+		return
+	}
+
+	// Generate with explicit columns
+	w.WriteString("  <thead>\n    <tr>\n")
+	for _, col := range cols {
+		w.WriteString(fmt.Sprintf("      <th>%s</th>\n", col.label))
+	}
+	if len(acts) > 0 {
+		w.WriteString("      <th>Actions</th>\n")
+	}
+	w.WriteString("    </tr>\n  </thead>\n")
+
+	// Empty state handling
+	if emptyMessage != "" {
+		w.WriteString("  {{if not .Data}}\n")
+		colSpan := len(cols)
+		if len(acts) > 0 {
+			colSpan++
+		}
+		w.WriteString(fmt.Sprintf("  <tbody><tr><td colspan=\"%d\">%s</td></tr></tbody>\n", colSpan, emptyMessage))
+		w.WriteString("  {{else}}\n")
+	}
+
+	w.WriteString("  <tbody>\n")
+	w.WriteString("    {{range .Data}}\n    <tr>\n")
+	for _, col := range cols {
+		// Use titlecase field name for Go template access
+		w.WriteString(fmt.Sprintf("      <td>{{.%s}}</td>\n", titleCase(col.field)))
+	}
+	if len(acts) > 0 {
+		w.WriteString("      <td>\n")
+		for _, act := range acts {
+			w.WriteString(fmt.Sprintf("        <button lvt-click=\"%s\" lvt-data-id=\"{{.Id}}\">%s</button>\n", act.action, act.label))
+		}
+		w.WriteString("      </td>\n")
+	}
+	w.WriteString("    </tr>\n    {{end}}\n")
+	w.WriteString("  </tbody>\n")
+
+	if emptyMessage != "" {
+		w.WriteString("  {{end}}\n")
+	}
+}
+
+// getTableEmpty extracts lvt-empty attribute value
+func getTableEmpty(content string) string {
+	emptyRegex := regexp.MustCompile(`lvt-empty="([^"]+)"`)
+	match := emptyRegex.FindStringSubmatch(content)
+	if match != nil && len(match) > 1 {
+		return match[1]
+	}
+	return ""
 }
 
 // titleCase converts a string to title case (first letter uppercase only)
