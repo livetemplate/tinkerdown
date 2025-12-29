@@ -182,8 +182,25 @@ go test ./...
 go build -o tinkerdown ./cmd/tinkerdown
 ```
 
+## Auto-Rendering
+
+Tinkerdown can automatically generate HTML for common UI patterns:
+
+```html
+<!-- Select dropdown from data -->
+<select lvt-source="countries" lvt-value="code" lvt-label="name">
+</select>
+
+<!-- Table with headers, rows, and actions -->
+<table lvt-source="users" lvt-columns="name,email" lvt-actions="edit:Edit,delete:Delete">
+</table>
+```
+
+See [Auto-Rendering Documentation](docs/auto-rendering.md) for full details.
+
 ## Documentation
 
+- [Auto-Rendering](docs/auto-rendering.md) - Tables and select dropdowns from data sources
 - [Design Document](docs/plans/2025-11-12-tinkerdown-design.md) - Complete architecture and design decisions
 - [Progress Tracker](PROGRESS.md) - Implementation status and roadmap
 
