@@ -14,57 +14,35 @@ sources:
 
 # Auto-Rendering Tables
 
-This page demonstrates auto-table generation with two modes: **simple** (default) and **rich** (with `lvt-datatable`).
+This page demonstrates auto-table generation for simple data display.
 
-## Simple Mode (Default)
+## Simple Tables
 
-Simple mode generates inline `<thead>/<tbody>` HTML. Use this for basic data display.
-
-### Test 1: Simple Table with Explicit Columns
+### Test 1: Table with Explicit Columns
 
 ```lvt
 <table lvt-source="users" lvt-columns="name:Name,email:Email">
 </table>
 ```
 
-### Test 2: Simple Table with Actions
+### Test 2: Table with Actions
 
 ```lvt
 <table lvt-source="users" lvt-columns="name:Name,role:Role" lvt-actions="delete:Delete,edit:Edit">
 </table>
 ```
 
-### Test 3: Simple Table with Empty State
+### Test 3: Table with Empty State
 
 ```lvt
 <table lvt-source="empty_source" lvt-columns="name:Name,email:Email" lvt-empty="No users found">
 </table>
 ```
 
-### Test 4: Simple Table with Auto-Discovery (No Columns)
+### Test 4: Table with Auto-Discovery (No Columns)
 
 ```lvt
 <table lvt-source="users">
-</table>
-```
-
----
-
-## Rich Mode (lvt-datatable)
-
-Rich mode uses the datatable component for sorting, pagination, and advanced features.
-
-### Test 5: Rich Datatable with Columns
-
-```lvt
-<table lvt-source="users" lvt-columns="name:Name,email:Email" lvt-datatable>
-</table>
-```
-
-### Test 6: Rich Datatable with Role Column
-
-```lvt
-<table lvt-source="users" lvt-columns="name:Name,role:Role" lvt-datatable>
 </table>
 ```
 
