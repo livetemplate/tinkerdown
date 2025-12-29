@@ -79,12 +79,17 @@ _No tasks currently in progress_
 
 ### Recently Completed
 <!-- Move completed tasks here, keep last 5 -->
-_No tasks completed yet_
+1. **1.1 Auto-rendering tables** - Completed 2025-12-29 (PR #13)
+   - `lvt-source` + `lvt-columns` on `<table>` auto-generates thead/tbody
+   - `lvt-actions` for action button columns
+   - `lvt-empty` for empty state messages
+   - XSS prevention with html.EscapeString()
+   - Rich mode via `lvt-datatable` (uses external component)
 
 ### Next Up
 <!-- Queue of next 3-5 tasks to tackle -->
-1. 1.1 Auto-rendering tables
-2. 1.3 Document existing select auto-rendering
+1. 1.3 Document existing select auto-rendering
+2. 1.2 Auto-rendering lists
 3. 3.6A Docs cleanup
 
 ---
