@@ -1,10 +1,13 @@
 package server
 
 import (
+	"bytes"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -138,12 +141,12 @@ This is a test page.`
 	}
 
 	// Check that HTML contains title
-	if !contains(body, "Test Page") {
+	if !strings.Contains(body, "Test Page") {
 		t.Error("Response does not contain page title")
 	}
 
 	// Check that HTML contains content
-	if !contains(body, "Test Content") {
+	if !strings.Contains(body, "Test Content") {
 		t.Error("Response does not contain page content")
 	}
 }
@@ -207,20 +210,6 @@ func TestSortRoutes(t *testing.T) {
 	}
 }
 
-func contains(s, substr string) bool {
-	return len(s) > 0 && len(substr) > 0 && len(s) >= len(substr) &&
-		(s == substr || findSubstring(s, substr))
-}
-
-func findSubstring(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
-}
-
 func TestWebSocketURLContainsPage(t *testing.T) {
 	// Create temp directory with multiple test pages
 	tmpDir := t.TempDir()
@@ -280,8 +269,7 @@ title: "Getting Started"
 
 			// Check that the WebSocket URL contains the correct page parameter
 			expectedWSURL := "ws://localhost:8080/ws?page=" + tt.expectedPage
-			if !contains(body, expectedWSURL) {
-				// Try to find what WebSocket URL is actually in the body
+			if !strings.Contains(body, expectedWSURL) {
 				t.Errorf("Expected WebSocket URL with page=%s not found in response for path %s", tt.expectedPage, tt.path)
 			}
 		})
@@ -316,21 +304,33 @@ title: "Counter"
 		t.Fatalf("Discover() error: %v", err)
 	}
 
+	// Helper to capture log output during request
+	captureLogOutput := func(fn func()) string {
+		var buf bytes.Buffer
+		log.SetOutput(&buf)
+		defer log.SetOutput(os.Stderr)
+		fn()
+		return buf.String()
+	}
+
 	// Test that /ws endpoint without page parameter defaults to home
 	t.Run("default to home page", func(t *testing.T) {
 		req := httptest.NewRequest("GET", "/ws", nil)
 		w := httptest.NewRecorder()
 
-		// This will fail WebSocket upgrade (no proper WebSocket handshake),
-		// but we're testing the routing logic
-		srv.ServeHTTP(w, req)
+		logOutput := captureLogOutput(func() {
+			srv.ServeHTTP(w, req)
+		})
 
-		// The request should be handled (not 404)
-		// WebSocket upgrade will fail with 400 Bad Request because
-		// it's not a proper WebSocket handshake
 		resp := w.Result()
-		if resp.StatusCode == http.StatusNotFound {
-			t.Error("WebSocket endpoint returned 404, expected to be handled")
+		// WebSocket upgrade fails with 400 Bad Request (no proper handshake)
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("Status = %d, want %d (failed WebSocket upgrade)", resp.StatusCode, http.StatusBadRequest)
+		}
+
+		// Verify log shows routing to home page (pattern: /)
+		if !strings.Contains(logOutput, "WebSocket connection for page: / (pattern: /)") {
+			t.Errorf("Expected log to show routing to home page, got: %s", logOutput)
 		}
 	})
 
@@ -339,11 +339,18 @@ title: "Counter"
 		req := httptest.NewRequest("GET", "/ws?page=/counter", nil)
 		w := httptest.NewRecorder()
 
-		srv.ServeHTTP(w, req)
+		logOutput := captureLogOutput(func() {
+			srv.ServeHTTP(w, req)
+		})
 
 		resp := w.Result()
-		if resp.StatusCode == http.StatusNotFound {
-			t.Error("WebSocket endpoint with page parameter returned 404")
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("Status = %d, want %d (failed WebSocket upgrade)", resp.StatusCode, http.StatusBadRequest)
+		}
+
+		// Verify log shows routing to counter page
+		if !strings.Contains(logOutput, "WebSocket connection for page: /counter (pattern: /counter)") {
+			t.Errorf("Expected log to show routing to /counter, got: %s", logOutput)
 		}
 	})
 
@@ -352,12 +359,110 @@ title: "Counter"
 		req := httptest.NewRequest("GET", "/ws?page=/nonexistent", nil)
 		w := httptest.NewRecorder()
 
-		srv.ServeHTTP(w, req)
+		logOutput := captureLogOutput(func() {
+			srv.ServeHTTP(w, req)
+		})
 
 		resp := w.Result()
-		// Should not return 404 - should fall back to first route
-		if resp.StatusCode == http.StatusNotFound {
-			t.Error("WebSocket with unknown page returned 404, expected fallback")
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Errorf("Status = %d, want %d (failed WebSocket upgrade)", resp.StatusCode, http.StatusBadRequest)
+		}
+
+		// Verify log shows fallback behavior
+		if !strings.Contains(logOutput, `Page "/nonexistent" not found, falling back to first route`) {
+			t.Errorf("Expected fallback log message, got: %s", logOutput)
+		}
+		// Verify it fell back to home page (first route)
+		if !strings.Contains(logOutput, "WebSocket connection for page: /nonexistent (pattern: /)") {
+			t.Errorf("Expected log to show fallback to home page, got: %s", logOutput)
 		}
 	})
+}
+
+func TestWebSocketURLEncodingDecoding(t *testing.T) {
+	// Test that URL-encoded page paths are correctly decoded by the server
+	tmpDir := t.TempDir()
+
+	// Create page with special characters in the path
+	files := map[string]string{
+		"index.md": `---
+title: "Home"
+---
+# Home`,
+		"getting-started.md": `---
+title: "Getting Started"
+---
+# Getting Started`,
+	}
+
+	for path, content := range files {
+		fullPath := filepath.Join(tmpDir, path)
+		if err := os.WriteFile(fullPath, []byte(content), 0644); err != nil {
+			t.Fatalf("Failed to write file: %v", err)
+		}
+	}
+
+	srv := New(tmpDir)
+	if err := srv.Discover(); err != nil {
+		t.Fatalf("Discover() error: %v", err)
+	}
+
+	// Helper to capture log output
+	captureLogOutput := func(fn func()) string {
+		var buf bytes.Buffer
+		log.SetOutput(&buf)
+		defer log.SetOutput(os.Stderr)
+		fn()
+		return buf.String()
+	}
+
+	// Test URL-encoded path is correctly decoded
+	// %2Fgetting-started should decode to /getting-started
+	t.Run("URL-encoded path decoded correctly", func(t *testing.T) {
+		// The client sends URL-encoded paths, which Go's Query().Get() decodes automatically
+		req := httptest.NewRequest("GET", "/ws?page=%2Fgetting-started", nil)
+		w := httptest.NewRecorder()
+
+		logOutput := captureLogOutput(func() {
+			srv.ServeHTTP(w, req)
+		})
+
+		// Verify the path was decoded and matched correctly
+		if !strings.Contains(logOutput, "WebSocket connection for page: /getting-started (pattern: /getting-started)") {
+			t.Errorf("Expected URL-encoded path to be decoded and matched, got: %s", logOutput)
+		}
+	})
+}
+
+func TestServeWebSocketEmptyRoutes(t *testing.T) {
+	// Test WebSocket handling when no routes are configured
+	tmpDir := t.TempDir()
+
+	// Create server without any markdown files
+	srv := New(tmpDir)
+	if err := srv.Discover(); err != nil {
+		t.Fatalf("Discover() error: %v", err)
+	}
+
+	// Verify no routes were discovered
+	if len(srv.Routes()) != 0 {
+		t.Fatalf("Expected 0 routes, got %d", len(srv.Routes()))
+	}
+
+	req := httptest.NewRequest("GET", "/ws", nil)
+	w := httptest.NewRecorder()
+
+	srv.ServeHTTP(w, req)
+
+	resp := w.Result()
+	// Should return 404 "No pages available" when no routes exist
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("Status = %d, want %d for empty routes", resp.StatusCode, http.StatusNotFound)
+	}
+
+	// Verify error message
+	body := w.Body.String()
+	if !strings.Contains(body, "No pages available") {
+		t.Errorf("Expected 'No pages available' error, got: %s", body)
+	}
 }

@@ -253,7 +253,10 @@ func (s *Server) serveWebSocket(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("[WS] WebSocket connection for page: %s (pattern: %s)", pagePath, route.Pattern)
 
-	// Create WebSocket handler for this page
+	// Create a new WebSocketHandler instance for this connection.
+	// NOTE: Each WebSocket connection (e.g., each browser tab) gets its own
+	// handler with isolated state. Interactive state is intentionally NOT
+	// synchronized across multiple connections to the same page.
 	wsHandler := NewWebSocketHandler(route.Page, s, true, s.rootDir, s.config)
 	wsHandler.ServeHTTP(w, r)
 }
