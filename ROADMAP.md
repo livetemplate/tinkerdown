@@ -79,13 +79,20 @@ _No tasks currently in progress_
 
 ### Recently Completed
 <!-- Move completed tasks here, keep last 5 -->
-1. **1.3 Document existing select auto-rendering** - Completed 2025-12-29
+1. **1.2 Auto-rendering lists** - Completed 2025-12-30 (PR #14)
+   - `lvt-source` + `lvt-field` on `<ul>` or `<ol>` auto-generates list items
+   - `lvt-actions` for action buttons on each item
+   - `lvt-empty` for empty state messages
+   - XSS prevention with html.EscapeString()
+   - Note: Data sources must be arrays of objects (runtime limitation)
+
+2. **1.3 Document existing select auto-rendering** - Completed 2025-12-29
    - Created `docs/auto-rendering.md` with comprehensive documentation
    - Documents select dropdown with `lvt-source`, `lvt-value`, `lvt-label`
    - Documents table auto-rendering with all attributes
    - Updated README with Auto-Rendering section
 
-2. **1.1 Auto-rendering tables** - Completed 2025-12-29 (PR #13)
+3. **1.1 Auto-rendering tables** - Completed 2025-12-29 (PR #13)
    - `lvt-source` + `lvt-columns` on `<table>` auto-generates thead/tbody
    - `lvt-actions` for action button columns
    - `lvt-empty` for empty state messages
@@ -94,9 +101,9 @@ _No tasks currently in progress_
 
 ### Next Up
 <!-- Queue of next 3-5 tasks to tackle -->
-1. 1.2 Auto-rendering lists
-2. 3.6A Docs cleanup
-3. 2.1 Nested data sources
+1. 3.6A Docs cleanup
+2. 2.1 Nested data sources
+3. 2.2 Source caching
 
 ---
 
