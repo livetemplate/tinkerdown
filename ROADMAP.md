@@ -21,18 +21,48 @@ This roadmap is designed to be followed and updated by LLMs. Here's how to work 
 2. If empty, pick from **Quick Wins** section or **Implementation Priorities**
 3. Find the corresponding **Detailed Implementation Plan** at the end of this document
 
+### Git Workflow (Required)
+
+**IMPORTANT: Always use Pull Requests for changes. Never commit directly to main.**
+
+1. **Create a worktree** for the feature:
+   ```bash
+   git worktree add .worktrees/<feature-name> -b feature/<feature-name>
+   cd .worktrees/<feature-name>
+   ```
+
+2. **Make changes** in the worktree (not in main)
+
+3. **Create a PR** when ready:
+   ```bash
+   git push -u origin feature/<feature-name>
+   gh pr create --title "feat: <description>" --body "..."
+   ```
+
+4. **Wait for review/approval** before merging
+
+5. **Cleanup** after merge:
+   ```bash
+   cd /path/to/main/repo
+   git worktree remove .worktrees/<feature-name>
+   git pull origin main
+   ```
+
 ### Executing a Task
-1. Read the implementation plan for the task
-2. Follow the **Implementation Steps** in order
-3. Run the **E2E Tests** specified (or write them if missing)
-4. Update **Documentation** as specified
-5. Update **Examples** as specified
+1. **Create a worktree** (see Git Workflow above)
+2. Read the implementation plan for the task
+3. Follow the **Implementation Steps** in order
+4. Run the **E2E Tests** specified (or write them if missing)
+5. Update **Documentation** as specified
+6. Update **Examples** as specified
+7. **Create a PR** for review
 
 ### After Completing a Task
 1. Mark the checkbox as done: `- [ ]` → `- [x]`
 2. Update **Current Sprint** section below (move to completed, add next task)
-3. Commit with message format: `feat(<phase>): <description>`
+3. **Create PR** with message format: `feat(<phase>): <description>`
 4. If implementation plan needs updates based on learnings, update it
+5. **Wait for PR approval** before considering task complete
 
 ### Checkbox Legend
 - `- [ ]` = Not started
