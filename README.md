@@ -1,129 +1,120 @@
 # Tinkerdown
 
-**Interactive documentation made easy**
+**Build data-driven apps with markdown**
 
-Tinkerdown is a CLI tool for creating interactive tutorials, guides, and playgrounds using markdown files with embedded executable code blocks. Built on [LiveTemplate](https://github.com/livetemplate/livetemplate).
+Tinkerdown is a CLI tool for creating interactive, data-driven applications using markdown files. Connect to databases, APIs, and files with zero boilerplate. Built on [LiveTemplate](https://github.com/livetemplate/livetemplate).
 
-## Status
+## Quick Start
 
-🚧 **Early Development** - Not yet ready for use
+```bash
+# Install
+go install github.com/livetemplate/tinkerdown/cmd/tinkerdown@latest
 
-See [PROGRESS.md](PROGRESS.md) for implementation status and [docs/plans/2025-11-12-tinkerdown-design.md](docs/plans/2025-11-12-tinkerdown-design.md) for complete design.
+# Run an example
+tinkerdown serve examples/lvt-source-file-test
 
-## Vision
+# Open http://localhost:8080
+```
 
-Writing interactive tutorials should be as easy as writing markdown:
+## What You Can Build
+
+Write markdown with embedded `lvt` blocks that connect to data sources:
 
 ```markdown
 ---
-title: "Build a Counter"
+title: "User Dashboard"
+sources:
+  users:
+    type: json
+    file: users.json
 ---
 
-# Learn LiveTemplate
+# User Dashboard
 
-## Server State
-
-```go server readonly id="counter"
-type CounterState struct {
-    Counter int `json:"counter"`
-}
-
-// Increment handles the "increment" action
-func (s *CounterState) Increment(_ *livetemplate.Context) error {
-    s.Counter++
-    return nil
-}
+<table lvt-source="users" lvt-columns="name,email,role" lvt-actions="edit:Edit,delete:Delete">
+</table>
 ```
 
-## Try It Live
+Run `tinkerdown serve` and get a fully interactive data table with action buttons.
 
-```lvt interactive state="counter"
-<div>
-    <h2>Count: {{.Counter}}</h2>
-    <button lvt-click="increment">+1</button>
-</div>
+## Key Features
+
+- **Markdown-first**: Write apps in markdown with `lvt` code blocks
+- **8 data sources**: JSON, CSV, REST APIs, PostgreSQL, SQLite, exec scripts, markdown, WASM
+- **Auto-rendering**: Tables, selects, and lists generated from data
+- **Real-time updates**: WebSocket-powered reactivity
+- **Zero config**: `tinkerdown serve` just works
+- **Hot reload**: Changes reflect immediately with `--watch`
+
+## Data Sources
+
+Connect to any data source in frontmatter or `tinkerdown.yaml`:
+
+| Type | Description | Example |
+|------|-------------|---------|
+| `json` | JSON files | [lvt-source-file-test](examples/lvt-source-file-test) |
+| `csv` | CSV files | [lvt-source-file-test](examples/lvt-source-file-test) |
+| `rest` | REST APIs | [lvt-source-rest-test](examples/lvt-source-rest-test) |
+| `pg` | PostgreSQL | [lvt-source-pg-test](examples/lvt-source-pg-test) |
+| `sqlite` | SQLite databases | [lvt-source-sqlite-test](examples/lvt-source-sqlite-test) |
+| `exec` | Shell commands (any language) | [lvt-source-exec-test](examples/lvt-source-exec-test) |
+| `markdown` | Markdown files with anchors | [markdown-data-todo](examples/markdown-data-todo) |
+| `wasm` | WASM modules | [lvt-source-wasm-test](examples/lvt-source-wasm-test) |
+
+## Auto-Rendering
+
+Generate HTML automatically from data sources:
+
+```html
+<!-- Select dropdown -->
+<select lvt-source="countries" lvt-value="code" lvt-label="name">
+</select>
+
+<!-- Table with actions -->
+<table lvt-source="users" lvt-columns="name,email" lvt-actions="edit:Edit,delete:Delete">
+</table>
+
+<!-- List with actions -->
+<ul lvt-source="tasks" lvt-field="title" lvt-actions="delete:×">
+</ul>
 ```
 
-## Experiment
+See [Auto-Rendering Documentation](docs/auto-rendering.md) for full details.
 
-```go wasm editable
-package main
-import "fmt"
+**Example:** [component-library-test](examples/component-library-test)
 
-func main() {
-    fmt.Println("Hello, World!")
-}
-```
-```
+## Interactive Attributes
 
-Then run:
-
-```bash
-tinkerdown serve
-```
-
-And get a fully interactive tutorial website!
-
-## Key Features (Planned)
-
-- 📝 **Markdown-first**: Write tutorials in markdown with special code blocks
-- ⚡ **Real-time**: Interactive demos powered by LiveTemplate's reactivity
-- 🎮 **Playgrounds**: Editable Go code that runs in browser via WebAssembly
-- 🔒 **Secure**: Student code never touches server (WASM sandbox)
-- 🚀 **Zero config**: `tinkerdown serve` just works
-- 🎨 **Beautiful**: Built-in theme, looks professional out of the box
-- 🔥 **Hot reload**: Changes reflect immediately during development
-
-## Architecture
-
-- **Dual execution model**: Author code runs on server (trusted), student code in browser (WASM sandbox)
-- **Hybrid rendering**: Static markdown cached, code blocks dynamic
-- **Multiplexed WebSocket**: Single connection for all interactive elements
+| Attribute | Description |
+|-----------|-------------|
+| `lvt-source` | Connect element to a data source |
+| `lvt-click` | Handle click events |
+| `lvt-submit` | Handle form submissions |
+| `lvt-change` | Handle input changes |
+| `lvt-confirm` | Show confirmation dialog before action |
+| `lvt-data-*` | Pass data with actions |
 
 ## Configuration
 
-Tinkerdown can be customized using a `tinkerdown.yaml` file in your project directory:
+Configure via `tinkerdown.yaml` or markdown frontmatter:
 
 ```yaml
 # tinkerdown.yaml
-title: "My Tutorial"
-description: "Learn something awesome"
-
+title: "My App"
 server:
   port: 8080
-  host: localhost
   debug: false
-
+sources:
+  users:
+    type: json
+    file: data/users.json
 styling:
-  theme: clean              # Options: clean, dark, minimal
-  primary_color: "#007bff"
-  font: "system-ui"
-
-blocks:
-  auto_id: true
-  id_format: "kebab-case"   # Options: kebab-case, camelCase, snake_case
-  show_line_numbers: true
-
+  theme: clean
 features:
   hot_reload: true
-
-ignore:
-  - "drafts/**"
-  - "_*.md"
 ```
 
-CLI flags override configuration file values:
-
-```bash
-tinkerdown serve --port 3000 --watch     # Override port and enable watch
-tinkerdown serve --config custom.yaml    # Use custom config file
-```
-
-See `tinkerdown.yaml.example` for all available options.
-
-### Frontmatter Configuration (Optional)
-
-For single-file apps, you can define configuration directly in the markdown frontmatter, making `tinkerdown.yaml` optional:
+Or inline in frontmatter:
 
 ```markdown
 ---
@@ -132,77 +123,26 @@ sources:
   users:
     type: json
     file: users.json
-  api_data:
-    type: rest
-    url: https://api.example.com/data
-  db_users:
-    type: pg
-    query: "SELECT * FROM users"
-styling:
-  theme: dark
-  primary_color: "#6366f1"
-features:
-  hot_reload: true
 ---
-
-# My App
-
-```lvt
-<div lvt-source="users">
-  {{range .Data}}<p>{{.Name}}</p>{{end}}
-</div>
-```
 ```
 
-**Supported frontmatter config options:**
-
-| Option | Description |
-|--------|-------------|
-| `sources` | Data sources (json, csv, rest, pg, exec) |
-| `styling` | Theme configuration (theme, primary_color, font) |
-| `blocks` | Code block settings (auto_id, id_format, show_line_numbers) |
-| `features` | Feature flags (hot_reload) |
-
-Frontmatter config takes precedence over `tinkerdown.yaml` when both exist.
+CLI flags override config: `tinkerdown serve --port 3000 --watch`
 
 ## Development
 
 ```bash
-# Clone
 git clone https://github.com/livetemplate/tinkerdown.git
 cd tinkerdown
-
-# Install dependencies
 go mod download
-
-# Run tests
 go test ./...
-
-# Build
 go build -o tinkerdown ./cmd/tinkerdown
 ```
 
-## Auto-Rendering
-
-Tinkerdown can automatically generate HTML for common UI patterns:
-
-```html
-<!-- Select dropdown from data -->
-<select lvt-source="countries" lvt-value="code" lvt-label="name">
-</select>
-
-<!-- Table with headers, rows, and actions -->
-<table lvt-source="users" lvt-columns="name,email" lvt-actions="edit:Edit,delete:Delete">
-</table>
-```
-
-See [Auto-Rendering Documentation](docs/auto-rendering.md) for full details.
-
 ## Documentation
 
-- [Auto-Rendering](docs/auto-rendering.md) - Tables and select dropdowns from data sources
-- [Design Document](docs/plans/2025-11-12-tinkerdown-design.md) - Complete architecture and design decisions
-- [Progress Tracker](PROGRESS.md) - Implementation status and roadmap
+- [Auto-Rendering](docs/auto-rendering.md) - Tables, selects, and lists from data
+- [Roadmap](ROADMAP.md) - Feature planning and implementation status
+- [Design Document](docs/plans/2025-11-12-tinkerdown-design.md) - Architecture decisions
 
 ## License
 
@@ -210,4 +150,4 @@ MIT
 
 ## Contributing
 
-This project is in early development. Contributions welcome once core functionality is stable.
+Contributions welcome! See [ROADMAP.md](ROADMAP.md) for planned features and current priorities.
