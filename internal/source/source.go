@@ -54,9 +54,10 @@ func NewRegistry(cfg *config.Config, siteDir string) (*Registry, error) {
 // NewRegistryWithFile creates a source registry with knowledge of the current markdown file
 // This is needed for markdown sources that reference anchors in the current file
 func NewRegistryWithFile(cfg *config.Config, siteDir, currentFile string) (*Registry, error) {
+	memCache := cache.NewMemoryCache()
 	r := &Registry{
 		sources: make(map[string]Source),
-		cache:   cache.NewMemoryCache(),
+		cache:   memCache,
 		cfg:     cfg,
 	}
 
@@ -67,6 +68,8 @@ func NewRegistryWithFile(cfg *config.Config, siteDir, currentFile string) (*Regi
 	for name, srcCfg := range cfg.Sources {
 		src, err := createSource(name, srcCfg, siteDir, currentFile)
 		if err != nil {
+			// Stop cache cleanup goroutine to avoid leak on initialization error
+			memCache.Stop()
 			return nil, err
 		}
 
@@ -108,9 +111,15 @@ func (r *Registry) Close() error {
 
 // InvalidateCache invalidates the cache for a specific source
 func (r *Registry) InvalidateCache(name string) {
-	if cs, ok := r.sources[name].(*CachedSource); ok {
+	src, ok := r.sources[name]
+	if !ok {
+		// Source not found; nothing to invalidate
+		return
+	}
+
+	if cs, ok := src.(*CachedSource); ok {
 		cs.Invalidate()
-	} else if cws, ok := r.sources[name].(*CachedWritableSource); ok {
+	} else if cws, ok := src.(*CachedWritableSource); ok {
 		cws.Invalidate()
 	}
 }

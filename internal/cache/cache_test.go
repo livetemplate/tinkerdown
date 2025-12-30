@@ -204,3 +204,12 @@ func TestMemoryCacheLen(t *testing.T) {
 		t.Errorf("expected 2 entries, got %d", c.Len())
 	}
 }
+
+func TestMemoryCacheStopIdempotent(t *testing.T) {
+	c := NewMemoryCache()
+
+	// Calling Stop() multiple times should not panic
+	c.Stop()
+	c.Stop()
+	c.Stop()
+}

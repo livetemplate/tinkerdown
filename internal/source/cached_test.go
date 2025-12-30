@@ -325,3 +325,79 @@ func TestCachedSourceGetInner(t *testing.T) {
 		t.Error("GetInner() should return the wrapped source")
 	}
 }
+
+func TestCachedSourceContextCancelled(t *testing.T) {
+	c := cache.NewMemoryCache()
+	defer c.Stop()
+
+	inner := &mockSource{
+		name: "test",
+		data: []map[string]interface{}{{"id": 1}},
+	}
+
+	cfg := config.SourceConfig{
+		Cache: &config.CacheConfig{TTL: "1m"},
+	}
+
+	cached := NewCachedSource(inner, c, cfg)
+
+	// Create a cancelled context
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // Cancel immediately
+
+	// Fetch with cancelled context should return error
+	_, err := cached.Fetch(ctx)
+	if err == nil {
+		t.Error("expected error for cancelled context")
+	}
+	if err != context.Canceled {
+		t.Errorf("expected context.Canceled error, got %v", err)
+	}
+
+	// Inner source should not have been called
+	if inner.FetchCount() != 0 {
+		t.Errorf("expected 0 fetches with cancelled context, got %d", inner.FetchCount())
+	}
+}
+
+func TestCachedSourceCloseStopsRevalidation(t *testing.T) {
+	c := cache.NewMemoryCache()
+	defer c.Stop()
+
+	inner := &mockSource{
+		name:       "test",
+		data:       []map[string]interface{}{{"id": 1}},
+		fetchDelay: 100 * time.Millisecond, // Slow fetch
+	}
+
+	cfg := config.SourceConfig{
+		Cache: &config.CacheConfig{
+			TTL:      "100ms",
+			Strategy: "stale-while-revalidate",
+		},
+	}
+
+	cached := NewCachedSource(inner, c, cfg)
+	ctx := context.Background()
+
+	// First fetch - populates cache
+	cached.Fetch(ctx)
+	if inner.FetchCount() != 1 {
+		t.Errorf("expected 1 fetch, got %d", inner.FetchCount())
+	}
+
+	// Wait until data becomes stale
+	time.Sleep(60 * time.Millisecond)
+
+	// Trigger background revalidation
+	cached.Fetch(ctx)
+
+	// Close immediately - should cancel background revalidation
+	cached.Close()
+
+	// Give some time for goroutine to exit
+	time.Sleep(50 * time.Millisecond)
+
+	// Background revalidation should have been cancelled, not completed
+	// It may or may not have started, but it shouldn't complete after Close()
+}

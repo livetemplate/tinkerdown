@@ -54,6 +54,7 @@ type MemoryCache struct {
 	// For background cleanup
 	cleanupInterval time.Duration
 	stopCleanup     chan struct{}
+	stopOnce        sync.Once // Ensures Stop() is idempotent
 }
 
 // NewMemoryCache creates a new in-memory cache
@@ -149,8 +150,11 @@ func (c *MemoryCache) cleanup() {
 }
 
 // Stop stops the background cleanup goroutine
+// Safe to call multiple times
 func (c *MemoryCache) Stop() {
-	close(c.stopCleanup)
+	c.stopOnce.Do(func() {
+		close(c.stopCleanup)
+	})
 }
 
 // Len returns the number of entries in the cache (for testing)

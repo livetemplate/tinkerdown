@@ -21,16 +21,23 @@ type CachedSource struct {
 	// For stale-while-revalidate: track in-flight revalidations
 	mu           sync.Mutex
 	revalidating bool
+
+	// For cancellation of background operations
+	cancelCtx    context.Context
+	cancelFunc   context.CancelFunc
 }
 
 // NewCachedSource creates a new cached source wrapper
 func NewCachedSource(inner Source, c cache.Cache, cfg config.SourceConfig) *CachedSource {
+	ctx, cancel := context.WithCancel(context.Background())
 	return &CachedSource{
-		inner:    inner,
-		cache:    c,
-		name:     inner.Name(),
-		ttl:      cfg.GetCacheTTL(),
-		strategy: cfg.GetCacheStrategy(),
+		inner:      inner,
+		cache:      c,
+		name:       inner.Name(),
+		ttl:        cfg.GetCacheTTL(),
+		strategy:   cfg.GetCacheStrategy(),
+		cancelCtx:  ctx,
+		cancelFunc: cancel,
 	}
 }
 
@@ -41,6 +48,11 @@ func (s *CachedSource) Name() string {
 
 // Fetch retrieves data, using cache if available
 func (s *CachedSource) Fetch(ctx context.Context) ([]map[string]interface{}, error) {
+	// Check if context is already cancelled
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+
 	cacheKey := s.cacheKey()
 
 	// Try to get from cache
@@ -91,12 +103,16 @@ func (s *CachedSource) revalidateInBackground() {
 		s.mu.Unlock()
 	}()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	// Use cancelCtx as parent so revalidation stops when source is closed
+	ctx, cancel := context.WithTimeout(s.cancelCtx, 30*time.Second)
 	defer cancel()
 
 	_, err := s.fetchAndCache(ctx)
 	if err != nil {
-		log.Printf("[cache/%s] Background revalidation failed: %v", s.name, err)
+		// Don't log if cancelled due to shutdown
+		if s.cancelCtx.Err() == nil {
+			log.Printf("[cache/%s] Background revalidation failed: %v", s.name, err)
+		}
 	}
 }
 
@@ -105,8 +121,10 @@ func (s *CachedSource) cacheKey() string {
 	return "source:" + s.name
 }
 
-// Close closes the underlying source
+// Close closes the underlying source and cancels any background operations
 func (s *CachedSource) Close() error {
+	// Cancel any in-flight background revalidations
+	s.cancelFunc()
 	return s.inner.Close()
 }
 
