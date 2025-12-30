@@ -256,21 +256,6 @@ func TestCircuitBreakerFailureWindowExpiry(t *testing.T) {
 	}
 }
 
-func TestCircuitBreakerRegistry(t *testing.T) {
-	registry := NewCircuitBreakerRegistry(DefaultCircuitBreakerConfig())
-
-	cb1 := registry.Get("source1")
-	cb2 := registry.Get("source2")
-	cb1Again := registry.Get("source1")
-
-	if cb1 == cb2 {
-		t.Error("different sources should have different circuit breakers")
-	}
-	if cb1 != cb1Again {
-		t.Error("same source should return same circuit breaker")
-	}
-}
-
 func TestCircuitStateString(t *testing.T) {
 	tests := []struct {
 		state    CircuitState

@@ -69,9 +69,12 @@ func (c SourceConfig) GetTimeout() time.Duration {
 	return d
 }
 
-// GetRetryMaxRetries returns the max retries (default: 3)
+// GetRetryMaxRetries returns the max retries (default: 3, set to 0 to disable retries)
 func (c SourceConfig) GetRetryMaxRetries() int {
-	if c.Retry == nil || c.Retry.MaxRetries <= 0 {
+	if c.Retry == nil {
+		return 3
+	}
+	if c.Retry.MaxRetries < 0 {
 		return 3
 	}
 	return c.Retry.MaxRetries

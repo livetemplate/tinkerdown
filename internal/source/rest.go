@@ -146,8 +146,9 @@ func (s *RestSource) doFetch(ctx context.Context) ([]map[string]interface{}, err
 		}
 	}
 
-	// Read response body
-	body, err := io.ReadAll(resp.Body)
+	// Read response body with size limit to prevent OOM
+	const maxResponseSize = 10 * 1024 * 1024 // 10MB
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseSize))
 	if err != nil {
 		return nil, &SourceError{
 			Source:    s.name,

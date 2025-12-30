@@ -20,7 +20,7 @@ sources:
     url: https://api.example.com/data
     timeout: "30s"      # Request timeout (default: 10s)
     retry:
-      max_retries: 3    # Number of retry attempts (default: 3)
+      max_retries: 3    # Number of retry attempts (default: 3, set to 0 to disable)
       base_delay: "100ms"  # Initial retry delay (default: 100ms)
       max_delay: "5s"      # Maximum retry delay (default: 5s)
 
@@ -73,7 +73,7 @@ The circuit breaker prevents overwhelming a failing service:
 
 ### Behavior
 
-- Circuit opens after 5 consecutive failures (within 1 minute)
+- Circuit opens after 5 failures within a 1-minute window (failures do not need to be consecutive)
 - When open, requests fail immediately with a friendly message
 - After 30 seconds, circuit transitions to half-open
 - 2 successful requests close the circuit

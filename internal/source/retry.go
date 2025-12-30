@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"math"
+	"math/rand"
 	"time"
 )
 
@@ -79,6 +80,13 @@ func WithRetry(ctx context.Context, source string, cfg RetryConfig, fn Retryable
 		log.Printf("[source/%s] All %d attempts failed", source, cfg.MaxRetries+1)
 	}
 
+	// If lastErr is already a SourceError, update its Retryable flag instead of wrapping
+	var sourceErr *SourceError
+	if errors.As(lastErr, &sourceErr) {
+		sourceErr.Retryable = false // Already exhausted retries
+		return nil, lastErr
+	}
+
 	return nil, &SourceError{
 		Source:    source,
 		Operation: "fetch",
@@ -121,7 +129,7 @@ func shouldRetry(err error) bool {
 	return isRetryableError(err)
 }
 
-// calculateDelay computes the delay for the given attempt using exponential backoff
+// calculateDelay computes the delay for the given attempt using exponential backoff with jitter
 func calculateDelay(attempt int, cfg RetryConfig) time.Duration {
 	// Exponential backoff: baseDelay * multiplier^attempt
 	delay := float64(cfg.BaseDelay) * math.Pow(cfg.Multiplier, float64(attempt))
@@ -130,6 +138,10 @@ func calculateDelay(attempt int, cfg RetryConfig) time.Duration {
 	if delay > float64(cfg.MaxDelay) {
 		delay = float64(cfg.MaxDelay)
 	}
+
+	// Add jitter: randomize between 80% and 120% of delay to prevent thundering herd
+	jitter := 0.8 + rand.Float64()*0.4 // Range: [0.8, 1.2)
+	delay *= jitter
 
 	return time.Duration(delay)
 }
