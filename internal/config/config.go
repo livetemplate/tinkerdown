@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -37,6 +38,15 @@ type SourceConfig struct {
 	Readonly *bool             `yaml:"readonly,omitempty"` // For markdown/sqlite: read-only mode (default: true, set to false for writes)
 	Options  map[string]string `yaml:"options,omitempty"`  // Type-specific options (also used for wasm init config)
 	Manual   bool              `yaml:"manual,omitempty"`   // For exec: require Run button click
+	Timeout  string            `yaml:"timeout,omitempty"`  // Request timeout (e.g., "30s", "1m"). Default: 10s
+	Retry    *RetryConfig      `yaml:"retry,omitempty"`    // Retry configuration
+}
+
+// RetryConfig configures retry behavior for a source
+type RetryConfig struct {
+	MaxRetries int    `yaml:"max_retries,omitempty"` // Maximum retry attempts (default: 3)
+	BaseDelay  string `yaml:"base_delay,omitempty"`  // Initial delay (e.g., "100ms"). Default: 100ms
+	MaxDelay   string `yaml:"max_delay,omitempty"`   // Maximum delay (e.g., "5s"). Default: 5s
 }
 
 // IsReadonly returns true if the source is read-only (default: true for markdown sources)
@@ -45,6 +55,53 @@ func (c SourceConfig) IsReadonly() bool {
 		return true // Default to read-only for safety
 	}
 	return *c.Readonly
+}
+
+// GetTimeout returns the parsed timeout duration (default: 10s)
+func (c SourceConfig) GetTimeout() time.Duration {
+	if c.Timeout == "" {
+		return 10 * time.Second
+	}
+	d, err := time.ParseDuration(c.Timeout)
+	if err != nil {
+		return 10 * time.Second
+	}
+	return d
+}
+
+// GetRetryMaxRetries returns the max retries (default: 3, set to 0 to disable retries)
+func (c SourceConfig) GetRetryMaxRetries() int {
+	if c.Retry == nil {
+		return 3
+	}
+	if c.Retry.MaxRetries < 0 {
+		return 3
+	}
+	return c.Retry.MaxRetries
+}
+
+// GetRetryBaseDelay returns the base delay (default: 100ms)
+func (c SourceConfig) GetRetryBaseDelay() time.Duration {
+	if c.Retry == nil || c.Retry.BaseDelay == "" {
+		return 100 * time.Millisecond
+	}
+	d, err := time.ParseDuration(c.Retry.BaseDelay)
+	if err != nil {
+		return 100 * time.Millisecond
+	}
+	return d
+}
+
+// GetRetryMaxDelay returns the max delay (default: 5s)
+func (c SourceConfig) GetRetryMaxDelay() time.Duration {
+	if c.Retry == nil || c.Retry.MaxDelay == "" {
+		return 5 * time.Second
+	}
+	d, err := time.ParseDuration(c.Retry.MaxDelay)
+	if err != nil {
+		return 5 * time.Second
+	}
+	return d
 }
 
 // SiteConfig holds site-level configuration

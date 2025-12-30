@@ -92,9 +92,9 @@ func createSource(name string, cfg config.SourceConfig, siteDir, currentFile str
 	case "exec":
 		return NewExecSource(name, cfg.Cmd, siteDir)
 	case "pg":
-		return NewPostgresSource(name, cfg.Query, cfg.Options)
+		return NewPostgresSourceWithConfig(name, cfg.Query, cfg.Options, cfg)
 	case "rest":
-		return NewRestSource(name, cfg.URL, cfg.Options)
+		return NewRestSourceWithConfig(name, cfg.URL, cfg.Options, cfg)
 	case "json":
 		return NewJSONFileSource(name, cfg.File, siteDir)
 	case "csv":

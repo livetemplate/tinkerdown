@@ -3,27 +3,34 @@ package source
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"strings"
-	"time"
+
+	"github.com/livetemplate/tinkerdown/internal/config"
 )
 
 // RestSource fetches data from a REST API endpoint
 type RestSource struct {
-	name    string
-	url     string
-	method  string
-	headers map[string]string
-	client  *http.Client
+	name           string
+	url            string
+	method         string
+	headers        map[string]string
+	client         *http.Client
+	retryConfig    RetryConfig
+	circuitBreaker *CircuitBreaker
 }
 
 // NewRestSource creates a new REST API source
 func NewRestSource(name, url string, options map[string]string) (*RestSource, error) {
+	return NewRestSourceWithConfig(name, url, options, config.SourceConfig{})
+}
+
+// NewRestSourceWithConfig creates a new REST API source with full configuration
+func NewRestSourceWithConfig(name, url string, options map[string]string, cfg config.SourceConfig) (*RestSource, error) {
 	if url == "" {
-		return nil, fmt.Errorf("rest source %q: url is required", name)
+		return nil, &ValidationError{Source: name, Field: "url", Reason: "url is required"}
 	}
 
 	// Expand environment variables in URL
@@ -58,13 +65,31 @@ func NewRestSource(name, url string, options map[string]string) (*RestSource, er
 		}
 	}
 
+	// Get timeout from config or default
+	timeout := cfg.GetTimeout()
+
+	// Build retry config
+	retryConfig := RetryConfig{
+		MaxRetries: cfg.GetRetryMaxRetries(),
+		BaseDelay:  cfg.GetRetryBaseDelay(),
+		MaxDelay:   cfg.GetRetryMaxDelay(),
+		Multiplier: 2.0,
+		EnableLog:  true,
+	}
+
+	// Create circuit breaker
+	cbConfig := DefaultCircuitBreakerConfig()
+	circuitBreaker := NewCircuitBreaker(name, cbConfig)
+
 	return &RestSource{
-		name:    name,
-		url:     url,
-		method:  method,
-		headers: headers,
+		name:           name,
+		url:            url,
+		method:         method,
+		headers:        headers,
+		retryConfig:    retryConfig,
+		circuitBreaker: circuitBreaker,
 		client: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout: timeout,
 		},
 	}, nil
 }
@@ -74,12 +99,27 @@ func (s *RestSource) Name() string {
 	return s.name
 }
 
-// Fetch makes an HTTP request and parses JSON response
+// Fetch makes an HTTP request and parses JSON response with retry and circuit breaker
 func (s *RestSource) Fetch(ctx context.Context) ([]map[string]interface{}, error) {
+	// Use circuit breaker + retry
+	return s.circuitBreaker.Execute(ctx, func(ctx context.Context) ([]map[string]interface{}, error) {
+		return WithRetry(ctx, s.name, s.retryConfig, func(ctx context.Context) ([]map[string]interface{}, error) {
+			return s.doFetch(ctx)
+		})
+	})
+}
+
+// doFetch performs the actual HTTP request
+func (s *RestSource) doFetch(ctx context.Context) ([]map[string]interface{}, error) {
 	// Create request with context
 	req, err := http.NewRequestWithContext(ctx, s.method, s.url, nil)
 	if err != nil {
-		return nil, fmt.Errorf("rest source %q: failed to create request: %w", s.name, err)
+		return nil, &SourceError{
+			Source:    s.name,
+			Operation: "create request",
+			Err:       err,
+			Retryable: false,
+		}
 	}
 
 	// Set headers
@@ -91,20 +131,31 @@ func (s *RestSource) Fetch(ctx context.Context) ([]map[string]interface{}, error
 	// Execute request
 	resp, err := s.client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("rest source %q: request failed: %w", s.name, err)
+		return nil, NewSourceError(s.name, "request", err)
 	}
 	defer resp.Body.Close()
 
 	// Check status code
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1024))
-		return nil, fmt.Errorf("rest source %q: HTTP %d: %s", s.name, resp.StatusCode, string(body))
+		return nil, &HTTPError{
+			Source:     s.name,
+			StatusCode: resp.StatusCode,
+			Status:     resp.Status,
+			Body:       strings.TrimSpace(string(body)),
+		}
 	}
 
-	// Read response body
-	body, err := io.ReadAll(resp.Body)
+	// Read response body with size limit to prevent OOM
+	const maxResponseSize = 10 * 1024 * 1024 // 10MB
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseSize))
 	if err != nil {
-		return nil, fmt.Errorf("rest source %q: failed to read response: %w", s.name, err)
+		return nil, &SourceError{
+			Source:    s.name,
+			Operation: "read response",
+			Err:       err,
+			Retryable: false,
+		}
 	}
 
 	// Parse JSON response
@@ -160,7 +211,7 @@ func (s *RestSource) parseJSON(data []byte) ([]map[string]interface{}, error) {
 		return []map[string]interface{}{obj}, nil
 	}
 
-	return nil, fmt.Errorf("rest source %q: could not parse response as JSON", s.name)
+	return nil, &ValidationError{Source: s.name, Reason: "could not parse response as JSON"}
 }
 
 // Close is a no-op for REST sources
