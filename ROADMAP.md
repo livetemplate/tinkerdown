@@ -109,26 +109,33 @@ _No tasks currently in progress_
 
 ### Recently Completed
 <!-- Move completed tasks here, keep last 5 -->
-1. **3.6A Docs cleanup** - Completed 2025-12-30
+1. **2.1 Data Source Error Handling** - Completed 2025-12-30 (PR #17)
+   - Unified error types for all sources (`SourceError`, `ConnectionError`, `TimeoutError`, etc.)
+   - Retry with exponential backoff + jitter (±20%)
+   - Circuit breaker pattern (opens after 5 failures in 1-minute window)
+   - Configurable timeout per source
+   - Response body size limit (10MB) for OOM prevention
+
+2. **3.6A Docs cleanup** - Completed 2025-12-30
    - Deleted `PROGRESS.md` (superseded by ROADMAP.md)
    - Deleted `UX_IMPROVEMENTS.md` (items in Phase 6.5)
    - Deleted `docs/implementation-plan.md` (superseded by ROADMAP.md)
    - Archived to `docs/archive/`: product vision and marketing docs
 
-2. **1.2 Auto-rendering lists** - Completed 2025-12-30 (PR #14)
+3. **1.2 Auto-rendering lists** - Completed 2025-12-30 (PR #14)
    - `lvt-source` + `lvt-field` on `<ul>` or `<ol>` auto-generates list items
    - `lvt-actions` for action buttons on each item
    - `lvt-empty` for empty state messages
    - XSS prevention with html.EscapeString()
    - Note: Data sources must be arrays of objects (runtime limitation)
 
-2. **1.3 Document existing select auto-rendering** - Completed 2025-12-29
+4. **1.3 Document existing select auto-rendering** - Completed 2025-12-29
    - Created `docs/auto-rendering.md` with comprehensive documentation
    - Documents select dropdown with `lvt-source`, `lvt-value`, `lvt-label`
    - Documents table auto-rendering with all attributes
    - Updated README with Auto-Rendering section
 
-3. **1.1 Auto-rendering tables** - Completed 2025-12-29 (PR #13)
+5. **1.1 Auto-rendering tables** - Completed 2025-12-29 (PR #13)
    - `lvt-source` + `lvt-columns` on `<table>` auto-generates thead/tbody
    - `lvt-actions` for action button columns
    - `lvt-empty` for empty state messages
@@ -137,8 +144,8 @@ _No tasks currently in progress_
 
 ### Next Up
 <!-- Queue of next 3-5 tasks to tackle -->
-1. 2.1 Nested data sources
-2. 2.2 Source caching
+1. 2.2 Source caching
+2. 2.3 Multi-page WebSocket support
 3. 3.6B External hosting
 
 ---
@@ -467,11 +474,11 @@ Auto-rendering is for common patterns only. Use Go templates when you need:
 **Current State:** Errors can crash or hang; no retry logic; silent failures possible.
 
 **Work Required:**
-- [ ] Unified error types for all sources
-- [ ] Retry with exponential backoff for transient failures
-- [ ] Circuit breaker for repeatedly failing sources
+- [x] Unified error types for all sources
+- [x] Retry with exponential backoff for transient failures
+- [x] Circuit breaker for repeatedly failing sources
 - [ ] User-friendly error messages in templates (`.Error` field rendering)
-- [ ] Timeout configuration per source
+- [x] Timeout configuration per source
 
 **Impact:** Production reliability for data-driven apps
 
