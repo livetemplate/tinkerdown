@@ -6,6 +6,7 @@ package source
 import (
 	"context"
 
+	"github.com/livetemplate/tinkerdown/internal/cache"
 	"github.com/livetemplate/tinkerdown/internal/config"
 	"github.com/livetemplate/tinkerdown/internal/wasm"
 )
@@ -41,6 +42,8 @@ type WritableSource interface {
 // Registry holds configured sources for a site
 type Registry struct {
 	sources map[string]Source
+	cache   cache.Cache
+	cfg     *config.Config
 }
 
 // NewRegistry creates a source registry from config
@@ -53,6 +56,8 @@ func NewRegistry(cfg *config.Config, siteDir string) (*Registry, error) {
 func NewRegistryWithFile(cfg *config.Config, siteDir, currentFile string) (*Registry, error) {
 	r := &Registry{
 		sources: make(map[string]Source),
+		cache:   cache.NewMemoryCache(),
+		cfg:     cfg,
 	}
 
 	if cfg.Sources == nil {
@@ -64,6 +69,16 @@ func NewRegistryWithFile(cfg *config.Config, siteDir, currentFile string) (*Regi
 		if err != nil {
 			return nil, err
 		}
+
+		// Wrap with caching if enabled
+		if srcCfg.IsCacheEnabled() {
+			if ws, ok := src.(WritableSource); ok {
+				src = NewCachedWritableSource(ws, r.cache, srcCfg)
+			} else {
+				src = NewCachedSource(src, r.cache, srcCfg)
+			}
+		}
+
 		r.sources[name] = src
 	}
 
@@ -76,14 +91,33 @@ func (r *Registry) Get(name string) (Source, bool) {
 	return src, ok
 }
 
-// Close releases all sources
+// Close releases all sources and stops the cache
 func (r *Registry) Close() error {
+	// Stop the cache cleanup goroutine
+	if mc, ok := r.cache.(*cache.MemoryCache); ok {
+		mc.Stop()
+	}
+
 	for _, src := range r.sources {
 		if err := src.Close(); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// InvalidateCache invalidates the cache for a specific source
+func (r *Registry) InvalidateCache(name string) {
+	if cs, ok := r.sources[name].(*CachedSource); ok {
+		cs.Invalidate()
+	} else if cws, ok := r.sources[name].(*CachedWritableSource); ok {
+		cws.Invalidate()
+	}
+}
+
+// InvalidateAllCaches invalidates all cached data
+func (r *Registry) InvalidateAllCaches() {
+	r.cache.InvalidateAll()
 }
 
 // createSource instantiates a source based on config type

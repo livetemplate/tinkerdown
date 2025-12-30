@@ -40,6 +40,7 @@ type SourceConfig struct {
 	Manual   bool              `yaml:"manual,omitempty"`   // For exec: require Run button click
 	Timeout  string            `yaml:"timeout,omitempty"`  // Request timeout (e.g., "30s", "1m"). Default: 10s
 	Retry    *RetryConfig      `yaml:"retry,omitempty"`    // Retry configuration
+	Cache    *CacheConfig      `yaml:"cache,omitempty"`    // Cache configuration
 }
 
 // RetryConfig configures retry behavior for a source
@@ -47,6 +48,12 @@ type RetryConfig struct {
 	MaxRetries int    `yaml:"max_retries,omitempty"` // Maximum retry attempts (default: 3)
 	BaseDelay  string `yaml:"base_delay,omitempty"`  // Initial delay (e.g., "100ms"). Default: 100ms
 	MaxDelay   string `yaml:"max_delay,omitempty"`   // Maximum delay (e.g., "5s"). Default: 5s
+}
+
+// CacheConfig configures caching behavior for a source
+type CacheConfig struct {
+	TTL      string `yaml:"ttl,omitempty"`      // Cache TTL (e.g., "5m", "1h"). Default: disabled (empty)
+	Strategy string `yaml:"strategy,omitempty"` // Cache strategy: "simple" or "stale-while-revalidate". Default: "simple"
 }
 
 // IsReadonly returns true if the source is read-only (default: true for markdown sources)
@@ -102,6 +109,36 @@ func (c SourceConfig) GetRetryMaxDelay() time.Duration {
 		return 5 * time.Second
 	}
 	return d
+}
+
+// IsCacheEnabled returns true if caching is enabled for this source
+func (c SourceConfig) IsCacheEnabled() bool {
+	return c.Cache != nil && c.Cache.TTL != ""
+}
+
+// GetCacheTTL returns the cache TTL (0 if caching is disabled)
+func (c SourceConfig) GetCacheTTL() time.Duration {
+	if c.Cache == nil || c.Cache.TTL == "" {
+		return 0
+	}
+	d, err := time.ParseDuration(c.Cache.TTL)
+	if err != nil {
+		return 0
+	}
+	return d
+}
+
+// GetCacheStrategy returns the cache strategy (default: "simple")
+func (c SourceConfig) GetCacheStrategy() string {
+	if c.Cache == nil || c.Cache.Strategy == "" {
+		return "simple"
+	}
+	return c.Cache.Strategy
+}
+
+// IsStaleWhileRevalidate returns true if using stale-while-revalidate strategy
+func (c SourceConfig) IsStaleWhileRevalidate() bool {
+	return c.GetCacheStrategy() == "stale-while-revalidate"
 }
 
 // SiteConfig holds site-level configuration
