@@ -371,6 +371,293 @@ livemdtools bot app.md             # Bot only (no web UI)
 
 ---
 
+## Runbook-Specific Interface Patterns
+
+Runbooks have unique requirements across interfaces. The same incident runbook should be usable from web, CLI, Slack, and API.
+
+### CLI for Incident Response
+
+When SSH'd into a production box during an incident:
+
+```bash
+# Start incident from template
+cp templates/service-down.md incidents/$(date +%Y-%m-%d-%H%M)-api-outage.md
+tinkerdown cli incidents/2024-01-15-1432-api-outage.md
+
+# Check current status
+tinkerdown cli incident.md status
+Step 1: Check service health     [✓] 14:32
+Step 2: Check database           [✓] 14:35
+Step 3: Restart service          [ ] pending
+Step 4: Verify recovery          [ ] pending
+
+# Run a step
+tinkerdown cli incident.md run step3
+Running: Restart service...
+[output captured to log]
+✓ Step 3 completed at 14:38
+
+# Add log entry
+tinkerdown cli incident.md log "Restarted api-server-1, waiting for health check"
+
+# Request approval (triggers Slack notification)
+tinkerdown cli incident.md request-approval --access="prod-db-write" --reason="Need to fix corrupted data"
+⏳ Approval requested. Waiting for response...
+```
+
+#### Why CLI matters for incidents
+
+| Scenario | CLI Advantage |
+|----------|---------------|
+| SSH'd into prod server | Can't access web UI easily |
+| Scripted remediation | Chain commands with `&&` |
+| Low-bandwidth connection | Text-only, fast |
+| Audit logging | Commands logged to shell history |
+| Parallel execution | Run in multiple terminals |
+
+---
+
+### Slack for Incident Response
+
+Operators live in Slack during incidents. Bring the runbook to them.
+
+#### Starting an incident
+
+```
+/incident new service-down --title="API returning 500s"
+
+🚨 Incident Started: API returning 500s
+Template: service-down
+Operator: @alice
+Channel: #incident-2024-01-15-api
+
+View in browser: https://runbooks.internal/incidents/2024-01-15-1432-api-outage
+```
+
+#### Running steps from Slack
+
+```
+/incident step 1
+
+Running Step 1: Check service health
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+$ curl -s localhost:8080/health
+{"status": "unhealthy", "db": "timeout"}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✓ Step 1 completed at 14:32
+
+[Run Step 2] [View Full Runbook] [Add Note]
+```
+
+#### Approval workflow in Slack
+
+```
+@bob Approval needed for incident #2024-01-15-api
+
+🔐 Access Request
+━━━━━━━━━━━━━━━━━
+Requester: @alice
+Access: prod-db-write
+Reason: Need to fix corrupted user records
+Incident: API returning 500s
+Expires: 2 hours after approval
+
+[✓ Approve] [✗ Deny] [View Incident]
+```
+
+```
+✅ Access Approved
+@bob approved prod-db-write for @alice
+Expires: 16:35 (2 hours)
+```
+
+#### Status updates
+
+```
+/incident status
+
+📋 Incident: API returning 500s
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Status: 🔴 Active
+Duration: 45 minutes
+Operator: @alice
+
+Progress:
+✓ Step 1: Check service health (14:32)
+✓ Step 2: Check database (14:35)
+⏳ Step 3: Restart service (in progress)
+○ Step 4: Verify recovery
+
+Recent Log:
+14:45 | Restarted api-server-1
+14:43 | DB connection pool exhausted
+14:35 | Database showing high latency
+
+[Run Next Step] [Add Note] [View Full]
+```
+
+#### Handoff between operators
+
+```
+/incident handoff @charlie
+
+🔄 Operator Handoff
+@alice → @charlie
+
+Summary from @alice:
+"DB connection pool was exhausted. Restarted api-server-1,
+waiting for connections to drain. Next: verify health."
+
+@charlie type `/incident accept` to confirm handoff.
+```
+
+---
+
+### API for Automation & Integration
+
+External systems trigger runbook actions via API.
+
+#### Trigger from PagerDuty
+
+```yaml
+# PagerDuty webhook → runbook
+POST /api/incidents
+{
+  "template": "service-down",
+  "title": "{{alert.title}}",
+  "metadata": {
+    "pagerduty_id": "{{incident.id}}",
+    "severity": "{{alert.severity}}",
+    "service": "{{service.name}}"
+  }
+}
+```
+
+Response:
+```json
+{
+  "incident_id": "2024-01-15-1432-api-outage",
+  "url": "https://runbooks.internal/incidents/2024-01-15-1432-api-outage",
+  "slack_channel": "#incident-2024-01-15-api"
+}
+```
+
+#### Run step via API
+
+```bash
+POST /api/incidents/2024-01-15-1432-api-outage/steps/3/run
+Authorization: Bearer <operator-token>
+
+{
+  "operator": "alice",
+  "dry_run": false
+}
+```
+
+Response:
+```json
+{
+  "step": 3,
+  "name": "Restart service",
+  "status": "completed",
+  "started_at": "2024-01-15T14:38:00Z",
+  "completed_at": "2024-01-15T14:38:12Z",
+  "output": "Service restarted successfully",
+  "log_entry": "| 14:38 | restart | Restarted api-server via systemctl | alice |"
+}
+```
+
+#### Query incident status
+
+```bash
+GET /api/incidents/2024-01-15-1432-api-outage
+
+{
+  "id": "2024-01-15-1432-api-outage",
+  "title": "API returning 500s",
+  "status": "active",
+  "operator": "alice",
+  "started_at": "2024-01-15T14:32:00Z",
+  "steps": [
+    {"number": 1, "name": "Check service health", "status": "completed", "completed_at": "..."},
+    {"number": 2, "name": "Check database", "status": "completed", "completed_at": "..."},
+    {"number": 3, "name": "Restart service", "status": "in_progress"},
+    {"number": 4, "name": "Verify recovery", "status": "pending"}
+  ],
+  "approvals": [
+    {"access": "prod-db-write", "requester": "alice", "approver": "bob", "expires_at": "..."}
+  ],
+  "log_entries": 12
+}
+```
+
+#### Webhook notifications
+
+```yaml
+# tinkerdown.yaml
+webhooks:
+  - url: https://pagerduty.com/webhooks/tinkerdown
+    events: [incident.resolved]
+  - url: https://datadog.internal/events
+    events: [step.completed, step.failed]
+  - url: https://slack.internal/incidents
+    events: [approval.requested, approval.granted]
+```
+
+---
+
+### Interface Comparison for Runbooks
+
+| Action | Web | CLI | Slack | API |
+|--------|-----|-----|-------|-----|
+| Start incident | Copy template | `cp` + `tinkerdown cli` | `/incident new` | `POST /api/incidents` |
+| Run step | Click button | `run step3` | `/incident step 3` | `POST .../steps/3/run` |
+| Add log entry | Type in form | `log "message"` | `/incident note` | `POST .../log` |
+| Request approval | Click button | `request-approval` | Button in Slack | `POST .../approvals` |
+| Approve | N/A (approver uses Slack) | `approve <id>` | Click Approve | `POST .../approvals/.../approve` |
+| View status | See page | `status` | `/incident status` | `GET .../status` |
+| Handoff | Edit operator field | `handoff @user` | `/incident handoff` | `PATCH .../operator` |
+
+---
+
+### State Synchronization
+
+All interfaces update the same source of truth (the markdown file):
+
+```
+┌──────────┐     ┌──────────┐     ┌──────────┐
+│   Web    │     │   CLI    │     │  Slack   │
+└────┬─────┘     └────┬─────┘     └────┬─────┘
+     │                │                │
+     └───────────┬────┴────────────────┘
+                 │
+                 ▼
+         ┌──────────────┐
+         │  Markdown    │
+         │  File (git)  │
+         └──────────────┘
+                 │
+                 ▼
+         ┌──────────────┐
+         │  WebSocket   │
+         │  Broadcast   │
+         └──────────────┘
+                 │
+     ┌───────────┼────────────────┐
+     │           │                │
+     ▼           ▼                ▼
+┌──────────┐ ┌──────────┐  ┌──────────┐
+│   Web    │ │   CLI    │  │  Slack   │
+│ (update) │ │ (poll)   │  │ (update) │
+└──────────┘ └──────────┘  └──────────┘
+```
+
+- Web/Slack: Real-time via WebSocket
+- CLI: Poll or one-shot (sees current state when run)
+- API: Request/response (caller decides if polling needed)
+
+---
+
 ## Progress Tracker
 
 | Task | Status | Notes |
