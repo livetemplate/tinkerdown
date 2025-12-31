@@ -30,6 +30,7 @@ sources:
 |------|-------------|----------|
 | [sqlite](../sources/sqlite.md) | SQLite database | Local data storage, CRUD apps |
 | [rest](../sources/rest.md) | REST API | External APIs, microservices |
+| [graphql](../sources/graphql.md) | GraphQL API | GitHub API, complex queries |
 | [exec](../sources/exec.md) | Shell commands | CLI tools, system info |
 | [json](../sources/json.md) | JSON files | Static data, configuration |
 | [csv](../sources/csv.md) | CSV files | Spreadsheet data, imports |
@@ -135,5 +136,6 @@ See the existing [Error Handling documentation](../error-handling.md) for detail
 ## Next Steps
 
 - [SQLite Source](../sources/sqlite.md) - Database-backed apps
-- [REST Source](../sources/rest.md) - API integrations
+- [REST Source](../sources/rest.md) - REST API integrations
+- [GraphQL Source](../sources/graphql.md) - GraphQL API integrations
 - [Auto-Rendering](auto-rendering.md) - Automatic UI generation

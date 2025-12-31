@@ -78,7 +78,7 @@ Sources in `tinkerdown.yaml` are available to **all pages**. Page-specific sourc
 ```yaml
 sources:
   example:
-    type: <source_type>    # Required: sqlite, rest, exec, json, csv, markdown, wasm
+    type: <source_type>    # Required: sqlite, rest, graphql, exec, json, csv, markdown, wasm
     cache:                 # Optional: caching configuration
       ttl: 5m              # Time-to-live
       strategy: simple     # simple or stale-while-revalidate
@@ -106,6 +106,31 @@ sources:
     headers:
       Authorization: Bearer ${API_TOKEN}
 ```
+
+### GraphQL Source
+
+```yaml
+sources:
+  issues:
+    type: graphql
+    url: https://api.github.com/graphql
+    query_file: queries/issues.graphql  # Path to .graphql file
+    variables:                           # Optional query variables
+      owner: livetemplate
+      repo: tinkerdown
+    result_path: repository.issues.nodes # Dot-path to extract array
+    options:
+      auth_header: "Bearer ${GITHUB_TOKEN}"
+```
+
+GraphQL-specific options:
+
+| Option | Required | Description |
+|--------|----------|-------------|
+| `query_file` | Yes | Path to `.graphql` file (relative to app directory) |
+| `variables` | No | Map of query variables (supports `${ENV_VAR}` expansion) |
+| `result_path` | Yes | Dot-notation path to extract array from response |
+| `options.auth_header` | No | Authorization header value |
 
 ### Exec Source
 
