@@ -3,6 +3,8 @@ package source
 
 import (
 	"testing"
+
+	"github.com/livetemplate/tinkerdown/internal/config"
 )
 
 func TestExtractPath_Simple(t *testing.T) {
@@ -81,5 +83,61 @@ func TestExtractPath_EmptyPath(t *testing.T) {
 	_, err := extractPath(data, "")
 	if err == nil {
 		t.Error("expected error for empty path")
+	}
+}
+
+func TestNewGraphQLSource_Valid(t *testing.T) {
+	cfg := config.SourceConfig{
+		Type:       "graphql",
+		URL:        "https://api.example.com/graphql",
+		QueryFile:  "queries/test.graphql",
+		ResultPath: "data.users",
+	}
+
+	src, err := NewGraphQLSource("test", cfg, "/tmp")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if src.Name() != "test" {
+		t.Errorf("expected name 'test', got '%s'", src.Name())
+	}
+}
+
+func TestNewGraphQLSource_MissingURL(t *testing.T) {
+	cfg := config.SourceConfig{
+		Type:       "graphql",
+		QueryFile:  "queries/test.graphql",
+		ResultPath: "data.users",
+	}
+
+	_, err := NewGraphQLSource("test", cfg, "/tmp")
+	if err == nil {
+		t.Error("expected error for missing URL")
+	}
+}
+
+func TestNewGraphQLSource_MissingQueryFile(t *testing.T) {
+	cfg := config.SourceConfig{
+		Type:       "graphql",
+		URL:        "https://api.example.com/graphql",
+		ResultPath: "data.users",
+	}
+
+	_, err := NewGraphQLSource("test", cfg, "/tmp")
+	if err == nil {
+		t.Error("expected error for missing query_file")
+	}
+}
+
+func TestNewGraphQLSource_MissingResultPath(t *testing.T) {
+	cfg := config.SourceConfig{
+		Type:       "graphql",
+		URL:        "https://api.example.com/graphql",
+		QueryFile:  "queries/test.graphql",
+	}
+
+	_, err := NewGraphQLSource("test", cfg, "/tmp")
+	if err == nil {
+		t.Error("expected error for missing result_path")
 	}
 }
