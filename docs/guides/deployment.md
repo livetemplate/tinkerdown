@@ -146,4 +146,4 @@ Tinkerdown maintains WebSocket connections per page. For horizontal scaling:
 ## Next Steps
 
 - [Configuration Reference](../reference/config.md) - Production settings
-- [Error Handling](../error-handling.md) - Reliability in production
+- [Error Handling](../error-handling.md) - Production reliability

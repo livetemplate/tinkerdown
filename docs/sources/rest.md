@@ -171,4 +171,4 @@ sources:
 ## Next Steps
 
 - [Exec Source](exec.md) - Execute shell commands
-- [Caching Guide](../caching.md) - Caching strategies
+- [Caching](../caching.md) - Caching strategies

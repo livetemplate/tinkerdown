@@ -123,8 +123,9 @@ myapp/
 
 ## Full Example
 
+Example `_data/posts/hello-world.md`:
+
 ```markdown
-# _data/posts/hello-world.md
 ---
 title: Hello World
 date: 2024-01-15

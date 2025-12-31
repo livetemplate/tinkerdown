@@ -123,8 +123,9 @@ JSON files are re-read on each request in development mode. Changes are reflecte
 
 ## Full Example
 
+Example `_data/navigation.json`:
+
 ```json
-// _data/navigation.json
 [
   {"title": "Home", "url": "/", "icon": "home"},
   {"title": "Products", "url": "/products", "icon": "box"},

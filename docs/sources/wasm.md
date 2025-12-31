@@ -215,5 +215,4 @@ sources:
 
 ## Next Steps
 
-- [WASM SDK Documentation](../guides/wasm-sdk.md) - Authoring guide
-- [Data Sources Guide](../guides/data-sources.md) - Overview
+- [Data Sources Guide](../guides/data-sources.md) - Overview of all sources

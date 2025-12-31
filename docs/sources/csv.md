@@ -118,8 +118,9 @@ myapp/
 
 ## Full Example
 
+Example `_data/employees.csv`:
+
 ```csv
-# _data/employees.csv
 id,name,department,salary
 1,Alice,Engineering,95000
 2,Bob,Sales,75000

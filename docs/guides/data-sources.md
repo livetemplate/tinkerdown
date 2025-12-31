@@ -110,7 +110,7 @@ sources:
 ---
 ```
 
-See [Caching Guide](../caching.md) for details.
+See the existing [Caching documentation](../caching.md) for details.
 
 ## Error Handling
 
@@ -130,7 +130,7 @@ sources:
 ---
 ```
 
-See [Error Handling Guide](../error-handling.md) for details.
+See the existing [Error Handling documentation](../error-handling.md) for details.
 
 ## Next Steps
 

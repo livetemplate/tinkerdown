@@ -177,5 +177,5 @@ If you're still stuck:
 
 ## Next Steps
 
-- [Error Handling](../error-handling.md) - Configure error recovery
-- [Caching](../caching.md) - Improve performance
+- [Error Handling](../error-handling.md) - Error recovery configuration
+- [Caching](../caching.md) - Performance optimization
