@@ -10,55 +10,82 @@ Tinkerdown is a CLI tool for creating interactive, data-driven applications usin
 # Install
 go install github.com/livetemplate/tinkerdown/cmd/tinkerdown@latest
 
-# Run an example
-tinkerdown serve examples/lvt-source-file-test
+# Create a new app
+tinkerdown new myapp
+cd myapp
 
+# Run the app
+tinkerdown serve
 # Open http://localhost:8080
 ```
 
 ## What You Can Build
 
-Write markdown with embedded `lvt` blocks that connect to data sources:
+Write a single markdown file with frontmatter configuration:
 
 ```markdown
 ---
-title: "User Dashboard"
+title: Task Manager
 sources:
-  users:
-    type: json
-    file: users.json
+  tasks:
+    type: sqlite
+    path: ./tasks.db
+    query: SELECT * FROM tasks
 ---
 
-# User Dashboard
+# Task Manager
 
-<table lvt-source="users" lvt-columns="name,email,role" lvt-actions="edit:Edit,delete:Delete">
+<table lvt-source="tasks" lvt-columns="title,status,due_date" lvt-actions="Complete,Delete">
 </table>
+
+<form lvt-submit="AddTask">
+  <input name="title" placeholder="New task" required>
+  <button type="submit">Add</button>
+</form>
 ```
 
-Run `tinkerdown serve` and get a fully interactive data table with action buttons.
+Run `tinkerdown serve` and get a fully interactive app with database persistence.
 
 ## Key Features
 
-- **Markdown-first**: Write apps in markdown with `lvt` code blocks
-- **8 data sources**: JSON, CSV, REST APIs, PostgreSQL, SQLite, exec scripts, markdown, WASM
+- **Single-file apps**: Everything in one markdown file with frontmatter
+- **8 data sources**: SQLite, JSON, CSV, REST APIs, PostgreSQL, exec scripts, markdown, WASM
 - **Auto-rendering**: Tables, selects, and lists generated from data
 - **Real-time updates**: WebSocket-powered reactivity
 - **Zero config**: `tinkerdown serve` just works
-- **Hot reload**: Changes reflect immediately with `--watch`
+- **Hot reload**: Changes reflect immediately
 
 ## Data Sources
 
-Connect to any data source in frontmatter or `tinkerdown.yaml`:
+Define sources in your page's frontmatter:
+
+```yaml
+---
+sources:
+  tasks:
+    type: sqlite
+    path: ./tasks.db
+    query: SELECT * FROM tasks
+
+  users:
+    type: rest
+    url: https://api.example.com/users
+
+  config:
+    type: json
+    path: ./_data/config.json
+---
+```
 
 | Type | Description | Example |
 |------|-------------|---------|
+| `sqlite` | SQLite databases | [lvt-source-sqlite-test](examples/lvt-source-sqlite-test) |
 | `json` | JSON files | [lvt-source-file-test](examples/lvt-source-file-test) |
 | `csv` | CSV files | [lvt-source-file-test](examples/lvt-source-file-test) |
 | `rest` | REST APIs | [lvt-source-rest-test](examples/lvt-source-rest-test) |
 | `pg` | PostgreSQL | [lvt-source-pg-test](examples/lvt-source-pg-test) |
-| `sqlite` | SQLite databases | [lvt-source-sqlite-test](examples/lvt-source-sqlite-test) |
-| `exec` | Shell commands (any language) | [lvt-source-exec-test](examples/lvt-source-exec-test) |
-| `markdown` | Markdown files with anchors | [markdown-data-todo](examples/markdown-data-todo) |
+| `exec` | Shell commands | [lvt-source-exec-test](examples/lvt-source-exec-test) |
+| `markdown` | Markdown files | [markdown-data-todo](examples/markdown-data-todo) |
 | `wasm` | WASM modules | [lvt-source-wasm-test](examples/lvt-source-wasm-test) |
 
 ## Auto-Rendering
@@ -66,22 +93,20 @@ Connect to any data source in frontmatter or `tinkerdown.yaml`:
 Generate HTML automatically from data sources:
 
 ```html
-<!-- Select dropdown -->
-<select lvt-source="countries" lvt-value="code" lvt-label="name">
-</select>
-
 <!-- Table with actions -->
-<table lvt-source="users" lvt-columns="name,email" lvt-actions="edit:Edit,delete:Delete">
+<table lvt-source="tasks" lvt-columns="title,status" lvt-actions="Edit,Delete">
 </table>
 
-<!-- List with actions -->
-<ul lvt-source="tasks" lvt-field="title" lvt-actions="delete:×">
+<!-- Select dropdown -->
+<select lvt-source="categories" lvt-value="id" lvt-label="name">
+</select>
+
+<!-- List -->
+<ul lvt-source="items" lvt-field="name">
 </ul>
 ```
 
-See [Auto-Rendering Documentation](docs/auto-rendering.md) for full details.
-
-**Example:** [component-library-test](examples/component-library-test)
+See [Auto-Rendering Guide](docs/guides/auto-rendering.md) for full details.
 
 ## Interactive Attributes
 
@@ -94,39 +119,74 @@ See [Auto-Rendering Documentation](docs/auto-rendering.md) for full details.
 | `lvt-confirm` | Show confirmation dialog before action |
 | `lvt-data-*` | Pass data with actions |
 
+See [lvt-* Attributes Reference](docs/reference/lvt-attributes.md) for the complete list.
+
 ## Configuration
 
-Configure via `tinkerdown.yaml` or markdown frontmatter:
-
-```yaml
-# tinkerdown.yaml
-title: "My App"
-server:
-  port: 8080
-  debug: false
-sources:
-  users:
-    type: json
-    file: data/users.json
-styling:
-  theme: clean
-features:
-  hot_reload: true
-```
-
-Or inline in frontmatter:
+**Recommended:** Configure in frontmatter (single-file apps):
 
 ```markdown
 ---
-title: "My App"
+title: My App
 sources:
-  users:
-    type: json
-    file: users.json
+  tasks:
+    type: sqlite
+    path: ./tasks.db
+    query: SELECT * FROM tasks
+styling:
+  theme: clean
 ---
 ```
 
-CLI flags override config: `tinkerdown serve --port 3000 --watch`
+**For complex apps:** Use `tinkerdown.yaml` for shared configuration:
+
+```yaml
+# tinkerdown.yaml - for multi-page apps with shared sources
+server:
+  port: 3000
+sources:
+  shared_data:
+    type: rest
+    url: ${API_URL}
+    cache:
+      ttl: 5m
+```
+
+See [Configuration Reference](docs/reference/config.md) for when to use each approach.
+
+## AI-Assisted Development
+
+Tinkerdown works great with AI assistants. Describe what you want:
+
+```
+Create a task manager with SQLite storage,
+a table showing tasks with title/status/due date,
+a form to add tasks, and delete buttons on each row.
+```
+
+See [AI Generation Guide](docs/guides/ai-generation.md) for tips on using Claude Code and other AI tools.
+
+## Documentation
+
+**Getting Started:**
+- [Installation](docs/getting-started/installation.md)
+- [Quickstart](docs/getting-started/quickstart.md)
+- [Project Structure](docs/getting-started/project-structure.md)
+
+**Guides:**
+- [Data Sources](docs/guides/data-sources.md)
+- [Auto-Rendering](docs/guides/auto-rendering.md)
+- [Go Templates](docs/guides/go-templates.md)
+- [AI Generation](docs/guides/ai-generation.md)
+
+**Reference:**
+- [CLI Commands](docs/reference/cli.md)
+- [Frontmatter Options](docs/reference/frontmatter.md)
+- [Configuration (tinkerdown.yaml)](docs/reference/config.md)
+- [lvt-* Attributes](docs/reference/lvt-attributes.md)
+
+**Planning:**
+- [Roadmap](ROADMAP.md)
 
 ## Development
 
@@ -137,12 +197,6 @@ go mod download
 go test ./...
 go build -o tinkerdown ./cmd/tinkerdown
 ```
-
-## Documentation
-
-- [Auto-Rendering](docs/auto-rendering.md) - Tables, selects, and lists from data
-- [Roadmap](ROADMAP.md) - Feature planning and implementation status
-- [Design Document](docs/plans/2025-11-12-tinkerdown-design.md) - Architecture decisions
 
 ## License
 
