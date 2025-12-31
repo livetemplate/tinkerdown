@@ -109,44 +109,44 @@ _No tasks currently in progress_
 
 ### Recently Completed
 <!-- Move completed tasks here, keep last 5 -->
-1. **2.2 Source Caching Layer** - Completed 2025-12-30 (PR #18)
+1. **2.3 Multi-page WebSocket Support** - Completed 2025-12-31 (PR #19)
+   - Accept page identifier via query param (`?page=/path`)
+   - Route WebSocket messages to correct page's state
+   - Handle page transitions gracefully
+   - Clean up state on page navigation
+
+2. **2.2 Source Caching Layer** - Completed 2025-12-30 (PR #18)
    - Cache configuration per source (`ttl`, `strategy`)
    - In-memory cache with TTL expiration
    - Two strategies: `simple` and `stale-while-revalidate`
    - Automatic cache invalidation on writes
    - Background revalidation with proper cancellation
 
-2. **2.1 Data Source Error Handling** - Completed 2025-12-30 (PR #17)
+3. **2.1 Data Source Error Handling** - Completed 2025-12-30 (PR #17)
    - Unified error types for all sources (`SourceError`, `ConnectionError`, `TimeoutError`, etc.)
    - Retry with exponential backoff + jitter (±20%)
    - Circuit breaker pattern (opens after 5 failures in 1-minute window)
    - Configurable timeout per source
    - Response body size limit (10MB) for OOM prevention
 
-3. **3.6A Docs cleanup** - Completed 2025-12-30
+4. **3.6A Docs cleanup** - Completed 2025-12-30
    - Deleted `PROGRESS.md` (superseded by ROADMAP.md)
    - Deleted `UX_IMPROVEMENTS.md` (items in Phase 6.5)
    - Deleted `docs/implementation-plan.md` (superseded by ROADMAP.md)
    - Archived to `docs/archive/`: product vision and marketing docs
 
-4. **1.2 Auto-rendering lists** - Completed 2025-12-30 (PR #14)
+5. **1.2 Auto-rendering lists** - Completed 2025-12-30 (PR #14)
    - `lvt-source` + `lvt-field` on `<ul>` or `<ol>` auto-generates list items
    - `lvt-actions` for action buttons on each item
    - `lvt-empty` for empty state messages
    - XSS prevention with html.EscapeString()
    - Note: Data sources must be arrays of objects (runtime limitation)
 
-5. **1.3 Document existing select auto-rendering** - Completed 2025-12-29
-   - Created `docs/auto-rendering.md` with comprehensive documentation
-   - Documents select dropdown with `lvt-source`, `lvt-value`, `lvt-label`
-   - Documents table auto-rendering with all attributes
-   - Updated README with Auto-Rendering section
-
 ### Next Up
 <!-- Queue of next 3-5 tasks to tackle -->
-1. 2.3 Multi-page WebSocket support
-2. 3.6B External hosting
-3. 4.1 GraphQL source
+1. 3.6B Create Documentation Structure
+2. 4.1 GraphQL source
+3. 3.1 Enhanced CLI Scaffolding
 
 ---
 
@@ -506,16 +506,16 @@ Auto-rendering is for common patterns only. Use Go templates when you need:
 
 ---
 
-### 2.3 Multi-Page WebSocket Support
+### 2.3 Multi-Page WebSocket Support ✅
 **Files:** `internal/server/server.go`
 
-**Current State:** WebSocket handler only serves first route - multi-page sites limited.
+**Current State:** ~~WebSocket handler only serves first route - multi-page sites limited.~~ Completed in PR #19.
 
 **Work Required:**
-- [ ] Accept page identifier via query param or path
-- [ ] Route WebSocket messages to correct page's state
-- [ ] Handle page transitions gracefully
-- [ ] Clean up state on page navigation
+- [x] Accept page identifier via query param or path
+- [x] Route WebSocket messages to correct page's state
+- [x] Handle page transitions gracefully
+- [x] Clean up state on page navigation
 
 **Impact:** Enables documentation sites with interactive examples on every page
 
