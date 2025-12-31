@@ -4,7 +4,25 @@ Tinkerdown can connect to various data sources to power your interactive apps.
 
 ## Overview
 
-Data sources are defined in `tinkerdown.yaml` and can be referenced in your markdown pages using `lvt-source` attributes.
+Data sources are defined in your page's **frontmatter** (recommended) or in `tinkerdown.yaml` for shared sources.
+
+## Quick Start
+
+Add sources directly in your markdown file:
+
+```markdown
+---
+title: My App
+sources:
+  tasks:
+    type: sqlite
+    path: ./tasks.db
+    query: SELECT * FROM tasks
+---
+
+<table lvt-source="tasks" lvt-columns="id,title,status">
+</table>
+```
 
 ## Available Source Types
 
@@ -18,10 +36,13 @@ Data sources are defined in `tinkerdown.yaml` and can be referenced in your mark
 | [markdown](../sources/markdown.md) | Markdown files | Content management |
 | [wasm](../sources/wasm.md) | WebAssembly modules | Custom sources |
 
-## Basic Configuration
+## Frontmatter Configuration (Recommended)
+
+Define sources in your page's frontmatter:
 
 ```yaml
-# tinkerdown.yaml
+---
+title: Dashboard
 sources:
   tasks:
     type: sqlite
@@ -35,11 +56,12 @@ sources:
   system_info:
     type: exec
     command: uname -a
+---
 ```
 
 ## Using Sources in Pages
 
-Reference sources in your markdown using `lvt-source`:
+Reference sources using `lvt-source`:
 
 ```html
 <!-- Auto-render a table -->
@@ -55,11 +77,29 @@ Reference sources in your markdown using `lvt-source`:
 </select>
 ```
 
-## Caching
+## Shared Sources (tinkerdown.yaml)
 
-Enable caching to improve performance:
+For sources used across multiple pages, use `tinkerdown.yaml`:
 
 ```yaml
+# tinkerdown.yaml
+sources:
+  # Available to all pages
+  current_user:
+    type: rest
+    url: ${AUTH_API}/me
+    headers:
+      Authorization: Bearer ${AUTH_TOKEN}
+```
+
+See [Configuration Reference](../reference/config.md) for details.
+
+## Caching
+
+Enable caching for better performance:
+
+```yaml
+---
 sources:
   users:
     type: rest
@@ -67,6 +107,7 @@ sources:
     cache:
       ttl: 5m
       strategy: stale-while-revalidate
+---
 ```
 
 See [Caching Guide](../caching.md) for details.
@@ -77,17 +118,16 @@ Sources include built-in error handling:
 
 - Automatic retry with exponential backoff
 - Circuit breaker for failing sources
-- Configurable timeouts
+- Configurable timeout
 
 ```yaml
+---
 sources:
   external_api:
     type: rest
     url: https://api.example.com/data
     timeout: 30s
-    retry:
-      max_attempts: 3
-      backoff: exponential
+---
 ```
 
 See [Error Handling Guide](../error-handling.md) for details.

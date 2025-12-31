@@ -1,6 +1,19 @@
-# Configuration Reference
+# Configuration Reference (tinkerdown.yaml)
 
-Complete reference for `tinkerdown.yaml`.
+Reference for `tinkerdown.yaml` - the **optional** configuration file for complex apps.
+
+> **Recommendation:** For most apps, configure sources directly in [frontmatter](frontmatter.md). Use `tinkerdown.yaml` only for shared configuration across multiple pages or complex setups.
+
+## When to Use tinkerdown.yaml
+
+| Use Case | Recommendation |
+|----------|----------------|
+| Single-page app | Use frontmatter |
+| Simple multi-page app | Use frontmatter per page |
+| Shared sources across pages | Use `tinkerdown.yaml` |
+| Complex caching strategies | Use `tinkerdown.yaml` |
+| Server settings (port, host) | Use `tinkerdown.yaml` |
+| Secrets via environment variables | Use `tinkerdown.yaml` |
 
 ## File Location
 
@@ -8,7 +21,7 @@ Place `tinkerdown.yaml` in your app's root directory:
 
 ```
 myapp/
-├── tinkerdown.yaml
+├── tinkerdown.yaml    # Optional
 ├── index.md
 └── ...
 ```
@@ -16,16 +29,16 @@ myapp/
 ## Full Schema
 
 ```yaml
-# Server settings
+# Server settings (can't be in frontmatter)
 server:
   port: 8080
   host: localhost
 
-# Styling options
+# Global styling (can also be per-page in frontmatter)
 styling:
   theme: clean  # clean, dark, minimal
 
-# Data sources
+# Shared data sources
 sources:
   source_name:
     type: sqlite|rest|exec|json|csv|markdown|wasm
@@ -38,6 +51,8 @@ sources:
 
 ## Server Configuration
 
+Server settings **must** be in `tinkerdown.yaml` (not available in frontmatter):
+
 ```yaml
 server:
   port: 8080           # Server port (default: 8080)
@@ -45,6 +60,8 @@ server:
 ```
 
 ## Styling Configuration
+
+Can be in frontmatter or `tinkerdown.yaml`. Config file applies globally:
 
 ```yaml
 styling:
@@ -54,9 +71,9 @@ styling:
 
 ## Source Configuration
 
-### Common Options
+Sources in `tinkerdown.yaml` are available to **all pages**. Page-specific sources should go in frontmatter.
 
-All sources support these options:
+### Common Options
 
 ```yaml
 sources:
@@ -74,8 +91,8 @@ sources:
 sources:
   tasks:
     type: sqlite
-    path: ./data.db        # Path to SQLite database
-    query: SELECT * FROM tasks  # Query to execute
+    path: ./data.db
+    query: SELECT * FROM tasks
 ```
 
 ### REST Source
@@ -84,12 +101,10 @@ sources:
 sources:
   users:
     type: rest
-    url: https://api.example.com/users  # API endpoint
-    method: GET                         # HTTP method (default: GET)
-    headers:                            # Optional headers
+    url: https://api.example.com/users
+    method: GET
+    headers:
       Authorization: Bearer ${API_TOKEN}
-    body: |                             # Optional request body (for POST/PUT)
-      {"filter": "active"}
 ```
 
 ### Exec Source
@@ -98,8 +113,7 @@ sources:
 sources:
   system_info:
     type: exec
-    command: uname -a       # Shell command to execute
-    shell: /bin/sh          # Shell to use (default: /bin/sh)
+    command: uname -a
 ```
 
 ### JSON Source
@@ -108,7 +122,7 @@ sources:
 sources:
   config:
     type: json
-    path: ./_data/config.json  # Path to JSON file
+    path: ./_data/config.json
 ```
 
 ### CSV Source
@@ -117,9 +131,9 @@ sources:
 sources:
   products:
     type: csv
-    path: ./_data/products.csv  # Path to CSV file
-    delimiter: ","              # Field delimiter (default: ,)
-    header: true                # First row is header (default: true)
+    path: ./_data/products.csv
+    delimiter: ","
+    header: true
 ```
 
 ### Markdown Source
@@ -128,8 +142,8 @@ sources:
 sources:
   posts:
     type: markdown
-    path: ./_data/posts/       # Directory containing markdown files
-    glob: "*.md"               # File pattern (default: *.md)
+    path: ./_data/posts/
+    glob: "*.md"
 ```
 
 ### WASM Source
@@ -138,12 +152,14 @@ sources:
 sources:
   custom:
     type: wasm
-    module: ./custom.wasm      # Path to WASM module
-    config:                    # Optional config passed to module
+    module: ./custom.wasm
+    config:
       api_key: ${API_KEY}
 ```
 
 ## Caching Configuration
+
+Caching is where `tinkerdown.yaml` shines - complex cache strategies:
 
 ```yaml
 sources:
@@ -151,8 +167,8 @@ sources:
     type: rest
     url: https://api.example.com/data
     cache:
-      ttl: 5m                  # Cache duration (e.g., 5m, 1h, 30s)
-      strategy: simple         # Caching strategy
+      ttl: 5m                  # Cache duration
+      strategy: stale-while-revalidate  # Background refresh
 ```
 
 ### Cache Strategies
@@ -164,7 +180,7 @@ sources:
 
 ## Environment Variables
 
-Use `${VAR_NAME}` syntax for environment variable substitution:
+Use `${VAR_NAME}` syntax for secrets - a key reason to use `tinkerdown.yaml`:
 
 ```yaml
 sources:
@@ -183,43 +199,68 @@ Validate your configuration:
 tinkerdown validate
 ```
 
-## Examples
+## Example: Complex Multi-Page App
 
-### Minimal Configuration
-
-```yaml
-sources:
-  tasks:
-    type: sqlite
-    path: ./tasks.db
-    query: SELECT * FROM tasks
-```
-
-### Multi-Source App
+When you have shared authentication, caching, and multiple pages:
 
 ```yaml
+# tinkerdown.yaml
+server:
+  port: 3000
+
 styling:
-  theme: clean
+  theme: dark
 
 sources:
-  tasks:
-    type: sqlite
-    path: ./data.db
-    query: SELECT * FROM tasks
-
-  users:
+  # Shared auth - used by all pages
+  current_user:
     type: rest
-    url: https://api.example.com/users
+    url: ${AUTH_API}/me
+    headers:
+      Authorization: Bearer ${AUTH_TOKEN}
     cache:
       ttl: 10m
       strategy: stale-while-revalidate
 
-  system:
-    type: exec
-    command: uptime
+  # Shared data with aggressive caching
+  products:
+    type: rest
+    url: https://api.example.com/products
+    cache:
+      ttl: 1h
+      strategy: stale-while-revalidate
+
+  # Shared database
+  orders:
+    type: sqlite
+    path: ./data/orders.db
+    query: SELECT * FROM orders
 ```
+
+Then each page uses these sources:
+
+```markdown
+---
+title: Dashboard
+# No need to redefine sources - they come from tinkerdown.yaml
+---
+
+# Dashboard
+
+Welcome, {{.current_user.name}}!
+
+<table lvt-source="orders" lvt-columns="id,product,status">
+</table>
+```
+
+## Priority: Frontmatter vs Config File
+
+When the same source is defined in both places:
+
+1. **Frontmatter wins** for that page
+2. Config file provides defaults
 
 ## Next Steps
 
+- [Frontmatter Reference](frontmatter.md) - Recommended configuration approach
 - [Data Sources Guide](../guides/data-sources.md) - Using sources
-- [Frontmatter Reference](frontmatter.md) - Per-page configuration

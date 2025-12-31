@@ -1,6 +1,6 @@
 # Frontmatter Reference
 
-Page-level configuration using YAML frontmatter.
+Page-level configuration using YAML frontmatter. **This is the recommended way to configure Tinkerdown apps.**
 
 ## Overview
 
@@ -10,9 +10,17 @@ Add YAML frontmatter at the beginning of any markdown page:
 ---
 title: My Page
 description: A page description
+sources:
+  tasks:
+    type: sqlite
+    path: ./tasks.db
+    query: SELECT * FROM tasks
 ---
 
 # Page Content
+
+<table lvt-source="tasks" lvt-columns="id,title,status">
+</table>
 ```
 
 ## Available Options
@@ -39,13 +47,50 @@ description: View and manage your tasks
 
 ### sources
 
-Sources used by this page (for documentation/validation).
+Define data sources for this page. This is the **recommended** way to configure sources.
 
 ```yaml
 ---
 sources:
-  - tasks
-  - users
+  tasks:
+    type: sqlite
+    path: ./tasks.db
+    query: SELECT * FROM tasks
+
+  users:
+    type: rest
+    url: https://api.example.com/users
+
+  config:
+    type: json
+    path: ./_data/config.json
+---
+```
+
+#### Source Types
+
+All source types can be defined in frontmatter:
+
+| Type | Example |
+|------|---------|
+| `sqlite` | `type: sqlite`<br>`path: ./data.db`<br>`query: SELECT * FROM tasks` |
+| `rest` | `type: rest`<br>`url: https://api.example.com/data` |
+| `json` | `type: json`<br>`path: ./_data/data.json` |
+| `csv` | `type: csv`<br>`path: ./_data/data.csv` |
+| `exec` | `type: exec`<br>`command: uname -a` |
+| `markdown` | `type: markdown`<br>`path: ./_data/posts/` |
+| `wasm` | `type: wasm`<br>`module: ./custom.wasm` |
+
+See [Data Sources Guide](../guides/data-sources.md) for full details on each type.
+
+### styling
+
+Page styling options.
+
+```yaml
+---
+styling:
+  theme: clean    # Options: clean, dark, minimal
 ---
 ```
 
@@ -86,16 +131,28 @@ auth:
 ---
 ```
 
-## Full Example
+## Complete Example
 
-```yaml
+A fully-configured single-file app:
+
+```markdown
 ---
 title: Task Dashboard
 description: Manage your daily tasks
+
 sources:
-  - tasks
-  - categories
-layout: wide
+  tasks:
+    type: sqlite
+    path: ./tasks.db
+    query: SELECT * FROM tasks ORDER BY created_at DESC
+
+  categories:
+    type: json
+    path: ./_data/categories.json
+
+styling:
+  theme: clean
+
 nav:
   order: 1
   title: Tasks
@@ -103,9 +160,48 @@ nav:
 
 # Task Dashboard
 
-<table lvt-source="tasks" lvt-columns="title,status,category">
+## All Tasks
+
+<table lvt-source="tasks" lvt-columns="title:Task,status:Status,category:Category" lvt-actions="Edit,Delete">
 </table>
+
+## Add Task
+
+<form lvt-submit="AddTask">
+  <input name="title" placeholder="Task title" required>
+  <select name="category" lvt-source="categories" lvt-value="id" lvt-label="name">
+  </select>
+  <button type="submit">Add Task</button>
+</form>
 ```
+
+## When to Use tinkerdown.yaml Instead
+
+Use `tinkerdown.yaml` for:
+
+- **Shared sources** used across multiple pages
+- **Complex caching** configurations
+- **Server settings** (port, host)
+- **Environment variables** with secrets
+
+```yaml
+# tinkerdown.yaml - for complex multi-page apps
+server:
+  port: 3000
+
+sources:
+  # Shared across all pages
+  auth_user:
+    type: rest
+    url: ${AUTH_API_URL}/user
+    headers:
+      Authorization: Bearer ${AUTH_TOKEN}
+    cache:
+      ttl: 10m
+      strategy: stale-while-revalidate
+```
+
+See [Configuration Reference](config.md) for `tinkerdown.yaml` details.
 
 ## Multi-Page Navigation
 
@@ -130,5 +226,5 @@ Frontmatter values are available in templates:
 
 ## Next Steps
 
-- [Configuration Reference](config.md) - Global configuration
-- [Project Structure](../getting-started/project-structure.md) - File layout
+- [Data Sources Guide](../guides/data-sources.md) - Detailed source configuration
+- [Configuration Reference](config.md) - When to use tinkerdown.yaml

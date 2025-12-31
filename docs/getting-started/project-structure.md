@@ -9,14 +9,14 @@ myapp/
 ├── index.md              # Main page (required)
 ├── about.md              # Additional pages
 ├── contact.md
-├── tinkerdown.yaml       # Configuration file
 ├── _data/                # Data files (optional)
 │   ├── tasks.json
 │   └── users.csv
 ├── static/               # Static assets (optional)
 │   ├── styles.css
 │   └── images/
-└── tasks.db              # SQLite database (if using sqlite source)
+├── tasks.db              # SQLite database (if using sqlite source)
+└── tinkerdown.yaml       # Optional: for complex shared configuration
 ```
 
 ## File Types
@@ -29,15 +29,42 @@ Each `.md` file becomes a page in your app. Pages can contain:
 - HTML with `lvt-*` attributes for interactivity
 - Go template syntax for dynamic content
 
-### Configuration (tinkerdown.yaml)
+## Frontmatter Configuration (Recommended)
 
-The main configuration file that defines:
+Configure everything in your page's frontmatter - no separate config file needed:
 
-- Data sources
-- Styling options
-- Server settings
+```yaml
+---
+title: My Dashboard
+description: Real-time metrics display
 
-See [Configuration Reference](../reference/config.md) for full details.
+sources:
+  tasks:
+    type: sqlite
+    path: ./tasks.db
+    query: SELECT * FROM tasks
+
+  users:
+    type: json
+    path: ./_data/users.json
+
+styling:
+  theme: clean
+---
+```
+
+This keeps configuration close to where it's used and makes single-file apps possible.
+
+### tinkerdown.yaml (Optional)
+
+Use `tinkerdown.yaml` only when you need:
+
+- **Shared sources** across multiple pages
+- **Complex caching** with stale-while-revalidate strategies
+- **Server settings** like custom ports
+- **Global styling** applied to all pages
+
+See [Configuration Reference](../reference/config.md) for details.
 
 ### Data Files (_data/)
 
@@ -51,22 +78,6 @@ The `_data/` directory contains static data files:
 
 Static files like CSS, JavaScript, and images are served from the `static/` directory.
 
-## Frontmatter
-
-Each markdown page can have YAML frontmatter:
-
-```yaml
----
-title: My Page
-description: A description of the page
-sources:
-  - tasks
-  - users
----
-```
-
-See [Frontmatter Reference](../reference/frontmatter.md) for all options.
-
 ## Multi-Page Apps
 
 Create additional pages by adding more `.md` files. Tinkerdown automatically:
@@ -75,7 +86,21 @@ Create additional pages by adding more `.md` files. Tinkerdown automatically:
 - Creates routes for each page
 - Maintains WebSocket connections per page
 
+### Navigation Configuration
+
+Control navigation order and visibility in each page's frontmatter:
+
+```yaml
+---
+title: Settings
+nav:
+  order: 3           # Order in navigation
+  title: Config      # Override title in nav
+  hidden: false      # Hide from navigation
+---
+```
+
 ## Next Steps
 
-- [Configuration Reference](../reference/config.md) - Full tinkerdown.yaml schema
-- [Frontmatter Reference](../reference/frontmatter.md) - Page-level options
+- [Frontmatter Reference](../reference/frontmatter.md) - All frontmatter options
+- [Configuration Reference](../reference/config.md) - When to use tinkerdown.yaml

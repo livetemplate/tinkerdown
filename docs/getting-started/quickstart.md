@@ -14,7 +14,7 @@ cd myapp
 ```
 myapp/
 ├── index.md           # Your main page (markdown + interactive elements)
-└── tinkerdown.yaml    # Configuration file
+└── _data/             # Optional data files
 ```
 
 ## Run the Development Server
@@ -43,22 +43,41 @@ title: My First App
 
 ## Add a Data Source
 
-Edit `tinkerdown.yaml` to add a data source:
+Define sources directly in your page's frontmatter:
 
-```yaml
+```markdown
+---
+title: Task List
 sources:
   tasks:
     type: sqlite
     path: ./tasks.db
     query: SELECT * FROM tasks
-```
+---
 
-Then use it in your markdown:
+# My Tasks
 
-```html
 <table lvt-source="tasks" lvt-columns="id,title,status">
 </table>
 ```
+
+### For Complex Configurations
+
+If you have many sources or complex configurations shared across pages, you can use `tinkerdown.yaml`:
+
+```yaml
+# tinkerdown.yaml (optional - for complex multi-page apps)
+sources:
+  tasks:
+    type: sqlite
+    path: ./tasks.db
+    query: SELECT * FROM tasks
+    cache:
+      ttl: 5m
+      strategy: stale-while-revalidate
+```
+
+See [Configuration Reference](../reference/config.md) for when to use `tinkerdown.yaml`.
 
 ## Next Steps
 
