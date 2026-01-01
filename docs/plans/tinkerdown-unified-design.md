@@ -441,13 +441,17 @@ When auto-inference gets it wrong, override with simple hints:
 ```yaml
 ---
 sources:
+  # Markdown source with type hints
   expenses:
+    from: "#expenses"           # data comes from markdown section
     types:
       amount: currency
       date: date
-      category: select        # auto-detect options from data
+      category: select          # auto-detect options from data
 
+  # Another markdown source
   tasks:
+    from: "#tasks"
     types:
       priority: select:Critical,High,Medium,Low    # explicit options
       due: date
@@ -477,16 +481,23 @@ sources:
 | `textarea` | TEXT | Multi-line | |
 | `hidden` | TEXT | None | Not shown in forms |
 
-**Shorthand syntax:**
+**Shorthand vs Full form:**
 
 ```yaml
-# Full form
+# Shorthand (source auto-detected from heading)
 sources:
   expenses:
     types:
       amount: currency
 
-# Shorthand (dot notation)
+# Full form (explicit anchor)
+sources:
+  expenses:
+    from: "#expenses"
+    types:
+      amount: currency
+
+# Shorthand for types only (dot notation)
 types:
   expenses.amount: currency
   expenses.category: select
@@ -498,6 +509,7 @@ types:
 ```yaml
 sources:
   expenses:
+    from: "#expenses"
     types:
       amount: currency
     required:
@@ -595,13 +607,21 @@ Join data across markdown and external databases:
 ```yaml
 ---
 sources:
-  # Markdown source
+  # Markdown source (shorthand)
   expenses: "#expenses"
 
-  # External database
-  employees: postgres://${DATABASE_URL}
+  # Markdown source (full form)
+  tasks:
+    from: "#tasks"
+    types:
+      priority: select
 
-  # Join across sources
+  # External database
+  employees:
+    from: postgres://${DATABASE_URL}
+    table: employees
+
+  # Join across sources (markdown + database)
   report:
     query: |
       SELECT
@@ -613,6 +633,17 @@ sources:
       WHERE e.date >= '2024-01-01'
 ---
 ```
+
+**The `from:` keyword - unified syntax:**
+
+| Source Type | Shorthand | Full Form |
+|-------------|-----------|-----------|
+| Markdown | `tasks: "#tasks"` | `tasks: { from: "#tasks" }` |
+| SQLite | `data: ./app.db` | `data: { from: ./app.db }` |
+| PostgreSQL | `users: postgres://...` | `users: { from: postgres://... }` |
+| MySQL | `orders: mysql://...` | `orders: { from: mysql://... }` |
+
+Use full form when you need additional options (types, query, table, required, etc.).
 
 **How it works internally:**
 
@@ -1675,17 +1706,19 @@ Only needed when you want to go beyond zero-config defaults.
 # Override inferred types with simple hints
 sources:
   expenses:
+    from: "#expenses"         # markdown section
     types:
       amount: currency
       category: select
 
   tasks:
+    from: "#tasks"
     types:
       priority: select:Critical,High,Medium,Low
       due: date
     required: [title, due]
 
-# Or use shorthand
+# Or use shorthand (auto-detects from heading)
 types:
   expenses.amount: currency
   tasks.priority: select:Critical,High,Medium,Low
