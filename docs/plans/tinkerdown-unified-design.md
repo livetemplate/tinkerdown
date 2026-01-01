@@ -260,10 +260,11 @@ No YAML. No HTML. Just markdown.
 ---
 sources:
   tasks:
-    schema:
-      priority: select | Critical, High, Medium, Low
-      title: required | min:3
-    input: false  # read-only
+    from: "#tasks"
+    types:
+      priority: select:Critical,High,Medium,Low
+      title: text
+    required: [title]
 
 outputs:
   slack:
@@ -273,8 +274,8 @@ outputs:
 ```
 
 YAML only for:
-- External data sources (REST, DB)
-- Custom validation rules
+- Type hints when inference is wrong
+- External data sources (databases, REST)
 - Output configuration
 - Complex actions
 
@@ -516,6 +517,21 @@ sources:
       - date
       - amount
 ```
+
+**Sync mode (for markdown sources):**
+
+```yaml
+sources:
+  expenses:
+    from: "#expenses"
+    sync: both       # read | write | both (default: both)
+```
+
+| Mode | Behavior |
+|------|----------|
+| `read` | Markdown → App (markdown is source of truth, read-only in UI) |
+| `write` | App → Markdown (changes written back to .md file) |
+| `both` | Bidirectional (default) |
 
 ---
 
