@@ -13,9 +13,7 @@ func TestNewCommandBasicTemplate(t *testing.T) {
 	projectDir := filepath.Join(tmpDir, "test-basic")
 
 	// Change to temp directory
-	oldDir, _ := os.Getwd()
-	defer os.Chdir(oldDir)
-	os.Chdir(tmpDir)
+	defer chdir(t, tmpDir)()
 
 	// Run new command with basic template (default)
 	err := NewCommand([]string{"test-basic"})
@@ -38,9 +36,7 @@ func TestNewCommandTodoTemplate(t *testing.T) {
 	tmpDir := t.TempDir()
 	projectDir := filepath.Join(tmpDir, "my-todo-app")
 
-	oldDir, _ := os.Getwd()
-	defer os.Chdir(oldDir)
-	os.Chdir(tmpDir)
+	defer chdir(t, tmpDir)()
 
 	err := NewCommand([]string{"--template=todo", "my-todo-app"})
 	if err != nil {
@@ -64,9 +60,7 @@ func TestNewCommandDashboardTemplate(t *testing.T) {
 	tmpDir := t.TempDir()
 	projectDir := filepath.Join(tmpDir, "my-dashboard")
 
-	oldDir, _ := os.Getwd()
-	defer os.Chdir(oldDir)
-	os.Chdir(tmpDir)
+	defer chdir(t, tmpDir)()
 
 	err := NewCommand([]string{"--template=dashboard", "my-dashboard"})
 	if err != nil {
@@ -89,9 +83,7 @@ func TestNewCommandFormTemplate(t *testing.T) {
 	tmpDir := t.TempDir()
 	projectDir := filepath.Join(tmpDir, "contact-form")
 
-	oldDir, _ := os.Getwd()
-	defer os.Chdir(oldDir)
-	os.Chdir(tmpDir)
+	defer chdir(t, tmpDir)()
 
 	err := NewCommand([]string{"--template=form", "contact-form"})
 	if err != nil {
@@ -114,9 +106,7 @@ func TestNewCommandAPIExplorerTemplate(t *testing.T) {
 	tmpDir := t.TempDir()
 	projectDir := filepath.Join(tmpDir, "api-test")
 
-	oldDir, _ := os.Getwd()
-	defer os.Chdir(oldDir)
-	os.Chdir(tmpDir)
+	defer chdir(t, tmpDir)()
 
 	err := NewCommand([]string{"--template=api-explorer", "api-test"})
 	if err != nil {
@@ -139,9 +129,7 @@ func TestNewCommandCLIWrapperTemplate(t *testing.T) {
 	tmpDir := t.TempDir()
 	projectDir := filepath.Join(tmpDir, "cli-tool")
 
-	oldDir, _ := os.Getwd()
-	defer os.Chdir(oldDir)
-	os.Chdir(tmpDir)
+	defer chdir(t, tmpDir)()
 
 	err := NewCommand([]string{"--template=cli-wrapper", "cli-tool"})
 	if err != nil {
@@ -164,9 +152,7 @@ func TestNewCommandWASMSourceTemplate(t *testing.T) {
 	tmpDir := t.TempDir()
 	projectDir := filepath.Join(tmpDir, "my-source")
 
-	oldDir, _ := os.Getwd()
-	defer os.Chdir(oldDir)
-	os.Chdir(tmpDir)
+	defer chdir(t, tmpDir)()
 
 	err := NewCommand([]string{"--template=wasm-source", "my-source"})
 	if err != nil {
@@ -204,9 +190,7 @@ func TestNewCommandListTemplates(t *testing.T) {
 func TestNewCommandInvalidTemplate(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	oldDir, _ := os.Getwd()
-	defer os.Chdir(oldDir)
-	os.Chdir(tmpDir)
+	defer chdir(t, tmpDir)()
 
 	err := NewCommand([]string{"--template=invalid", "test"})
 	if err == nil {
@@ -224,9 +208,7 @@ func TestNewCommandDirectoryExists(t *testing.T) {
 	// Create the directory first
 	os.MkdirAll(projectDir, 0755)
 
-	oldDir, _ := os.Getwd()
-	defer os.Chdir(oldDir)
-	os.Chdir(tmpDir)
+	defer chdir(t, tmpDir)()
 
 	err := NewCommand([]string{"existing"})
 	if err == nil {
@@ -250,9 +232,7 @@ func TestNewCommandNoProjectName(t *testing.T) {
 func TestNewCommandProjectNameWithSpaces(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	oldDir, _ := os.Getwd()
-	defer os.Chdir(oldDir)
-	os.Chdir(tmpDir)
+	defer chdir(t, tmpDir)()
 
 	err := NewCommand([]string{"my project"})
 	if err == nil {
@@ -267,9 +247,7 @@ func TestNewCommandTitleConversion(t *testing.T) {
 	tmpDir := t.TempDir()
 	projectDir := filepath.Join(tmpDir, "my-awesome-app")
 
-	oldDir, _ := os.Getwd()
-	defer os.Chdir(oldDir)
-	os.Chdir(tmpDir)
+	defer chdir(t, tmpDir)()
 
 	err := NewCommand([]string{"my-awesome-app"})
 	if err != nil {
@@ -283,6 +261,21 @@ func TestNewCommandTitleConversion(t *testing.T) {
 }
 
 // Helper functions
+
+// chdir changes to tmpDir and returns a cleanup function to restore the original directory
+func chdir(t *testing.T, tmpDir string) func() {
+	t.Helper()
+	oldDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Failed to get working directory: %v", err)
+	}
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("Failed to change to temp directory: %v", err)
+	}
+	return func() {
+		os.Chdir(oldDir)
+	}
+}
 
 func assertFileExists(t *testing.T, dir, filename string) {
 	t.Helper()

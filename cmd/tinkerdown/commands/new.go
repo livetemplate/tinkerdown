@@ -218,7 +218,9 @@ func processTemplateFile(projectName, templateName, templatePath string, data ma
 	return nil
 }
 
-// isBinaryFile checks if a file should be copied as-is without template processing
+// isBinaryFile checks if a file should be copied as-is without template processing.
+// This list is scoped to file types that may appear in our bundled templates,
+// not a comprehensive list of all binary formats.
 func isBinaryFile(path string) bool {
 	ext := strings.ToLower(filepath.Ext(path))
 	binaryExts := []string{".wasm", ".png", ".jpg", ".jpeg", ".gif", ".ico", ".db", ".sqlite"}

@@ -20,6 +20,10 @@ func main() {}
 // fetch is called by tinkerdown to get data.
 // It must return a pointer to a JSON array.
 //
+// Safety: The unsafe.Pointer usage here is required for WASM host interop.
+// The pointer remains valid because lastResult is a package-level variable
+// that persists until free_result() is called by the host.
+//
 //export fetch
 func fetch() int32 {
 	// Get configuration from environment (set via source options)
@@ -80,6 +84,9 @@ func free_result() {
 }
 
 // get_error returns a pointer to the error string if fetch failed.
+//
+// Safety: Uses unsafe.StringData which returns a pointer to the string's
+// underlying bytes. Valid while lastError is unchanged.
 //
 //export get_error
 func get_error() int32 {
