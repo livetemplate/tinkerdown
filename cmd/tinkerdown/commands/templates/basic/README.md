@@ -1,4 +1,4 @@
-# {{.Title}}
+# [[.Title]]
 
 A Tinkerdown tutorial project created with `tinkerdown new`.
 
@@ -6,7 +6,7 @@ A Tinkerdown tutorial project created with `tinkerdown new`.
 
 1. **Start the development server:**
    ```bash
-   tinkerdown serve {{.ProjectName}}
+   tinkerdown serve [[.ProjectName]]
    ```
 
 2. **Open your browser:**
@@ -19,7 +19,7 @@ A Tinkerdown tutorial project created with `tinkerdown new`.
 ## Project Structure
 
 ```
-{{.ProjectName}}/
+[[.ProjectName]]/
 ├── index.md      # Main tutorial file
 └── README.md     # This file
 ```

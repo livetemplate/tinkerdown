@@ -1,11 +1,11 @@
 ---
-title: "{{.Title}}"
+title: "[[.Title]]"
 type: tutorial
 persist: localstorage
 steps: 3
 ---
 
-# Welcome to {{.Title}}
+# Welcome to [[.Title]]
 
 This is a basic LiveTemplate tutorial to get you started.
 
