@@ -109,13 +109,23 @@ _No tasks currently in progress_
 
 ### Recently Completed
 <!-- Move completed tasks here, keep last 5 -->
-1. **3.6B Create Documentation Structure** - Completed 2025-12-31 (PR #20)
+1. **3.1 Enhanced CLI Scaffolding** - Completed 2026-01-01 (PR #24)
+   - Added `--template` flag with 7 templates: basic, tutorial, todo, dashboard, form, api-explorer, wasm-source
+   - basic: kubectl pods dashboard with exec source
+   - todo: SQLite CRUD task manager
+   - dashboard: REST + exec multi-source display
+   - form: Contact form with SQLite persistence
+   - api-explorer: GitHub repository search with parameterized REST
+   - wasm-source: Custom WASM source scaffold with test-app
+   - 17 E2E tests covering all templates and edge cases
+
+2. **3.6B Create Documentation Structure** - Completed 2025-12-31 (PR #20)
    - Created `docs/getting-started/` with installation, quickstart, project-structure
    - Created `docs/guides/` with auto-rendering, data-sources, go-templates, styling, debugging, deployment
    - Created `docs/reference/` with cli, config, frontmatter, lvt-attributes
    - Created `docs/sources/` with docs for all source types (sqlite, rest, exec, json, csv, markdown, wasm, graphql)
 
-2. **4.1 GraphQL Source** - Completed 2025-12-31 (PR #22)
+3. **4.1 GraphQL Source** - Completed 2025-12-31 (PR #22)
    - Query file support (.graphql files)
    - Variable substitution with environment expansion
    - Result path extraction for nested responses (`result_path` config)
@@ -124,32 +134,25 @@ _No tasks currently in progress_
    - E2E test with public Countries API
    - Full documentation in `docs/sources/graphql.md`
 
-3. **2.3 Multi-page WebSocket Support** - Completed 2025-12-31 (PR #19)
+4. **2.3 Multi-page WebSocket Support** - Completed 2025-12-31 (PR #19)
    - Accept page identifier via query param (`?page=/path`)
    - Route WebSocket messages to correct page's state
    - Handle page transitions gracefully
    - Clean up state on page navigation
 
-4. **2.2 Source Caching Layer** - Completed 2025-12-30 (PR #18)
+5. **2.2 Source Caching Layer** - Completed 2025-12-30 (PR #18)
    - Cache configuration per source (`ttl`, `strategy`)
    - In-memory cache with TTL expiration
    - Two strategies: `simple` and `stale-while-revalidate`
    - Automatic cache invalidation on writes
    - Background revalidation with proper cancellation
 
-5. **2.1 Data Source Error Handling** - Completed 2025-12-30 (PR #17)
-   - Unified error types for all sources (`SourceError`, `ConnectionError`, `TimeoutError`, etc.)
-   - Retry with exponential backoff + jitter (±20%)
-   - Circuit breaker pattern (opens after 5 failures in 1-minute window)
-   - Configurable timeout per source
-   - Response body size limit (10MB) for OOM prevention
-
 ### Next Up
 <!-- Queue of next 3-5 tasks to tackle -->
-1. 3.1 Enhanced CLI Scaffolding
-2. 4.2 MongoDB Source
-3. 4.3 Source Composition
-4. 3.3 Debug Mode & Logging
+1. 4.2 MongoDB Source
+2. 4.3 Source Composition
+3. 3.3 Debug Mode & Logging
+4. 3.2 Expanded Validation
 
 ---
 
@@ -535,16 +538,16 @@ Auto-rendering is for common patterns only. Use Go templates when you need:
 **Current State:** `new` command creates minimal template only.
 
 **Work Required:**
-- [ ] Add `--template` flag with options:
-  - `basic` - Minimal with one source
+- [x] Add `--template` flag with options:
+  - `basic` - Kubernetes pods dashboard (exec source)
+  - `tutorial` - Go server state tutorial (renamed from original basic)
   - `todo` - SQLite CRUD with toggle/delete
-  - `dashboard` - Multi-source data display
+  - `dashboard` - Multi-source data display (REST + exec)
   - `form` - Contact form with SQLite persistence
-  - `api-explorer` - REST source with refresh
-  - `cli-wrapper` - Exec source with argument form
+  - `api-explorer` - GitHub search with parameterized REST
   - `wasm-source` - Template for building custom WASM sources
-- [ ] Generate sample data files for each template
-- [ ] Include inline documentation comments
+- [x] Generate sample data files for each template (shell scripts, config)
+- [x] Include inline documentation comments (README.md per template)
 
 **Impact:** 5-minute start to working prototype
 
