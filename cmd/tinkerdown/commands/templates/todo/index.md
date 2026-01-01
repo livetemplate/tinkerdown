@@ -1,5 +1,5 @@
 ---
-title: "[[.Title]]"
+title: "{{.Title}}"
 sources:
   tasks:
     type: sqlite
@@ -8,123 +8,72 @@ sources:
     readonly: false
 ---
 
-# [[.Title]]
+# {{.Title}}
 
-A simple todo list with SQLite persistence.
+A simple task manager with SQLite persistence.
 
-## My Tasks
+## Tasks
 
 ```lvt
 <main lvt-source="tasks">
     {{if .Error}}
-    <p class="error">Error: {{.Error}}</p>
+    <p><mark>Error: {{.Error}}</mark></p>
     {{else}}
-    <ul class="task-list">
-        {{range .Data}}
-        <li class="task-item {{if .Done}}done{{end}}">
-            <input type="checkbox" {{if .Done}}checked{{end}}
-                   lvt-click="Toggle" lvt-data-id="{{.Id}}">
-            <span class="task-text">{{.Text}}</span>
-            <button class="delete-btn" lvt-click="Delete" lvt-data-id="{{.Id}}">x</button>
-        </li>
-        {{end}}
-    </ul>
-    <p class="task-count">{{len .Data}} task(s)</p>
+    <table>
+        <thead>
+            <tr>
+                <th>Done</th>
+                <th>Task</th>
+                <th>Priority</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .Data}}
+            <tr>
+                <td>
+                    <input type="checkbox" {{if .Done}}checked{{end}}
+                           lvt-click="Toggle" lvt-data-id="{{.Id}}">
+                </td>
+                <td {{if .Done}}style="text-decoration: line-through; opacity: 0.6"{{end}}>
+                    {{.Text}}
+                </td>
+                <td>{{.Priority}}</td>
+                <td>
+                    <button lvt-click="Delete" lvt-data-id="{{.Id}}"
+                            style="color: red; border: 1px solid red; background: transparent; border-radius: 4px; cursor: pointer; padding: 2px 8px;">
+                        Delete
+                    </button>
+                </td>
+            </tr>
+            {{end}}
+        </tbody>
+    </table>
+    <p><small>Total: {{len .Data}} tasks</small></p>
     {{end}}
 
-    <form class="add-form" lvt-submit="Add">
-        <input type="text" name="text" placeholder="Add a new task..." required>
-        <button type="submit">Add</button>
+    <hr style="margin: 16px 0;">
+
+    <h3>Add New Task</h3>
+    <form lvt-submit="Add" style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+        <input type="text" name="text" placeholder="Task description..." required
+               style="flex: 1; min-width: 200px; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+        <select name="priority" style="padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
+            <option value="low">Low</option>
+            <option value="medium" selected>Medium</option>
+            <option value="high">High</option>
+        </select>
+        <button type="submit"
+                style="padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">
+            Add Task
+        </button>
     </form>
 </main>
-
-<style>
-.task-list {
-    list-style: none;
-    padding: 0;
-    margin: 0 0 1rem 0;
-}
-
-.task-item {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    padding: 0.75rem;
-    border-bottom: 1px solid #eee;
-}
-
-.task-item.done .task-text {
-    text-decoration: line-through;
-    opacity: 0.6;
-}
-
-.task-text {
-    flex: 1;
-}
-
-.delete-btn {
-    padding: 0.25rem 0.5rem;
-    color: #dc3545;
-    border: 1px solid #dc3545;
-    background: transparent;
-    border-radius: 4px;
-    cursor: pointer;
-    opacity: 0.5;
-}
-
-.task-item:hover .delete-btn {
-    opacity: 1;
-}
-
-.task-count {
-    color: #666;
-    font-size: 0.9em;
-    margin: 0.5rem 0;
-}
-
-.add-form {
-    display: flex;
-    gap: 0.5rem;
-}
-
-.add-form input {
-    flex: 1;
-    padding: 0.5rem;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-}
-
-.add-form button {
-    padding: 0.5rem 1rem;
-    background: #007bff;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-}
-
-.add-form button:hover {
-    background: #0056b3;
-}
-
-.error {
-    color: #dc3545;
-    background: #f8d7da;
-    padding: 0.75rem;
-    border-radius: 4px;
-}
-</style>
 ```
 
 ## How It Works
 
-- **Add tasks**: Type in the input and click "Add"
-- **Complete tasks**: Click the checkbox to toggle done state
-- **Delete tasks**: Click the "x" button to remove a task
-- **Data persists**: All data is saved in `tasks.db`
-
-## Next Steps
-
-- Add a priority field (see `--template=dashboard` for multi-field example)
-- Add categories or tags
-- Style with your favorite CSS framework
+- **Add**: Submit the form to create a new task
+- **Toggle**: Click checkbox to mark done/undone
+- **Delete**: Remove a task permanently
+- Data persists in `tasks.db` SQLite database

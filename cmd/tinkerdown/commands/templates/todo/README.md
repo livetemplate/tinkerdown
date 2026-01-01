@@ -1,39 +1,16 @@
-# [[.Title]]
+# {{.Title}}
 
-A todo list application built with tinkerdown.
+A task manager built with [Tinkerdown](https://github.com/livetemplate/tinkerdown) and SQLite.
 
-## Quick Start
+## Running
 
 ```bash
-cd [[.ProjectName]]
+cd {{.ProjectName}}
 tinkerdown serve
 ```
 
-Then open http://localhost:8080
+Open http://localhost:8080 in your browser.
 
-## Features
+## Data Storage
 
-- SQLite-backed persistent storage
-- Add, complete, and delete tasks
-- Real-time updates via WebSocket
-
-## Project Structure
-
-```
-[[.ProjectName]]/
-├── index.md      # Main application page
-├── tasks.db      # SQLite database (created automatically)
-└── README.md     # This file
-```
-
-## Customization
-
-Edit `index.md` to:
-- Add more fields (priority, due date, category)
-- Change the styling
-- Add filtering or sorting
-
-## Learn More
-
-- [tinkerdown Documentation](https://github.com/livetemplate/tinkerdown)
-- [SQLite Source Reference](https://github.com/livetemplate/tinkerdown/blob/main/docs/sources/sqlite.md)
+Tasks are stored in `tasks.db` (SQLite). The database is created automatically on first run.
