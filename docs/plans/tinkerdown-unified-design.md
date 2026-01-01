@@ -507,35 +507,57 @@ sources:
 
 ---
 
-#### Tier 3: External Databases
+#### Tier 3: External Databases & Queries
 
-For connecting to existing databases. Schema lives in the database:
+For connecting to existing databases and running SQL queries:
 
 ```yaml
 ---
 sources:
-  # PostgreSQL - just connection string
-  users: postgres://user:pass@host/db
+  # Simple: entire table (infer table from source name)
+  users: postgres://${DATABASE_URL}
 
-  # With explicit table
+  # Explicit table name
   orders:
     from: postgres://${DATABASE_URL}
-    table: orders
+    table: customer_orders
 
-  # With custom query
-  pending_orders:
+  # Filtered query
+  active_users:
     from: postgres://${DATABASE_URL}
-    query: SELECT * FROM orders WHERE status = 'pending'
+    query: SELECT * FROM users WHERE active = true
+
+  # Complex aggregation
+  monthly_stats:
+    from: postgres://${DATABASE_URL}
+    query: |
+      SELECT
+        date_trunc('month', created_at) as month,
+        count(*) as order_count,
+        sum(total) as revenue
+      FROM orders
+      WHERE created_at >= '2024-01-01'
+      GROUP BY 1
+      ORDER BY 1
 
   # SQLite file
   archive: ./archive.db
 
   # SQLite with query
-  recent:
+  recent_logs:
     from: ./data.db
     query: SELECT * FROM logs WHERE date > date('now', '-7 days')
 ---
 ```
+
+**Query syntax reference:**
+
+| Syntax | What It Does |
+|--------|--------------|
+| `source: postgres://url` | All rows from table (name = source name) |
+| `source: { from: url, table: X }` | All rows from specific table |
+| `source: { from: url, query: SELECT... }` | Custom SQL query |
+| `source: { query: SELECT... }` | Cross-source query (no `from`) |
 
 **Connection string formats:**
 
@@ -550,7 +572,18 @@ sources:
 ```yaml
 sources:
   production: postgres://${DATABASE_URL}
-  cache: redis://${REDIS_URL}
+  analytics: mysql://${MYSQL_URL}
+```
+
+**Parameterized queries:**
+
+```yaml
+sources:
+  user_orders:
+    from: postgres://${DATABASE_URL}
+    query: SELECT * FROM orders WHERE user_id = :user_id
+    params:
+      user_id: ${CURRENT_USER}
 ```
 
 ---
