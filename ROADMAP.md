@@ -111,13 +111,10 @@ _No tasks currently in progress_
 <!-- Move completed tasks here, keep last 5 -->
 1. **3.1 Enhanced CLI Scaffolding** - Completed 2026-01-01 (PR #24)
    - Added `--template` flag with 7 templates: basic, tutorial, todo, dashboard, form, api-explorer, wasm-source
-   - basic: kubectl pods dashboard with exec source
-   - todo: SQLite CRUD task manager
-   - dashboard: REST + exec multi-source display
-   - form: Contact form with SQLite persistence
-   - api-explorer: GitHub repository search with parameterized REST
-   - wasm-source: Custom WASM source scaffold with test-app
-   - 17 E2E tests covering all templates and edge cases
+   - Template descriptions and `--list` flag for discovery
+   - Custom delimiters (`[[` `]]`) to avoid conflicts with Tinkerdown runtime syntax
+   - 19 E2E tests covering all templates and edge cases
+   - Full documentation in template READMEs
 
 2. **3.6B Create Documentation Structure** - Completed 2025-12-31 (PR #20)
    - Created `docs/getting-started/` with installation, quickstart, project-structure
@@ -538,16 +535,16 @@ Auto-rendering is for common patterns only. Use Go templates when you need:
 **Current State:** `new` command creates minimal template only.
 
 **Work Required:**
-- [x] Add `--template` flag with options:
-  - `basic` - Kubernetes pods dashboard (exec source)
-  - `tutorial` - Go server state tutorial (renamed from original basic)
+- [ ] Add `--template` flag with options:
+  - `basic` - Minimal with one source
   - `todo` - SQLite CRUD with toggle/delete
-  - `dashboard` - Multi-source data display (REST + exec)
+  - `dashboard` - Multi-source data display
   - `form` - Contact form with SQLite persistence
-  - `api-explorer` - GitHub search with parameterized REST
+  - `api-explorer` - REST source with refresh
+  - `cli-wrapper` - Exec source with argument form
   - `wasm-source` - Template for building custom WASM sources
-- [x] Generate sample data files for each template (shell scripts, config)
-- [x] Include inline documentation comments (README.md per template)
+- [ ] Generate sample data files for each template
+- [ ] Include inline documentation comments
 
 **Impact:** 5-minute start to working prototype
 
