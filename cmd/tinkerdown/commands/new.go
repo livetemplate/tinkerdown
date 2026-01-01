@@ -59,10 +59,11 @@ func NewCommand(args []string, templateName string) error {
 		return fmt.Errorf("failed to create directory: %w", err)
 	}
 
-	// Template data
+	// Template data - use base name for title, not full path
+	baseName := filepath.Base(projectName)
 	data := map[string]string{
-		"Title":       toTitle(projectName),
-		"ProjectName": projectName,
+		"Title":       toTitle(baseName),
+		"ProjectName": baseName,
 	}
 
 	// Process template files
