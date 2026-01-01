@@ -112,12 +112,11 @@ func NewCommand(args []string, templateName string) error {
 			if err != nil {
 				return fmt.Errorf("failed to create %s: %w", targetPath, err)
 			}
+			defer f.Close()
 
 			if err := tmpl.Execute(f, data); err != nil {
-				f.Close()
 				return fmt.Errorf("failed to execute template %s: %w", path, err)
 			}
-			f.Close()
 		} else {
 			// Copy file as-is
 			if err := os.WriteFile(targetPath, content, 0644); err != nil {

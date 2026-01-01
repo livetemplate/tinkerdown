@@ -4,16 +4,23 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
+
+// getProjectRoot returns the project root directory based on this test file's location
+func getProjectRoot() string {
+	_, filename, _, _ := runtime.Caller(0)
+	return filepath.Dir(filename)
+}
 
 // buildTinkerdown builds the tinkerdown binary for testing
 func buildTinkerdown(t *testing.T, outputDir string) string {
 	t.Helper()
 	binPath := filepath.Join(outputDir, "tinkerdown")
 	buildCmd := exec.Command("go", "build", "-o", binPath, "./cmd/tinkerdown")
-	buildCmd.Dir = "/Users/adnaan/code/livetemplate/tinkerdown/.worktrees/cli-scaffolding"
+	buildCmd.Dir = getProjectRoot()
 	buildCmd.Env = append(os.Environ(), "GOWORK=off")
 	output, err := buildCmd.CombinedOutput()
 	if err != nil {
@@ -226,7 +233,7 @@ func TestNewCommandApiExplorerTemplate(t *testing.T) {
 	tmpDir := t.TempDir()
 	binPath := buildTinkerdown(t, tmpDir)
 
-	projectName := "github-explorer"
+	projectName := "repo-search"
 	projectPath := filepath.Join(tmpDir, projectName)
 
 	// Run tinkerdown new with api-explorer template
@@ -261,8 +268,8 @@ func TestNewCommandApiExplorerTemplate(t *testing.T) {
 	if !strings.Contains(contentStr, "persist: localstorage") {
 		t.Error("LocalStorage persistence not found in index.md")
 	}
-	if !strings.Contains(contentStr, "Github Explorer") {
-		t.Error("Title 'Github Explorer' not found in index.md")
+	if !strings.Contains(contentStr, "Repo Search") {
+		t.Error("Title 'Repo Search' not found in index.md")
 	}
 }
 
@@ -619,5 +626,49 @@ func TestNewCommandAllTemplatesListedInError(t *testing.T) {
 		if !strings.Contains(outputStr, tmpl) {
 			t.Errorf("Template '%s' not listed in error message: %s", tmpl, outputStr)
 		}
+	}
+}
+
+// TestNewCommandEmptyTemplateValue tests that empty --template= value uses default
+func TestNewCommandEmptyTemplateValue(t *testing.T) {
+	tmpDir := t.TempDir()
+	binPath := buildTinkerdown(t, tmpDir)
+
+	projectName := "test-empty-template"
+	projectPath := filepath.Join(tmpDir, projectName)
+
+	// Run tinkerdown new with empty template value --template=
+	cmd := exec.Command(binPath, "new", projectPath, "--template=")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("Failed to run tinkerdown new with empty --template=: %v\nOutput: %s", err, output)
+	}
+
+	// Should use default (basic) template - check index.md exists
+	indexPath := filepath.Join(projectPath, "index.md")
+	if _, err := os.Stat(indexPath); os.IsNotExist(err) {
+		t.Error("index.md should exist when using default template")
+	}
+}
+
+// TestNewCommandMissingTemplateValueAtEnd tests -t at end of args with no value
+func TestNewCommandMissingTemplateValueAtEnd(t *testing.T) {
+	tmpDir := t.TempDir()
+	binPath := buildTinkerdown(t, tmpDir)
+
+	projectName := "test-missing-template"
+	projectPath := filepath.Join(tmpDir, projectName)
+
+	// Run tinkerdown new with -t at the end (no value after it)
+	cmd := exec.Command(binPath, "new", projectPath, "-t")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("Failed to run tinkerdown new with trailing -t: %v\nOutput: %s", err, output)
+	}
+
+	// Should use default (basic) template - check index.md exists
+	indexPath := filepath.Join(projectPath, "index.md")
+	if _, err := os.Stat(indexPath); os.IsNotExist(err) {
+		t.Error("index.md should exist when using default template")
 	}
 }
