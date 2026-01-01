@@ -65,7 +65,8 @@ tinkerdown serve app.md --cli        # Terminal interface
 4. [Progressive Implementation Plan](#progressive-implementation-plan)
 5. [Feature Specifications](#feature-specifications)
 6. [Example Apps](#example-apps)
-7. [Distribution Strategy](#distribution-strategy)
+7. [Security Considerations](#security-considerations)
+8. [Distribution Strategy](#distribution-strategy)
 
 ---
 
@@ -1283,14 +1284,22 @@ theme: dark
 
 For Layer 3 full control:
 
-| Attribute | Element | Purpose |
-|-----------|---------|---------|
-| `lvt-source` | table, ul, select | Bind to data source |
-| `lvt-submit` | form | Action on submit |
-| `lvt-click` | button | Action on click |
-| `lvt-filter` | table, ul | Filter expression |
-| `lvt-aggregate` | span | Aggregation |
-| `lvt-chart` | div | Chart type |
+| Attribute | Element | Purpose | Status |
+|-----------|---------|---------|--------|
+| `lvt-source` | table, ul, select | Bind to data source | ✅ Implemented |
+| `lvt-submit` | form | Action on submit | ✅ Implemented |
+| `lvt-click` | button | Action on click | ✅ Implemented |
+| `lvt-columns` | table | Column specification | ✅ Implemented |
+| `lvt-actions` | table | Row actions | ✅ Implemented |
+| `lvt-empty` | table, ul | Empty state text | ✅ Implemented |
+| `lvt-field` | ul | Field to display | ✅ Implemented |
+| `lvt-data-*` | button | Data attributes for actions | ✅ Implemented |
+| `lvt-filter` | table, ul | Filter expression | 🔲 Planned |
+| `lvt-aggregate` | span | Aggregation | 🔲 Planned |
+| `lvt-chart` | div | Chart type | 🔲 Planned |
+
+> **Note:** Before implementing new lvt-* attributes, verify they don't conflict
+> with existing implementations in the livetemplate/client repository.
 
 ---
 
@@ -1308,6 +1317,136 @@ See [tinkerdown-example-apps-plan.md](tinkerdown-example-apps-plan.md) for plann
 | Standup Bot, Health Monitor, CRM, Habit Tracker | Week 8 |
 
 After each milestone, move working examples to `examples/`.
+
+---
+
+## Security Considerations
+
+### Trust Model
+
+Tinkerdown apps run locally with user permissions. Trust boundaries:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                       TRUST LEVELS                               │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  TRUSTED (User Controls)                                        │
+│  ─────────────────────────                                      │
+│  • Markdown content (user writes)                               │
+│  • YAML configuration (user defines sources)                    │
+│  • Local file paths (user specifies)                            │
+│                                                                 │
+│  UNTRUSTED (External)                                           │
+│  ─────────────────────                                          │
+│  • REST API responses                                           │
+│  • Database query results                                       │
+│  • User input in forms                                          │
+│                                                                 │
+│  DANGEROUS (Requires Review)                                    │
+│  ───────────────────────────                                    │
+│  • exec sources (run shell commands)                            │
+│  • Custom sources (arbitrary code)                              │
+│  • Downloaded/shared .md apps                                   │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Security Guidelines
+
+#### For Exec Sources
+
+```yaml
+# ⚠️ DANGEROUS: Never pass untrusted input to shell
+sources:
+  bad:
+    type: exec
+    command: "grep {{user_input}} file.txt"  # INJECTION RISK
+
+  safe:
+    type: exec
+    command: "./validated-script.sh"
+    # Script validates input internally
+```
+
+**Requirements for exec sources:**
+1. Validate all inputs before shell execution
+2. Use allowlists, not blocklists
+3. Prefer structured APIs over shell commands
+4. Log all command executions in production
+
+#### For Custom Sources
+
+```python
+# custom-source.py
+import sys, json
+
+def main():
+    data = json.loads(sys.stdin.read())
+
+    # ✅ Validate input
+    if "query" not in data:
+        sys.exit(1)
+
+    # ✅ Sanitize before use
+    user_id = str(data["query"].get("user_id", ""))
+    if not user_id.isalnum():
+        sys.exit(1)
+
+    # ✅ Use parameterized queries
+    # cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,))
+```
+
+#### For Shared Apps
+
+When using apps from others:
+1. **Review the markdown** - Check for exec sources and suspicious commands
+2. **Check YAML sources** - Understand what data the app accesses
+3. **Run in isolation** - Consider containers for untrusted apps
+4. **Verify origin** - Prefer apps from trusted sources
+
+### Security Roadmap
+
+| Phase | Feature | Priority |
+|-------|---------|----------|
+| 1 | Input validation helpers | High |
+| 1 | Exec source sandboxing option | High |
+| 2 | Permission prompts for dangerous ops | Medium |
+| 2 | App signing for trusted sources | Medium |
+| 3 | Container isolation mode | Low |
+| 3 | Capability-based permissions | Low |
+
+### Error Handling for Custom Sources
+
+Custom sources should handle errors gracefully:
+
+```python
+#!/usr/bin/env python3
+import sys, json
+
+def main():
+    try:
+        data = json.loads(sys.stdin.read())
+        # Process...
+        result = {"columns": [...], "rows": [...]}
+        print(json.dumps(result))
+        sys.exit(0)
+    except json.JSONDecodeError:
+        print(json.dumps({"error": "Invalid JSON input"}), file=sys.stderr)
+        sys.exit(1)
+    except Exception as e:
+        print(json.dumps({"error": str(e)}), file=sys.stderr)
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()
+```
+
+**Error handling requirements:**
+- Exit 0 for success, non-zero for errors
+- Write errors to stderr as JSON
+- Never expose sensitive data in error messages
+- Log errors for debugging but sanitize user data
 
 ---
 

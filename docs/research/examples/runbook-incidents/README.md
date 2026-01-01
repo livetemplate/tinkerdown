@@ -1,5 +1,8 @@
 # Runbook Incidents Example
 
+> ⚠️ **NOTE**: This is a research example demonstrating the runbook instance pattern.
+> These examples may not work with the current tinkerdown version.
+
 This example demonstrates the **runbook instance** pattern:
 - Templates are reusable procedures
 - Instances are copies created for specific incidents

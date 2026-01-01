@@ -1,5 +1,12 @@
 # Custom Sources Examples
 
+> ⚠️ **SECURITY WARNING**: These examples execute arbitrary code on your system.
+> Custom sources run without sandboxing. Before using in production:
+> - Validate all inputs to prevent command injection
+> - Run sources with minimal required permissions
+> - Never pass untrusted user input directly to shell commands
+> - Consider containerizing sources for isolation
+
 Example policy-encoded sources for tinkerdown in multiple languages.
 
 ## The Contract

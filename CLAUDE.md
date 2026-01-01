@@ -1,1 +1,1 @@
-- check if a lvt-* attribute is already implemented in /Users/adnaan/code/livetemplate/client before reimplementing it
+- check if a lvt-* attribute is already implemented in the livetemplate/client repository before reimplementing it
