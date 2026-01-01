@@ -1,42 +1,17 @@
-# [[.Title]]
+# {{.Title}}
 
-A multi-source dashboard built with tinkerdown.
+A multi-source dashboard built with [Tinkerdown](https://github.com/livetemplate/tinkerdown).
 
-## Quick Start
+## Running
 
 ```bash
-cd [[.ProjectName]]
+cd {{.ProjectName}}
 tinkerdown serve
 ```
 
-Then open http://localhost:8080
+Open http://localhost:8080 in your browser.
 
-## Features
+## Data Sources
 
-- Multiple data sources (tasks and team)
-- Stats overview with live counts
-- Add and delete tasks
-- Responsive grid layout
-
-## Project Structure
-
-```
-[[.ProjectName]]/
-├── index.md          # Main dashboard page
-├── _data/
-│   ├── tasks.md      # Task data (editable)
-│   └── team.md       # Team member data
-└── README.md         # This file
-```
-
-## Customization
-
-- Edit `_data/tasks.md` to modify initial tasks
-- Edit `_data/team.md` to update team members
-- Add more data sources in the frontmatter
-- Add new stat cards to the overview
-
-## Learn More
-
-- [tinkerdown Documentation](https://github.com/livetemplate/tinkerdown)
-- [Markdown Source Reference](https://github.com/livetemplate/tinkerdown/blob/main/docs/sources/markdown.md)
+- **users**: REST API (JSONPlaceholder)
+- **system**: Local shell command (df -h)
