@@ -143,6 +143,8 @@ func createSource(name string, cfg config.SourceConfig, siteDir, currentFile str
 		return source.NewSQLiteSource(name, cfg.DB, cfg.Table, siteDir, cfg.IsReadonly())
 	case "wasm":
 		return wasm.NewWasmSource(name, cfg.Path, siteDir, cfg.Options)
+	case "graphql":
+		return source.NewGraphQLSource(name, cfg, siteDir)
 	default:
 		return nil, fmt.Errorf("unsupported source type: %s", cfg.Type)
 	}

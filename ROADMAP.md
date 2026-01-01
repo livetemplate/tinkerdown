@@ -109,44 +109,47 @@ _No tasks currently in progress_
 
 ### Recently Completed
 <!-- Move completed tasks here, keep last 5 -->
-1. **2.3 Multi-page WebSocket Support** - Completed 2025-12-31 (PR #19)
+1. **4.1 GraphQL Source** - Completed 2025-12-31
+   - Query file support (.graphql files)
+   - Variable substitution with environment expansion
+   - Result path extraction for nested responses (`result_path` config)
+   - Authentication via headers (same as REST)
+   - Retry/circuit breaker support (inherits from Phase 2.1)
+   - E2E test with public Countries API
+   - Full documentation in `docs/sources/graphql.md`
+
+2. **2.3 Multi-page WebSocket Support** - Completed 2025-12-31 (PR #19)
    - Accept page identifier via query param (`?page=/path`)
    - Route WebSocket messages to correct page's state
    - Handle page transitions gracefully
    - Clean up state on page navigation
 
-2. **2.2 Source Caching Layer** - Completed 2025-12-30 (PR #18)
+3. **2.2 Source Caching Layer** - Completed 2025-12-30 (PR #18)
    - Cache configuration per source (`ttl`, `strategy`)
    - In-memory cache with TTL expiration
    - Two strategies: `simple` and `stale-while-revalidate`
    - Automatic cache invalidation on writes
    - Background revalidation with proper cancellation
 
-3. **2.1 Data Source Error Handling** - Completed 2025-12-30 (PR #17)
+4. **2.1 Data Source Error Handling** - Completed 2025-12-30 (PR #17)
    - Unified error types for all sources (`SourceError`, `ConnectionError`, `TimeoutError`, etc.)
    - Retry with exponential backoff + jitter (±20%)
    - Circuit breaker pattern (opens after 5 failures in 1-minute window)
    - Configurable timeout per source
    - Response body size limit (10MB) for OOM prevention
 
-4. **3.6A Docs cleanup** - Completed 2025-12-30
+5. **3.6A Docs cleanup** - Completed 2025-12-30
    - Deleted `PROGRESS.md` (superseded by ROADMAP.md)
    - Deleted `UX_IMPROVEMENTS.md` (items in Phase 6.5)
    - Deleted `docs/implementation-plan.md` (superseded by ROADMAP.md)
    - Archived to `docs/archive/`: product vision and marketing docs
 
-5. **1.2 Auto-rendering lists** - Completed 2025-12-30 (PR #14)
-   - `lvt-source` + `lvt-field` on `<ul>` or `<ol>` auto-generates list items
-   - `lvt-actions` for action buttons on each item
-   - `lvt-empty` for empty state messages
-   - XSS prevention with html.EscapeString()
-   - Note: Data sources must be arrays of objects (runtime limitation)
-
 ### Next Up
 <!-- Queue of next 3-5 tasks to tackle -->
 1. 3.6B Create Documentation Structure
-2. 4.1 GraphQL source
-3. 3.1 Enhanced CLI Scaffolding
+2. 3.1 Enhanced CLI Scaffolding
+3. 4.2 MongoDB Source
+4. 4.3 Source Composition
 
 ---
 
@@ -689,13 +692,13 @@ docs/
 ### Value Proposition
 > "Connect to any data source in minutes, not days"
 
-### 4.1 GraphQL Source
+### 4.1 GraphQL Source ✅
 **Work Required:**
-- [ ] New source type: `graphql`
-- [ ] Config: `url`, `query`, `variables`
-- [ ] Authentication headers
-- [ ] Auto-flatten nested response
-- [ ] Support for mutations via write operations
+- [x] New source type: `graphql`
+- [x] Config: `url`, `query`, `variables`
+- [x] Authentication headers
+- [x] Auto-flatten nested response (via `result_path`)
+- [ ] Support for mutations via write operations (future enhancement)
 
 **Impact:** Modern API ecosystem support
 

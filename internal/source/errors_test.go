@@ -211,6 +211,11 @@ func TestUserFriendlyMessage(t *testing.T) {
 			expected: "Invalid data: not found",
 		},
 		{
+			name:     "graphql error",
+			err:      &GraphQLError{Source: "github", Message: "Field 'user' not found", Path: []string{"query", "user"}},
+			expected: "GraphQL query failed: Field 'user' not found",
+		},
+		{
 			name:     "generic error",
 			err:      errors.New("something went wrong"),
 			expected: "Failed to load data. Please try again.",

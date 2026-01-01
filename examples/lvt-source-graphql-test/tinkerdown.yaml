@@ -1,0 +1,7 @@
+title: GraphQL Source Test
+sources:
+  countries:
+    type: graphql
+    url: https://countries.trevorblades.com/graphql
+    query_file: queries/countries.graphql
+    result_path: countries

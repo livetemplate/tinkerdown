@@ -26,21 +26,24 @@ type Config struct {
 
 // SourceConfig defines a data source for lvt-source blocks
 type SourceConfig struct {
-	Type     string            `yaml:"type"`               // "exec", "pg", "rest", "csv", "json", "markdown", "sqlite", "wasm"
-	Cmd      string            `yaml:"cmd,omitempty"`      // For exec: command to run
-	Query    string            `yaml:"query,omitempty"`    // For pg: SQL query
-	URL      string            `yaml:"url,omitempty"`      // For rest: API endpoint
-	File     string            `yaml:"file,omitempty"`     // For csv/json/markdown: file path
-	Anchor   string            `yaml:"anchor,omitempty"`   // For markdown: section anchor (e.g., "#todos")
-	DB       string            `yaml:"db,omitempty"`       // For sqlite: database file path (default: ./tinkerdown.db)
-	Table    string            `yaml:"table,omitempty"`    // For sqlite: table name
-	Path     string            `yaml:"path,omitempty"`     // For wasm: path to .wasm file
-	Readonly *bool             `yaml:"readonly,omitempty"` // For markdown/sqlite: read-only mode (default: true, set to false for writes)
-	Options  map[string]string `yaml:"options,omitempty"`  // Type-specific options (also used for wasm init config)
-	Manual   bool              `yaml:"manual,omitempty"`   // For exec: require Run button click
-	Timeout  string            `yaml:"timeout,omitempty"`  // Request timeout (e.g., "30s", "1m"). Default: 10s
-	Retry    *RetryConfig      `yaml:"retry,omitempty"`    // Retry configuration
-	Cache    *CacheConfig      `yaml:"cache,omitempty"`    // Cache configuration
+	Type       string                 `yaml:"type"`                  // "exec", "pg", "rest", "csv", "json", "markdown", "sqlite", "wasm", "graphql"
+	Cmd        string                 `yaml:"cmd,omitempty"`         // For exec: command to run
+	Query      string                 `yaml:"query,omitempty"`       // For pg: SQL query
+	URL        string                 `yaml:"url,omitempty"`         // For rest/graphql: API endpoint
+	File       string                 `yaml:"file,omitempty"`        // For csv/json/markdown: file path
+	Anchor     string                 `yaml:"anchor,omitempty"`      // For markdown: section anchor (e.g., "#todos")
+	DB         string                 `yaml:"db,omitempty"`          // For sqlite: database file path (default: ./tinkerdown.db)
+	Table      string                 `yaml:"table,omitempty"`       // For sqlite: table name
+	Path       string                 `yaml:"path,omitempty"`        // For wasm: path to .wasm file
+	QueryFile  string                 `yaml:"query_file,omitempty"`  // For graphql: path to .graphql file
+	Variables  map[string]interface{} `yaml:"variables,omitempty"`   // For graphql: query variables
+	ResultPath string                 `yaml:"result_path,omitempty"` // For graphql: dot-path to extract array (e.g., "repository.issues.nodes")
+	Readonly   *bool                  `yaml:"readonly,omitempty"`    // For markdown/sqlite: read-only mode (default: true, set to false for writes)
+	Options    map[string]string      `yaml:"options,omitempty"`     // Type-specific options (also used for wasm init config)
+	Manual     bool                   `yaml:"manual,omitempty"`      // For exec: require Run button click
+	Timeout    string                 `yaml:"timeout,omitempty"`     // Request timeout (e.g., "30s", "1m"). Default: 10s
+	Retry      *RetryConfig           `yaml:"retry,omitempty"`       // Retry configuration
+	Cache      *CacheConfig           `yaml:"cache,omitempty"`       // Cache configuration
 }
 
 // RetryConfig configures retry behavior for a source
