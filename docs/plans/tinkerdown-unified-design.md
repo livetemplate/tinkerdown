@@ -908,11 +908,12 @@ tinkerdown/
 │  PHASE 1 (Wk 1-2)    PHASE 2 (Wk 3-4)    PHASE 3 (Wk 5-6)     │
 │  Markdown-Native     Core Features       Pillar Features       │
 │                                                                 │
-│  • Heading anchors   • Auto-timestamp    • Snapshots           │
-│  • Table parsing     • Operator ID       • Step buttons        │
-│  • List parsing      • Expressions       • Tabs                │
-│  • Schema inference  • HTTP API          • Status banners      │
-│  • Auto-CRUD UI      • CLI mode          • Action buttons      │
+│  • Test foundation   • Auto-timestamp    • Snapshots           │
+│  • Heading anchors   • Operator ID       • Step buttons        │
+│  • Table parsing     • Expressions       • Tabs                │
+│  • List parsing      • HTTP API          • Status banners      │
+│  • Schema inference  • CLI mode          • Action buttons      │
+│  • Auto-CRUD UI      • WS protocol tests • Source golden tests │
 │                                                                 │
 │  PHASE 4 (Wk 7-8)    PHASE 5 (Wk 9-10)   PHASE 6 (Wk 11-12)   │
 │  Triggers/Outputs    Distribution        Polish                │
@@ -920,7 +921,7 @@ tinkerdown/
 │  • @schedule parse   • Build command     • Charts              │
 │  • Schedule runner   • Desktop app       • Templates           │
 │  • Webhooks          • tinkerdown.dev    • Documentation       │
-│  • Slack/Email                                                 │
+│  • Slack/Email       • CLI testscript    • Reduce browser tests│
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -929,6 +930,7 @@ tinkerdown/
 
 | Phase | Task | Status |
 |-------|------|--------|
+| 1 | 1.0 Testing Foundation | `[ ]` |
 | 1 | 1.1 Heading-as-Anchor | `[ ]` |
 | 1 | 1.2 Table Parsing | `[ ]` |
 | 1 | 1.3 List Parsing | `[ ]` |
@@ -939,11 +941,13 @@ tinkerdown/
 | 2 | 2.3 Computed Expressions | `[ ]` |
 | 2 | 2.4 HTTP API | `[ ]` |
 | 2 | 2.5 CLI Mode | `[ ]` |
+| 2 | 2.6 WebSocket Protocol Tests | `[ ]` |
 | 3 | 3.1 Snapshot Capture | `[ ]` |
 | 3 | 3.2 Step Status | `[ ]` |
 | 3 | 3.3 Tabs | `[ ]` |
 | 3 | 3.4 Status Banners | `[ ]` |
 | 3 | 3.5 Action Buttons | `[ ]` |
+| 3 | 3.6 Source Golden Tests | `[ ]` |
 | 4 | 4.1 @schedule Parsing | `[ ]` |
 | 4 | 4.2 Schedule Runner | `[ ]` |
 | 4 | 4.3 Webhook Triggers | `[ ]` |
@@ -951,13 +955,152 @@ tinkerdown/
 | 5 | 5.1 Build Command | `[ ]` |
 | 5 | 5.2 Desktop App | `[ ]` |
 | 5 | 5.3 Hosted Service | `[ ]` |
+| 5 | 5.4 CLI Testscript | `[ ]` |
 | 6 | 6.1 Charts | `[ ]` |
 | 6 | 6.2 Template Gallery | `[ ]` |
 | 6 | 6.3 Documentation | `[ ]` |
+| 6 | 6.4 Reduce Browser Tests | `[ ]` |
 
 ---
 
 ### Phase 1: Markdown-Native Foundation (Week 1-2)
+
+#### Task 1.0: Testing Foundation
+
+**Status:** `[ ] Not Started`
+
+**Goal:** Set up golden file testing infrastructure for deterministic output verification.
+
+**Prerequisites:** None (first task - enables testing for all subsequent tasks)
+
+**Files to read first:**
+- `docs/plans/2025-12-31-e2e-testing-strategy.md` - Testing strategy document
+- `parser_test.go` - Existing test patterns
+- `internal/source/markdown_test.go` - Existing source tests
+
+**Files to create:**
+- `internal/testutil/golden.go` - Golden file assertion helper
+- `internal/testutil/scrub.go` - Scrubbers for non-deterministic data
+- `testdata/` - Test fixture directory structure
+
+**Implementation steps:**
+
+1. Create `internal/testutil/golden.go`:
+```go
+package testutil
+
+import (
+    "bytes"
+    "flag"
+    "os"
+    "path/filepath"
+    "testing"
+)
+
+var update = flag.Bool("update", false, "update golden files")
+
+// AssertGolden compares actual output against golden file.
+// Run with -update flag to update golden files.
+func AssertGolden(t *testing.T, name string, actual []byte) {
+    t.Helper()
+    golden := filepath.Join("testdata", "golden", name)
+
+    if *update {
+        os.MkdirAll(filepath.Dir(golden), 0755)
+        if err := os.WriteFile(golden, actual, 0644); err != nil {
+            t.Fatalf("failed to update golden file: %v", err)
+        }
+        return
+    }
+
+    expected, err := os.ReadFile(golden)
+    if err != nil {
+        t.Fatalf("failed to read golden file %s: %v", golden, err)
+    }
+
+    if !bytes.Equal(actual, expected) {
+        t.Errorf("output mismatch for %s\n\nExpected:\n%s\n\nActual:\n%s",
+            name, string(expected), string(actual))
+    }
+}
+
+// ReadFixture reads a test fixture file.
+func ReadFixture(t *testing.T, name string) []byte {
+    t.Helper()
+    path := filepath.Join("testdata", "fixtures", name)
+    data, err := os.ReadFile(path)
+    if err != nil {
+        t.Fatalf("failed to read fixture %s: %v", name, err)
+    }
+    return data
+}
+```
+
+2. Create `internal/testutil/scrub.go`:
+```go
+package testutil
+
+import "regexp"
+
+// Scrubber replaces non-deterministic values with placeholders
+type Scrubber struct {
+    Pattern     *regexp.Regexp
+    Replacement string
+}
+
+// DefaultScrubbers for tinkerdown-specific patterns
+var DefaultScrubbers = []Scrubber{
+    {regexp.MustCompile(`(lvt|auto-persist-lvt)-\d+`), "BLOCK_ID"},
+    {regexp.MustCompile(`\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}`), "TIMESTAMP"},
+    {regexp.MustCompile(`"duration":\d+`), `"duration":0`},
+    {regexp.MustCompile(`\?v=\d+`), "?v=VERSION"},
+    {regexp.MustCompile(`nonce="[^"]+"`), `nonce="NONCE"`},
+}
+
+// Scrub applies all scrubbers to data
+func Scrub(data []byte, scrubbers ...Scrubber) []byte {
+    if len(scrubbers) == 0 {
+        scrubbers = DefaultScrubbers
+    }
+    for _, s := range scrubbers {
+        data = s.Pattern.ReplaceAll(data, []byte(s.Replacement))
+    }
+    return data
+}
+```
+
+3. Create testdata directory structure:
+```
+testdata/
+├── fixtures/           # Input files for tests
+│   └── .gitkeep
+└── golden/             # Expected outputs
+    └── .gitkeep
+```
+
+**Acceptance criteria:**
+- [ ] `AssertGolden()` correctly compares actual vs expected output
+- [ ] `AssertGolden()` with `-update` flag creates/updates golden files
+- [ ] `ReadFixture()` loads test input files
+- [ ] `Scrub()` removes non-deterministic values (timestamps, IDs)
+- [ ] All testutil tests pass
+- [ ] Directory structure exists with `.gitkeep` files
+
+**Verification commands:**
+```bash
+go test ./internal/testutil/... -v
+# Test update mode
+go test ./internal/testutil/... -v -update
+```
+
+**Testing requirements for subsequent tasks:**
+After this task, all new features MUST include:
+1. Golden file test for output (parser, sources, HTTP)
+2. Scrubbed comparison for dynamic content
+3. Fixture files in `testdata/fixtures/`
+4. Expected output in `testdata/golden/`
+
+---
 
 #### Task 1.1: Heading-as-Anchor Detection
 
@@ -1431,6 +1574,101 @@ tinkerdown cli app.md delete tasks --id=3
 
 ---
 
+#### Task 2.6: WebSocket Protocol Tests
+
+**Status:** `[ ] Not Started`
+
+**Goal:** Add direct WebSocket protocol tests without browser automation.
+
+**Prerequisites:** Task 2.4 (HTTP API) complete, Task 1.0 (Testing Foundation) complete
+
+**Files to read first:**
+- `internal/server/websocket.go` - WebSocket handler and MessageEnvelope format
+- `internal/testutil/golden.go` - Golden file helpers from Task 1.0
+
+**Files to create:**
+- `websocket_protocol_test.go` - Direct WebSocket tests
+- `testdata/fixtures/ws-counter.md` - Test app for WebSocket
+- `testdata/golden/ws-initial-state.json` - Expected initial message
+- `testdata/golden/ws-after-action.json` - Expected post-action message
+
+**Implementation steps:**
+
+1. Create WebSocket test helper:
+```go
+// websocket_protocol_test.go
+package tinkerdown_test
+
+import (
+    "strings"
+    "testing"
+    "github.com/gorilla/websocket"
+)
+
+func connectWebSocket(t *testing.T, serverURL string) *websocket.Conn {
+    wsURL := "ws" + strings.TrimPrefix(serverURL, "http") + "/ws"
+    conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+    if err != nil {
+        t.Fatalf("WebSocket connect failed: %v", err)
+    }
+    return conn
+}
+
+func TestWebSocketInitialState(t *testing.T) {
+    srv := setupTestServer(t, "testdata/fixtures/ws-counter.md")
+    defer srv.Close()
+
+    conn := connectWebSocket(t, srv.URL)
+    defer conn.Close()
+
+    // Read initial state message
+    _, msg, err := conn.ReadMessage()
+    if err != nil {
+        t.Fatalf("Failed to read message: %v", err)
+    }
+
+    scrubbed := testutil.Scrub(msg)
+    testutil.AssertGolden(t, "ws-initial-state.json", scrubbed)
+}
+
+func TestWebSocketAction(t *testing.T) {
+    srv := setupTestServer(t, "testdata/fixtures/ws-counter.md")
+    defer srv.Close()
+
+    conn := connectWebSocket(t, srv.URL)
+    defer conn.Close()
+
+    // Skip initial state
+    conn.ReadMessage()
+
+    // Send increment action
+    action := `{"blockID":"lvt-0","action":"increment","data":{}}`
+    conn.WriteMessage(websocket.TextMessage, []byte(action))
+
+    // Read response
+    _, msg, _ := conn.ReadMessage()
+
+    scrubbed := testutil.Scrub(msg)
+    testutil.AssertGolden(t, "ws-after-action.json", scrubbed)
+}
+```
+
+**Acceptance criteria:**
+- [ ] Direct WebSocket connection works without chromedp
+- [ ] Initial state message matches golden file
+- [ ] Action response matches golden file
+- [ ] Tests run in < 100ms (vs 5s for browser tests)
+- [ ] Scrubbers handle block IDs and timestamps
+
+**Verification commands:**
+```bash
+go test -v -run TestWebSocket
+# Compare timing vs browser test
+go test -v -run TestWebSocketInitialState -count=10
+```
+
+---
+
 ### Phase 3: Pillar Features (Week 5-6)
 
 #### Task 3.1: Snapshot Capture
@@ -1483,6 +1721,110 @@ tinkerdown cli app.md delete tasks --id=3
 **Goal:** Parse `[Button Text]` and `[Text](action:name)` as action buttons.
 
 **Prerequisites:** Phase 2 complete
+
+---
+
+#### Task 3.6: Source Golden Tests
+
+**Status:** `[ ] Not Started`
+
+**Goal:** Add golden file tests for all 8 source types.
+
+**Prerequisites:** Task 1.0 (Testing Foundation) complete, existing source implementations
+
+**Files to read first:**
+- `internal/source/source.go` - Source interface
+- `internal/source/*.go` - All source implementations
+- `internal/testutil/golden.go` - Golden file helpers
+
+**Files to create:**
+- `internal/source/golden_test.go` - Golden tests for all sources
+- `testdata/sources/fixtures/` - Input files for each source type
+- `testdata/sources/golden/` - Expected JSON output for each source
+
+**Implementation steps:**
+
+1. Create fixture files for deterministic testing:
+```
+testdata/sources/
+├── fixtures/
+│   ├── users.json          # JSON source input
+│   ├── products.csv        # CSV source input
+│   ├── tasks.md            # Markdown source input
+│   ├── test.db             # SQLite database
+│   └── echo-json.sh        # Deterministic exec script
+└── golden/
+    ├── json-users.json     # Expected parsed output
+    ├── csv-products.json
+    ├── markdown-tasks.json
+    ├── sqlite-users.json
+    └── exec-data.json
+```
+
+2. Create golden tests for each source type:
+```go
+// internal/source/golden_test.go
+package source_test
+
+func TestJSONSourceGolden(t *testing.T) {
+    src, _ := source.NewJSONFileSource("users",
+        "testdata/sources/fixtures/users.json", ".")
+    data, _ := src.Fetch(context.Background())
+
+    output, _ := json.MarshalIndent(data, "", "  ")
+    testutil.AssertGolden(t, "sources/golden/json-users.json", output)
+}
+
+func TestCSVSourceGolden(t *testing.T) {
+    src, _ := source.NewCSVFileSource("products",
+        "testdata/sources/fixtures/products.csv", ".", nil)
+    data, _ := src.Fetch(context.Background())
+
+    output, _ := json.MarshalIndent(data, "", "  ")
+    testutil.AssertGolden(t, "sources/golden/csv-products.json", output)
+}
+
+func TestMarkdownSourceGolden(t *testing.T) {
+    src, _ := source.NewMarkdownSource("tasks",
+        "testdata/sources/fixtures/tasks.md", "tasks", ".", "", true)
+    data, _ := src.Fetch(context.Background())
+
+    output, _ := json.MarshalIndent(data, "", "  ")
+    testutil.AssertGolden(t, "sources/golden/markdown-tasks.json", output)
+}
+
+func TestExecSourceGolden(t *testing.T) {
+    src, _ := source.NewExecSource("data",
+        "testdata/sources/fixtures/echo-json.sh", ".")
+    data, _ := src.Fetch(context.Background())
+
+    output, _ := json.MarshalIndent(data, "", "  ")
+    testutil.AssertGolden(t, "sources/golden/exec-data.json", output)
+}
+
+func TestSQLiteSourceGolden(t *testing.T) {
+    src, _ := source.NewSQLiteSource("users",
+        "testdata/sources/fixtures/test.db", "users", ".", true)
+    data, _ := src.Fetch(context.Background())
+
+    output, _ := json.MarshalIndent(data, "", "  ")
+    testutil.AssertGolden(t, "sources/golden/sqlite-users.json", output)
+}
+```
+
+**Acceptance criteria:**
+- [ ] Golden tests exist for: json, csv, markdown, sqlite, exec sources
+- [ ] All source outputs are deterministic (same input → same output)
+- [ ] Exec source uses deterministic script (no timestamps, random data)
+- [ ] Tests can be updated with `-update` flag
+- [ ] All golden tests pass
+
+**Verification commands:**
+```bash
+go test ./internal/source/... -v -run Golden
+# Update golden files after intentional changes
+go test ./internal/source/... -v -run Golden -update
+```
 
 ---
 
@@ -1572,6 +1914,114 @@ tinkerdown cli app.md delete tasks --id=3
 
 ---
 
+#### Task 5.4: CLI Testscript
+
+**Status:** `[ ] Not Started`
+
+**Goal:** Add testscript-based black-box tests for CLI commands.
+
+**Prerequisites:** Task 2.5 (CLI Mode) complete, Task 1.0 (Testing Foundation) complete
+
+**Files to read first:**
+- `cmd/tinkerdown/commands/*.go` - CLI command implementations
+- [testscript docs](https://pkg.go.dev/github.com/rogpeppe/go-internal/testscript)
+
+**Files to create:**
+- `cli_test.go` - Testscript runner
+- `testdata/cli/validate.txtar` - Validate command tests
+- `testdata/cli/serve.txtar` - Serve command tests
+- `testdata/cli/new.txtar` - New command tests
+
+**Implementation steps:**
+
+1. Add testscript dependency:
+```bash
+go get github.com/rogpeppe/go-internal/testscript
+```
+
+2. Create testscript runner:
+```go
+// cli_test.go
+package main_test
+
+import (
+    "os"
+    "os/exec"
+    "path/filepath"
+    "testing"
+
+    "github.com/rogpeppe/go-internal/testscript"
+)
+
+func TestCLI(t *testing.T) {
+    testscript.Run(t, testscript.Params{
+        Dir: "testdata/cli",
+        Setup: func(env *testscript.Env) error {
+            // Build tinkerdown binary for testing
+            binPath := filepath.Join(env.WorkDir, "tinkerdown")
+            cmd := exec.Command("go", "build", "-o", binPath, "./cmd/tinkerdown")
+            cmd.Dir = ".."
+            return cmd.Run()
+        },
+    })
+}
+```
+
+3. Create test files in txtar format:
+```txtar
+# testdata/cli/validate.txtar
+
+# Test validate with valid markdown
+exec tinkerdown validate valid.md
+stdout 'valid'
+! stderr .
+
+# Test validate with invalid source config
+! exec tinkerdown validate invalid.md
+stderr 'unsupported source type'
+
+-- valid.md --
+# My App
+
+## Tasks
+- [ ] First task
+- [ ] Second task
+
+-- invalid.md --
+---
+sources:
+  bad: { type: unknown }
+---
+# Invalid App
+```
+
+```txtar
+# testdata/cli/new.txtar
+
+# Test creating new app from template
+exec tinkerdown new todo myapp.md
+exists myapp.md
+grep 'Tasks' myapp.md
+
+# Clean up
+rm myapp.md
+```
+
+**Acceptance criteria:**
+- [ ] testscript infrastructure works
+- [ ] `validate` command tested with valid/invalid inputs
+- [ ] `new` command tested with template creation
+- [ ] `serve` command tested (startup, port binding)
+- [ ] Error messages verified in tests
+- [ ] All testscript tests pass
+
+**Verification commands:**
+```bash
+go test -v -run TestCLI
+```
+
+---
+
 ### Phase 6: Polish (Week 11-12)
 
 #### Task 6.1: Charts
@@ -1595,6 +2045,114 @@ tinkerdown cli app.md delete tasks --id=3
 **Status:** `[ ] Not Started`
 
 **Goal:** Complete user documentation.
+
+---
+
+#### Task 6.4: Reduce Browser Tests
+
+**Status:** `[ ] Not Started`
+
+**Goal:** Replace slow chromedp tests with faster alternatives, keep only essential browser tests.
+
+**Prerequisites:** Tasks 2.6, 3.6, 5.4 complete (alternative test coverage in place)
+
+**Files to read first:**
+- `*_e2e_test.go` - All existing chromedp tests (16 files)
+- `docs/plans/2025-12-31-e2e-testing-strategy.md` - Testing strategy
+
+**Current state:**
+- 16 e2e test files using chromedp
+- Each test takes ~5s (browser startup, navigation, sleep waits)
+- Total e2e test time: ~80 seconds
+
+**Target state:**
+- 5 essential browser tests (critical user flows only)
+- WebSocket protocol tests replace most browser tests
+- Golden file tests for output verification
+- Total test time: ~10 seconds
+
+**Tests to keep (require real browser):**
+
+| Test | Why Browser Needed |
+|------|-------------------|
+| `TestLvtClickAction` | JavaScript event handling |
+| `TestLvtSourceRendersData` | DOM rendering after WS message |
+| `TestFormSubmitAction` | Form submission + validation |
+| `TestRealTimeUpdate` | Live state sync display |
+| `TestNavigationWorks` | Client-side routing |
+
+**Tests to convert/remove:**
+
+| Current Test | Replacement |
+|--------------|-------------|
+| `TestLvtSourceExec` | WebSocket protocol test + Source golden test |
+| `TestLvtSourceJSON` | Source golden test |
+| `TestLvtSourceCSV` | Source golden test |
+| `TestLvtSourceMarkdown` | Source golden test |
+| `TestLvtSourcePg` | Source golden test (with test DB) |
+| `TestLvtSourceSQLite` | Source golden test |
+| `TestFrontmatterConfig` | Parser unit test |
+| `TestMermaidDiagrams` | Parser golden test |
+| `TestSearch` | HTTP endpoint test |
+| `TestPlayground` | HTTP endpoint test |
+
+**Implementation steps:**
+
+1. Verify coverage exists for each test being removed:
+```bash
+# For each test to remove, verify replacement exists
+go test -v -run TestJSONSourceGolden  # Replaces TestLvtSourceJSON
+go test -v -run TestWebSocketAction   # Replaces browser action tests
+```
+
+2. Create consolidated browser test file:
+```go
+// browser_e2e_test.go - Essential browser tests only
+package tinkerdown_test
+
+func TestBrowserEssentials(t *testing.T) {
+    t.Run("lvt-click triggers action", testLvtClickAction)
+    t.Run("form submit works", testFormSubmitAction)
+    t.Run("real-time update displays", testRealTimeUpdate)
+    t.Run("navigation works", testNavigationWorks)
+    t.Run("source data renders", testSourceRendersData)
+}
+```
+
+3. Remove redundant test files:
+```bash
+# After verifying coverage, remove redundant tests
+git rm lvtsource_file_e2e_test.go
+git rm lvtsource_rest_e2e_test.go
+# ... etc
+```
+
+4. Update CI to run fast tests first:
+```yaml
+# .github/workflows/test.yml
+jobs:
+  fast-tests:
+    - go test -v -short ./...  # Skip browser tests
+  browser-tests:
+    needs: fast-tests
+    - go test -v -run Browser ./...
+```
+
+**Acceptance criteria:**
+- [ ] Only 5 essential browser tests remain
+- [ ] All removed tests have equivalent coverage via golden/protocol tests
+- [ ] Total test time reduced from ~80s to ~10s
+- [ ] CI runs fast tests before slow browser tests
+- [ ] No regression in feature coverage
+
+**Verification commands:**
+```bash
+# Verify test time improvement
+time go test ./... -v
+
+# Verify no coverage regression
+go test ./... -cover
+```
 
 ---
 
