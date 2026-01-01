@@ -334,101 +334,328 @@ HTML + Go templates when you need:
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### Unified SQL Layer
+### Schema & Configuration Tiers
 
-All data sources use SQL as the universal interface:
+Three levels of configuration based on user needs:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                    UNIFIED SQL LAYER                             │
+│                    CONFIGURATION TIERS                           │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
-│  DATA SOURCES                        SQL ENGINE                 │
-│  ────────────                        ──────────                 │
+│  TIER 1: Zero Config (80% of users)                             │
+│  ──────────────────────────────────                             │
+│  Just write markdown. Types inferred from data patterns.        │
 │                                                                 │
-│  Markdown Table ──┐                  ┌──────────────────────┐   │
-│  (## Expenses)    │                  │                      │   │
-│                   │   sync/query     │   dialect: sqlite    │   │
-│  SQLite File ─────┼─────────────────▶│   dialect: postgres  │   │
-│  (./data.db)      │                  │   dialect: mysql     │   │
-│                   │                  │                      │   │
-│  PostgreSQL ──────┘                  └──────────────────────┘   │
-│  (connection)                                  │                │
-│                                                │                │
-│                                                ▼                │
-│                                    ┌──────────────────────┐     │
-│                                    │  SELECT, INSERT,     │     │
-│                                    │  UPDATE, DELETE      │     │
-│                                    │  + JOINs across      │     │
-│                                    │    all sources       │     │
-│                                    └──────────────────────┘     │
+│    ## Expenses                                                  │
+│    | date | category | amount |                                 │
+│    |------|----------|--------|                                 │
+│    | 2024-01-15 | Food | $45.50 |                               │
+│                                                                 │
+│    → date: DATE, category: TEXT, amount: DECIMAL (auto)         │
+│                                                                 │
+│  TIER 2: Type Hints (15% of users)                              │
+│  ─────────────────────────────────                              │
+│  Override inference with human-readable type names.             │
+│                                                                 │
+│    sources:                                                     │
+│      expenses:                                                  │
+│        types:                                                   │
+│          amount: currency                                       │
+│          priority: select                                       │
+│                                                                 │
+│  TIER 3: Full SQL (5% of users)                                 │
+│  ──────────────────────────────                                 │
+│  External databases, constraints, advanced queries.             │
+│                                                                 │
+│    sources:                                                     │
+│      orders: postgres://${DATABASE_URL}                         │
+│      legacy:                                                    │
+│        from: ./data.db                                          │
+│        query: SELECT * FROM orders WHERE status = 'pending'     │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-**Schema definition with SQL:**
+---
+
+#### Tier 1: Zero Configuration
+
+No YAML needed. Tinkerdown infers everything from markdown:
+
+```markdown
+## Tasks
+- [ ] Design the API
+- [x] Write tests
+- [ ] Deploy to production
+
+## Expenses
+| date | category | amount |
+|------|----------|--------|
+| 2024-01-15 | Food | $45.50 |
+| 2024-01-16 | Transport | $12.00 |
+
+## Team
+| name | email | role |
+|------|-------|------|
+| Alice | alice@co.com | Engineer |
+| Bob | bob@co.com | Designer |
+```
+
+**What gets inferred:**
+
+| Data | Inferred Schema |
+|------|-----------------|
+| `## Tasks` | Table: `tasks` (text TEXT, done BOOLEAN) |
+| `## Expenses` | Table: `expenses` (date DATE, category TEXT, amount DECIMAL) |
+| `## Team` | Table: `team` (name TEXT, email TEXT, role TEXT) |
+
+**Pattern detection:**
+
+| Pattern | SQL Type | UI Input |
+|---------|----------|----------|
+| `2024-01-15` | DATE | Date picker |
+| `14:30`, `2:30pm` | TIME | Time picker |
+| `123`, `45.67` | DECIMAL | Number input |
+| `$45.50`, `€100` | DECIMAL(10,2) | Currency input |
+| `true`, `false` | BOOLEAN | Checkbox |
+| `alice@example.com` | TEXT | Email input |
+| `https://...` | TEXT | URL input |
+| ≤10 unique values | TEXT + constraint | Dropdown |
+| Everything else | TEXT | Text input |
+
+**Constraint inference:**
+
+| Pattern | Constraint |
+|---------|------------|
+| Value in every row | NOT NULL |
+| Some rows empty | nullable |
+| All values unique | UNIQUE (suggested) |
+
+---
+
+#### Tier 2: Type Hints
+
+When auto-inference gets it wrong, override with simple hints:
 
 ```yaml
 ---
-database:
-  dialect: sqlite                    # sqlite | postgres | mysql
-  connection: ./app.db               # file path or connection string
-  schema: ./schema.sql               # external schema file (optional)
-
 sources:
-  # Markdown table synced to SQL
   expenses:
-    type: markdown
-    anchor: "#expenses"
-    table: expenses                  # SQL table name
-    sync: both                       # read | write | both
+    types:
+      amount: currency
+      date: date
+      category: select        # auto-detect options from data
 
-  # External SQLite
-  users:
-    type: sqlite
-    database: ./users.db
-    table: users
+  tasks:
+    types:
+      priority: select:Critical,High,Medium,Low    # explicit options
+      due: date
+---
 
-  # PostgreSQL
+## Expenses
+| date | category | amount |
+...
+```
+
+**Type hint vocabulary:**
+
+| Hint | SQL Type | UI | Notes |
+|------|----------|-----|-------|
+| `text` | TEXT | Text input | Default |
+| `number` | DECIMAL | Number input | |
+| `integer` | INTEGER | Number input | Whole numbers |
+| `currency` | DECIMAL(10,2) | Currency input | With symbol |
+| `date` | DATE | Date picker | |
+| `time` | TIME | Time picker | |
+| `datetime` | TIMESTAMP | DateTime picker | |
+| `boolean` | BOOLEAN | Checkbox | |
+| `email` | TEXT | Email input | With validation |
+| `url` | TEXT | URL input | With validation |
+| `select` | TEXT | Dropdown | Options from data |
+| `select:a,b,c` | TEXT + CHECK | Dropdown | Explicit options |
+| `textarea` | TEXT | Multi-line | |
+| `hidden` | TEXT | None | Not shown in forms |
+
+**Shorthand syntax:**
+
+```yaml
+# Full form
+sources:
+  expenses:
+    types:
+      amount: currency
+
+# Shorthand (dot notation)
+types:
+  expenses.amount: currency
+  expenses.category: select
+  tasks.priority: select:High,Medium,Low
+```
+
+**Required fields:**
+
+```yaml
+sources:
+  expenses:
+    types:
+      amount: currency
+    required:
+      - date
+      - amount
+```
+
+---
+
+#### Tier 3: External Databases
+
+For connecting to existing databases. Schema lives in the database:
+
+```yaml
+---
+sources:
+  # PostgreSQL - just connection string
+  users: postgres://user:pass@host/db
+
+  # With explicit table
   orders:
-    type: postgres
-    connection: ${DATABASE_URL}
+    from: postgres://${DATABASE_URL}
     table: orders
 
-  # Cross-source query
+  # With custom query
+  pending_orders:
+    from: postgres://${DATABASE_URL}
+    query: SELECT * FROM orders WHERE status = 'pending'
+
+  # SQLite file
+  archive: ./archive.db
+
+  # SQLite with query
+  recent:
+    from: ./data.db
+    query: SELECT * FROM logs WHERE date > date('now', '-7 days')
+---
+```
+
+**Connection string formats:**
+
+| Database | Format |
+|----------|--------|
+| PostgreSQL | `postgres://user:pass@host:5432/dbname` |
+| MySQL | `mysql://user:pass@host:3306/dbname` |
+| SQLite | `./path/to/file.db` or `sqlite:///path/to/file.db` |
+
+**Environment variables:**
+
+```yaml
+sources:
+  production: postgres://${DATABASE_URL}
+  cache: redis://${REDIS_URL}
+```
+
+---
+
+#### Cross-Source Queries
+
+Join data across markdown and external databases:
+
+```yaml
+---
+sources:
+  # Markdown source
+  expenses: "#expenses"
+
+  # External database
+  employees: postgres://${DATABASE_URL}
+
+  # Join across sources
   report:
     query: |
-      SELECT e.date, e.amount, u.name
+      SELECT
+        e.date,
+        e.amount,
+        emp.name as submitter
       FROM expenses e
-      JOIN users u ON e.user_id = u.id
+      JOIN employees emp ON e.employee_id = emp.id
+      WHERE e.date >= '2024-01-01'
+---
+```
+
+**How it works internally:**
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    UNIFIED SQL ENGINE                            │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  1. Markdown tables → loaded into in-memory SQLite              │
+│  2. External DBs → connected via drivers                        │
+│  3. Cross-source queries → federated via SQL                    │
+│                                                                 │
+│  ┌─────────────┐     ┌─────────────┐     ┌─────────────┐       │
+│  │  ## Table   │     │  SQLite     │     │  PostgreSQL │       │
+│  │  (markdown) │     │  (file.db)  │     │  (remote)   │       │
+│  └──────┬──────┘     └──────┬──────┘     └──────┬──────┘       │
+│         │                   │                   │               │
+│         └─────────────┬─────┴─────────────┬─────┘               │
+│                       │                   │                     │
+│                       ▼                   ▼                     │
+│              ┌─────────────────────────────────┐                │
+│              │     Unified Query Layer         │                │
+│              │  (SQLite for markdown + proxy   │                │
+│              │   for external DBs)             │                │
+│              └─────────────────────────────────┘                │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+#### Schema Files (Optional)
+
+For complex schemas, use external SQL files:
+
+```yaml
+---
+schema: ./schema.sql    # Applied to markdown sources
+sources:
+  expenses: "#expenses"
+  tasks: "#tasks"
 ---
 ```
 
 **schema.sql:**
 
 ```sql
+-- Only needed for constraints beyond type hints
 CREATE TABLE expenses (
-  id INTEGER PRIMARY KEY,
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
   date DATE NOT NULL,
   category TEXT DEFAULT 'misc',
-  amount DECIMAL(10,2) NOT NULL CHECK(amount > 0)
+  amount DECIMAL(10,2) NOT NULL CHECK(amount > 0),
+  employee_id INTEGER REFERENCES employees(id)
 );
 
-CREATE TABLE users (
-  id INTEGER PRIMARY KEY,
-  name TEXT NOT NULL,
-  email TEXT UNIQUE
+CREATE TABLE tasks (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  title TEXT NOT NULL CHECK(length(title) >= 3),
+  priority TEXT DEFAULT 'Medium'
+    CHECK(priority IN ('Critical','High','Medium','Low')),
+  done BOOLEAN DEFAULT false
 );
 ```
 
-**Sync modes for markdown sources:**
+**When to use schema files:**
 
-| Mode | Behavior |
-|------|----------|
-| `sync: read` | Markdown → SQL (markdown is source of truth) |
-| `sync: write` | SQL → Markdown (changes written back to .md) |
-| `sync: both` | Bidirectional (default) |
-| `sync: none` | SQL only, markdown defines initial data |
+| Need | Use |
+|------|-----|
+| Type hints only | Tier 2 YAML |
+| CHECK constraints | Schema file |
+| Foreign keys | Schema file |
+| Indexes | Schema file |
+| Complex defaults | Schema file |
+
+---
 
 ### Data Flow
 
@@ -625,7 +852,7 @@ tinkerdown/
 | 1 | 1.1 Heading-as-Anchor | `[ ]` |
 | 1 | 1.2 Table Parsing | `[ ]` |
 | 1 | 1.3 List Parsing | `[ ]` |
-| 1 | 1.4 SQL Schema Inference | `[ ]` |
+| 1 | 1.4 Schema Inference & Type Hints | `[ ]` |
 | 1 | 1.5 Auto-CRUD UI | `[ ]` |
 | 2 | 2.1 Auto-Timestamp | `[ ]` |
 | 2 | 2.2 Operator Identity | `[ ]` |
@@ -829,100 +1056,139 @@ go test ./internal/markdown/... -v -run TestParse
 
 ---
 
-#### Task 1.4: SQL Schema Inference
+#### Task 1.4: Schema Inference & Type Hints
 
 **Status:** `[ ] Not Started`
 
-**Goal:** Automatically infer SQL DDL from data values; generate CREATE TABLE statements.
+**Goal:** Tiered schema system - auto-inference (Tier 1) with type hint overrides (Tier 2).
 
 **Prerequisites:** Tasks 1.2 and 1.3 complete
 
 **Files to create:**
-- `internal/sql/schema.go` - SQL schema inference logic
-- `internal/sql/dialect.go` - Dialect-specific DDL generation
+- `internal/schema/infer.go` - Pattern-based type inference
+- `internal/schema/hints.go` - Type hint parsing and application
+- `internal/schema/types.go` - Type definitions and SQL mapping
 
 **Implementation steps:**
 
 ```go
-package sql
+package schema
 
 import "regexp"
 
-// SQLType maps to standard SQL types
-type SQLType string
+// TypeHint represents user-friendly type names (Tier 2)
+type TypeHint string
 
 const (
-    SQLText    SQLType = "TEXT"
-    SQLInteger SQLType = "INTEGER"
-    SQLDecimal SQLType = "DECIMAL(10,2)"
-    SQLDate    SQLType = "DATE"
-    SQLTime    SQLType = "TIME"
-    SQLBoolean SQLType = "BOOLEAN"
+    HintText     TypeHint = "text"
+    HintNumber   TypeHint = "number"
+    HintInteger  TypeHint = "integer"
+    HintCurrency TypeHint = "currency"
+    HintDate     TypeHint = "date"
+    HintTime     TypeHint = "time"
+    HintDatetime TypeHint = "datetime"
+    HintBoolean  TypeHint = "boolean"
+    HintEmail    TypeHint = "email"
+    HintURL      TypeHint = "url"
+    HintSelect   TypeHint = "select"
+    HintTextarea TypeHint = "textarea"
+    HintHidden   TypeHint = "hidden"
 )
 
-type Dialect string
-
-const (
-    DialectSQLite   Dialect = "sqlite"
-    DialectPostgres Dialect = "postgres"
-    DialectMySQL    Dialect = "mysql"
-)
-
+// Column represents a schema column with inferred or hinted type
 type Column struct {
-    Name        string
-    Type        SQLType
-    NotNull     bool
-    Default     string
-    Check       string   // e.g., "CHECK(amount > 0)"
-    EnumValues  []string // For generating CHECK IN constraint
+    Name       string
+    Hint       TypeHint    // User-provided hint (Tier 2)
+    SQLType    string      // Mapped SQL type
+    NotNull    bool
+    Default    string
+    Options    []string    // For select types: "select:a,b,c"
+    InputType  string      // HTML input type for UI
 }
 
-type Table struct {
-    Name    string
-    Columns []Column
+// TypeMapping maps hints to SQL and UI types
+var TypeMapping = map[TypeHint]struct {
+    SQLType   string
+    InputType string
+}{
+    HintText:     {"TEXT", "text"},
+    HintNumber:   {"DECIMAL", "number"},
+    HintInteger:  {"INTEGER", "number"},
+    HintCurrency: {"DECIMAL(10,2)", "text"},  // with currency formatting
+    HintDate:     {"DATE", "date"},
+    HintTime:     {"TIME", "time"},
+    HintDatetime: {"TIMESTAMP", "datetime-local"},
+    HintBoolean:  {"BOOLEAN", "checkbox"},
+    HintEmail:    {"TEXT", "email"},
+    HintURL:      {"TEXT", "url"},
+    HintSelect:   {"TEXT", "select"},
+    HintTextarea: {"TEXT", "textarea"},
+    HintHidden:   {"TEXT", "hidden"},
 }
 
-var (
-    datePattern     = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
-    currencyPattern = regexp.MustCompile(`^\$[\d,]+(\.\d{2})?$`)
-    intPattern      = regexp.MustCompile(`^-?\d+$`)
-    decimalPattern  = regexp.MustCompile(`^-?\d+\.\d+$`)
-)
+// InferType determines type from data values (Tier 1)
+func InferType(values []string) TypeHint
 
-// InferTable generates a Table definition from parsed markdown data
-func InferTable(name string, columns []string, rows []map[string]string) Table
+// ParseHint parses user hint like "select:High,Medium,Low"
+func ParseHint(hint string) (TypeHint, []string)
 
-// InferSQLType determines SQL type from a set of values
-func InferSQLType(values []string) SQLType
-
-// GenerateDDL creates CREATE TABLE statement for dialect
-func (t Table) GenerateDDL(dialect Dialect) string
+// ApplyHints merges inferred schema with user hints (Tier 2 overrides Tier 1)
+func ApplyHints(inferred []Column, hints map[string]string) []Column
 ```
 
-**Example output:**
+**Pattern detection for Tier 1:**
 
-```sql
--- Generated from ## Expenses markdown table
-CREATE TABLE expenses (
-    id INTEGER PRIMARY KEY,
-    date DATE NOT NULL,
-    category TEXT,
-    amount DECIMAL(10,2) NOT NULL
-);
+```go
+var patterns = map[*regexp.Regexp]TypeHint{
+    regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`):           HintDate,
+    regexp.MustCompile(`^\d{1,2}:\d{2}(:\d{2})?(am|pm)?$`): HintTime,
+    regexp.MustCompile(`^-?\d+$`):                       HintInteger,
+    regexp.MustCompile(`^-?\d+\.\d+$`):                  HintNumber,
+    regexp.MustCompile(`^[$€£¥]\d[\d,]*(\.\d{2})?$`):    HintCurrency,
+    regexp.MustCompile(`^(true|false)$`):                HintBoolean,
+    regexp.MustCompile(`^[^@]+@[^@]+\.[^@]+$`):          HintEmail,
+    regexp.MustCompile(`^https?://`):                    HintURL,
+}
+
+func InferType(values []string) TypeHint {
+    // 1. Check patterns against all non-empty values
+    // 2. If ≤10 unique values, suggest HintSelect
+    // 3. Default to HintText
+}
+```
+
+**Example - Tier 1 (auto-inferred):**
+
+```markdown
+## Expenses
+| date | category | amount |
+|------|----------|--------|
+| 2024-01-15 | Food | $45.50 |
+```
+
+→ Inferred: `date: DATE, category: TEXT (select), amount: DECIMAL(10,2)`
+
+**Example - Tier 2 (with hints):**
+
+```yaml
+types:
+  expenses.amount: currency
+  expenses.priority: select:Critical,High,Medium,Low
 ```
 
 **Acceptance criteria:**
-- [ ] Generates valid SQLite CREATE TABLE from markdown table
-- [ ] Generates valid PostgreSQL CREATE TABLE from markdown table
-- [ ] Generates valid MySQL CREATE TABLE from markdown table
-- [ ] Correctly maps patterns: dates→DATE, numbers→DECIMAL/INTEGER, etc.
-- [ ] Adds NOT NULL for columns with values in every row
-- [ ] Generates CHECK IN constraint for columns with ≤10 unique values
+- [ ] `InferType()` correctly identifies date, time, number, currency, boolean, email, URL patterns
+- [ ] `InferType()` suggests select for ≤10 unique string values
+- [ ] `ParseHint()` correctly parses "select:a,b,c" syntax
+- [ ] `ApplyHints()` correctly overrides inferred types with user hints
+- [ ] Type mapping produces correct SQL types and HTML input types
+- [ ] NOT NULL inferred when all rows have values
 
 **Verification commands:**
 ```bash
-go test ./internal/sql/... -v -run TestInferSchema
-go test ./internal/sql/... -v -run TestGenerateDDL
+go test ./internal/schema/... -v -run TestInferType
+go test ./internal/schema/... -v -run TestParseHint
+go test ./internal/schema/... -v -run TestApplyHints
 ```
 
 ---
@@ -1365,57 +1631,86 @@ API Key                  → Definition list: {term, definition}
 #tag                     → Tag/category
 ```
 
-### YAML Configuration (Optional Overrides)
+### YAML Configuration (Optional)
+
+Only needed when you want to go beyond zero-config defaults.
+
+**Tier 2 - Type Hints:**
 
 ```yaml
 ---
-# Only needed for advanced features
-
-# Database configuration (SQL-first)
-database:
-  dialect: sqlite                      # sqlite | postgres | mysql
-  connection: ./app.db                 # file or connection string
-  schema: ./schema.sql                 # external SQL schema file
-
-# Data sources
+# Override inferred types with simple hints
 sources:
-  # Markdown table synced to SQL
+  expenses:
+    types:
+      amount: currency
+      category: select
+
   tasks:
-    type: markdown
-    anchor: "#tasks"
-    table: tasks
-    sync: both
+    types:
+      priority: select:Critical,High,Medium,Low
+      due: date
+    required: [title, due]
 
-  # External database
-  users:
-    type: postgres
-    connection: ${DATABASE_URL}
-    table: users
+# Or use shorthand
+types:
+  expenses.amount: currency
+  tasks.priority: select:Critical,High,Medium,Low
+---
+```
 
-  # REST API (non-SQL source)
-  api_data:
-    type: rest
-    url: https://api.example.com/data
+**Tier 3 - External Databases:**
+
+```yaml
+---
+sources:
+  # External databases (schema lives in DB)
+  users: postgres://${DATABASE_URL}
+  orders: mysql://${MYSQL_URL}
+  archive: ./archive.db
+
+  # With custom queries
+  pending:
+    from: postgres://${DATABASE_URL}
+    query: SELECT * FROM orders WHERE status = 'pending'
+
+  # REST APIs
+  github:
+    from: https://api.github.com/repos/user/repo
     headers:
-      Authorization: Bearer ${API_TOKEN}
+      Authorization: Bearer ${GITHUB_TOKEN}
     cache: 5m
+---
+```
 
-  # Cross-source SQL query
+**Full Configuration (all options):**
+
+```yaml
+---
+# Type hints (Tier 2)
+types:
+  expenses.amount: currency
+  tasks.priority: select:Critical,High,Medium,Low
+
+# Sources (Tier 3)
+sources:
+  users: postgres://${DATABASE_URL}
   report:
     query: |
-      SELECT t.title, u.name as assignee
-      FROM tasks t
-      LEFT JOIN users u ON t.user_id = u.id
-      WHERE t.done = false
+      SELECT e.*, u.name as submitter
+      FROM expenses e JOIN users u ON e.user_id = u.id
 
-# Webhook triggers (can't be expressed in markdown)
+# Schema file for constraints (Tier 3)
+schema: ./schema.sql
+
+# Triggers
 triggers:
   - webhook:
       path: /github
       secret: ${WEBHOOK_SECRET}
     action: handle_github
 
-# Output configuration
+# Outputs
 outputs:
   slack:
     token: ${SLACK_TOKEN}
@@ -1424,43 +1719,11 @@ outputs:
     user: ${EMAIL_USER}
     pass: ${EMAIL_PASS}
 
-# App metadata
+# Metadata
 title: My App
 icon: 📋
 theme: dark
 ---
-```
-
-**schema.sql** (external file):
-
-```sql
--- All tables defined in standard SQL DDL
-CREATE TABLE tasks (
-  id INTEGER PRIMARY KEY,
-  title TEXT NOT NULL CHECK(length(title) >= 3),
-  priority TEXT DEFAULT 'Medium' CHECK(priority IN ('Critical','High','Medium','Low')),
-  done BOOLEAN DEFAULT false,
-  user_id INTEGER REFERENCES users(id)
-);
-
-CREATE TABLE users (
-  id INTEGER PRIMARY KEY,
-  name TEXT NOT NULL,
-  email TEXT UNIQUE
-);
-```
-
-**Inline schema (alternative to external file):**
-
-```yaml
-database:
-  dialect: sqlite
-  schema: |
-    CREATE TABLE tasks (
-      id INTEGER PRIMARY KEY,
-      title TEXT NOT NULL,
-      done BOOLEAN DEFAULT false
-    );
 ```
 
 ### LVT Attributes (HTML Layer)
