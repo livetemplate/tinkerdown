@@ -1,0 +1,8 @@
+{
+  "frontmatter": {
+    "title": "Simple Tasks",
+    "type": "tutorial",
+    "persist": "localstorage"
+  },
+  "html_preview": "\u003ch1 id=\"my-tasks\"\u003eMy Tasks\u003c/h1\u003e\n\u003cp\u003eA simple task list example.\u003c/p\u003e\n\u003ch2 id=\"tasks\"\u003eTasks\u003c/h2\u003e\n\u003cul\u003e\n\u003cli\u003e\u003cinput disabled=\"\" type=\"checkbox\"\u003e Buy groceries\u003c/li\u003e\n\u003cli\u003e\u003cinput checked=\"\" disabled=\"\" type=\"checkbox\"\u003e Call mom\u003c/li\u003e\n\u003cli\u003e\u003cinput disabled=\"\" type=\"checkbox\"\u003e Finish report\u003c/li\u003e\n\u003c/ul\u003e\n"
+}

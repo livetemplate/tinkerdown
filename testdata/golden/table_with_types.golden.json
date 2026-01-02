@@ -1,0 +1,8 @@
+{
+  "frontmatter": {
+    "title": "Data Table",
+    "type": "tutorial",
+    "persist": "localstorage"
+  },
+  "html_preview": "\u003ch1 id=\"products\"\u003eProducts\u003c/h1\u003e\n\u003ctable\u003e\n\u003cthead\u003e\n\u003ctr\u003e\n\u003cth\u003eID\u003c/th\u003e\n\u003cth\u003eName\u003c/th\u003e\n\u003cth\u003ePrice\u003c/th\u003e\n\u003cth\u003eInStock\u003c/th\u003e\n\u003c/tr\u003e\n\u003c/thead\u003e\n\u003ctbody\u003e\n\u003ctr\u003e\n\u003ctd\u003e1\u003c/td\u003e\n\u003ctd\u003eWidget\u003c/td\u003e\n\u003ctd\u003e19.99\u003c/td\u003e\n\u003ctd\u003etrue\u003c/td\u003e\n\u003c/tr\u003e\n\u003ctr\u003e\n\u003ctd\u003e2\u003c/td\u003e\n\u003ctd\u003eGadget\u003c/td\u003e\n\u003ctd\u003e29.99\u003c/td\u003e\n\u003ctd\u003efalse\u003c/td\u003e\n\u003c/tr\u003e\n\u003ctr\u003e\n\u003ctd\u003e3\u003c/td\u003e\n\u003ctd\u003eThing\u003c/td\u003e\n\u003ctd\u003e9.99\u003c/td\u003e\n\u003ctd\u003etrue\u003c/td\u003e\n\u003c/tr\u003e\n\u003c/tbody\u003e\n\u003c/table\u003e\n"
+}

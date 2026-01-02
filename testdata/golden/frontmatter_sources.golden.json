@@ -1,0 +1,32 @@
+{
+  "frontmatter": {
+    "title": "Multi-Source Dashboard",
+    "type": "tutorial",
+    "persist": "localstorage",
+    "sources": {
+      "logs": {
+        "type": "exec",
+        "cmd": "tail -n 10 /var/log/app.log",
+        "manual": true
+      },
+      "tasks": {
+        "type": "sqlite",
+        "db": "./data.db",
+        "table": "tasks"
+      },
+      "users": {
+        "type": "rest",
+        "url": "https://api.example.com/users"
+      }
+    }
+  },
+  "code_blocks": [
+    {
+      "type": "lvt",
+      "language": "lvt",
+      "content": "\u003cdiv lvt-source=\"tasks\"\u003e\n  {{range .Data}}\n  \u003cp\u003e{{.title}}\u003c/p\u003e\n  {{end}}\n\u003c/div\u003e\n",
+      "line": 86
+    }
+  ],
+  "html_preview": "\u003ch1 id=\"dashboard\"\u003eDashboard\u003c/h1\u003e\n\u003cp\u003eThis page uses multiple data sources.\u003c/p\u003e\n\u003ch2 id=\"tasks\"\u003eTasks\u003c/h2\u003e\n\u003cdiv class=\"tinkerdown-interactive-block\" data-tinkerdown-block data-block-id=\"lvt-0\" data-block-type=\"lvt\" data-language=\"lvt\" data-interactive-content\u003e\u003cdiv class=\"loading\"\u003eConnecting...\u003c/div\u003e\u003c/div\u003e\n"
+}

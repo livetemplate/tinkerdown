@@ -1,0 +1,23 @@
+{
+  "frontmatter": {
+    "title": "LVT Block Test",
+    "type": "tutorial",
+    "persist": "localstorage",
+    "sources": {
+      "items": {
+        "type": "sqlite",
+        "db": "./test.db",
+        "table": "items"
+      }
+    }
+  },
+  "code_blocks": [
+    {
+      "type": "lvt",
+      "language": "lvt",
+      "content": "\u003cmain lvt-source=\"items\"\u003e\n  \u003ch2\u003eItems\u003c/h2\u003e\n  {{if .Error}}\n    \u003cp class=\"error\"\u003e{{.Error}}\u003c/p\u003e\n  {{else}}\n    \u003cul\u003e\n      {{range .Data}}\n      \u003cli\u003e{{.name}} - ${{.price}}\u003c/li\u003e\n      {{end}}\n    \u003c/ul\u003e\n  {{end}}\n  \u003cbutton lvt-click=\"Refresh\"\u003eReload\u003c/button\u003e\n\u003c/main\u003e\n",
+      "line": 37
+    }
+  ],
+  "html_preview": "\u003ch1 id=\"interactive-block\"\u003eInteractive Block\u003c/h1\u003e\n\u003cdiv class=\"tinkerdown-interactive-block\" data-tinkerdown-block data-block-id=\"lvt-0\" data-block-type=\"lvt\" data-language=\"lvt\" data-interactive-content\u003e\u003cdiv class=\"loading\"\u003eConnecting...\u003c/div\u003e\u003c/div\u003e\n"
+}

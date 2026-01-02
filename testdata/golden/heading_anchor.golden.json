@@ -1,0 +1,15 @@
+{
+  "frontmatter": {
+    "title": "Heading Anchors",
+    "type": "tutorial",
+    "persist": "localstorage",
+    "sources": {
+      "tasks": {
+        "type": "markdown",
+        "file": "./data.md",
+        "anchor": "#tasks"
+      }
+    }
+  },
+  "html_preview": "\u003ch1 id=\"document-with-anchors\"\u003eDocument with Anchors\u003c/h1\u003e\n\u003cp\u003eThis tests heading-as-anchor source detection.\u003c/p\u003e\n\u003ch2 id=\"introduction\"\u003eIntroduction\u003c/h2\u003e\n\u003cp\u003eSome intro text.\u003c/p\u003e\n\u003ch2 id=\"tasks-tasks\"\u003eTasks {#tasks}\u003c/h2\u003e\n\u003cul\u003e\n\u003cli\u003e\u003cinput disabled=\"\" type=\"checkbox\"\u003e Task one\u003c/li\u003e\n\u003cli\u003e\u003cinput disabled=\"\" type=\"checkbox\"\u003e Task two\u003c/li\u003e\n\u003c/ul\u003e\n\u003ch2 id=\"notes-notes\"\u003eNotes {#notes}\u003c/h2\u003e\n\u003cp\u003eSome notes here.\u003c/p\u003e\n"
+}

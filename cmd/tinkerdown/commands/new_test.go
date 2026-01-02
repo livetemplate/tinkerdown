@@ -16,7 +16,7 @@ func TestNewCommandBasicTemplate(t *testing.T) {
 	defer chdir(t, tmpDir)()
 
 	// Run new command with basic template (default)
-	err := NewCommand([]string{"test-basic"})
+	err := NewCommand([]string{"test-basic"}, "")
 	if err != nil {
 		t.Fatalf("NewCommand failed: %v", err)
 	}
@@ -38,7 +38,7 @@ func TestNewCommandTodoTemplate(t *testing.T) {
 
 	defer chdir(t, tmpDir)()
 
-	err := NewCommand([]string{"--template=todo", "my-todo-app"})
+	err := NewCommand([]string{"my-todo-app"}, "todo")
 	if err != nil {
 		t.Fatalf("NewCommand failed: %v", err)
 	}
@@ -62,20 +62,22 @@ func TestNewCommandDashboardTemplate(t *testing.T) {
 
 	defer chdir(t, tmpDir)()
 
-	err := NewCommand([]string{"--template=dashboard", "my-dashboard"})
+	err := NewCommand([]string{"my-dashboard"}, "dashboard")
 	if err != nil {
 		t.Fatalf("NewCommand failed: %v", err)
 	}
 
 	assertFileExists(t, projectDir, "index.md")
 	assertFileExists(t, projectDir, "README.md")
-	assertFileExists(t, projectDir, "_data/tasks.md")
-	assertFileExists(t, projectDir, "_data/team.md")
+	assertFileExists(t, projectDir, "system-info.sh")
 
-	// Verify multiple sources configured
+	// Verify multiple sources configured (REST + exec)
 	content := readFile(t, filepath.Join(projectDir, "index.md"))
-	if !strings.Contains(content, "type: markdown") {
-		t.Error("Expected markdown source type in dashboard template")
+	if !strings.Contains(content, "type: rest") {
+		t.Error("Expected rest source type in dashboard template")
+	}
+	if !strings.Contains(content, "type: exec") {
+		t.Error("Expected exec source type in dashboard template")
 	}
 }
 
@@ -85,7 +87,7 @@ func TestNewCommandFormTemplate(t *testing.T) {
 
 	defer chdir(t, tmpDir)()
 
-	err := NewCommand([]string{"--template=form", "contact-form"})
+	err := NewCommand([]string{"contact-form"}, "form")
 	if err != nil {
 		t.Fatalf("NewCommand failed: %v", err)
 	}
@@ -108,7 +110,7 @@ func TestNewCommandAPIExplorerTemplate(t *testing.T) {
 
 	defer chdir(t, tmpDir)()
 
-	err := NewCommand([]string{"--template=api-explorer", "api-test"})
+	err := NewCommand([]string{"api-test"}, "api-explorer")
 	if err != nil {
 		t.Fatalf("NewCommand failed: %v", err)
 	}
@@ -120,32 +122,24 @@ func TestNewCommandAPIExplorerTemplate(t *testing.T) {
 	if !strings.Contains(content, "type: rest") {
 		t.Error("Expected rest source type in api-explorer template")
 	}
-	if !strings.Contains(content, "jsonplaceholder.typicode.com") {
-		t.Error("Expected example API URL in api-explorer template")
+	if !strings.Contains(content, "api.github.com") {
+		t.Error("Expected GitHub API URL in api-explorer template")
 	}
 }
 
-func TestNewCommandCLIWrapperTemplate(t *testing.T) {
+func TestNewCommandTutorialTemplate(t *testing.T) {
 	tmpDir := t.TempDir()
-	projectDir := filepath.Join(tmpDir, "cli-tool")
+	projectDir := filepath.Join(tmpDir, "my-tutorial")
 
 	defer chdir(t, tmpDir)()
 
-	err := NewCommand([]string{"--template=cli-wrapper", "cli-tool"})
+	err := NewCommand([]string{"my-tutorial"}, "tutorial")
 	if err != nil {
 		t.Fatalf("NewCommand failed: %v", err)
 	}
 
 	assertFileExists(t, projectDir, "index.md")
 	assertFileExists(t, projectDir, "README.md")
-
-	content := readFile(t, filepath.Join(projectDir, "index.md"))
-	if !strings.Contains(content, "type: exec") {
-		t.Error("Expected exec source type in cli-wrapper template")
-	}
-	if !strings.Contains(content, "manual: true") {
-		t.Error("Expected manual execution mode in cli-wrapper template")
-	}
 }
 
 func TestNewCommandWASMSourceTemplate(t *testing.T) {
@@ -154,7 +148,7 @@ func TestNewCommandWASMSourceTemplate(t *testing.T) {
 
 	defer chdir(t, tmpDir)()
 
-	err := NewCommand([]string{"--template=wasm-source", "my-source"})
+	err := NewCommand([]string{"my-source"}, "wasm-source")
 	if err != nil {
 		t.Fatalf("NewCommand failed: %v", err)
 	}
@@ -168,22 +162,20 @@ func TestNewCommandWASMSourceTemplate(t *testing.T) {
 	if !strings.Contains(content, "//go:build tinygo.wasm") {
 		t.Error("Expected tinygo build tag in source.go")
 	}
-	if !strings.Contains(content, "my-source.wasm") {
-		t.Error("Expected project name in build comment")
-	}
 
-	// Verify Makefile has correct output name
+	// Verify Makefile builds wasm
 	makefile := readFile(t, filepath.Join(projectDir, "Makefile"))
-	if !strings.Contains(makefile, "OUTPUT = my-source.wasm") {
-		t.Error("Expected project name in Makefile OUTPUT")
+	if !strings.Contains(makefile, "source.wasm") {
+		t.Error("Expected source.wasm in Makefile")
 	}
 }
 
 func TestNewCommandListTemplates(t *testing.T) {
-	// Just verify it doesn't error
-	err := NewCommand([]string{"--list"})
-	if err != nil {
-		t.Fatalf("NewCommand --list failed: %v", err)
+	// The --list flag is handled by cobra, not NewCommand directly
+	// This test verifies that NewCommand with empty args returns an error
+	err := NewCommand([]string{}, "")
+	if err == nil {
+		t.Fatal("Expected error when no project name provided")
 	}
 }
 
@@ -192,7 +184,7 @@ func TestNewCommandInvalidTemplate(t *testing.T) {
 
 	defer chdir(t, tmpDir)()
 
-	err := NewCommand([]string{"--template=invalid", "test"})
+	err := NewCommand([]string{"test"}, "invalid")
 	if err == nil {
 		t.Fatal("Expected error for invalid template")
 	}
@@ -210,7 +202,7 @@ func TestNewCommandDirectoryExists(t *testing.T) {
 
 	defer chdir(t, tmpDir)()
 
-	err := NewCommand([]string{"existing"})
+	err := NewCommand([]string{"existing"}, "")
 	if err == nil {
 		t.Fatal("Expected error when directory exists")
 	}
@@ -220,7 +212,7 @@ func TestNewCommandDirectoryExists(t *testing.T) {
 }
 
 func TestNewCommandNoProjectName(t *testing.T) {
-	err := NewCommand([]string{})
+	err := NewCommand([]string{}, "")
 	if err == nil {
 		t.Fatal("Expected error when no project name")
 	}
@@ -234,7 +226,7 @@ func TestNewCommandProjectNameWithSpaces(t *testing.T) {
 
 	defer chdir(t, tmpDir)()
 
-	err := NewCommand([]string{"my project"})
+	err := NewCommand([]string{"my project"}, "")
 	if err == nil {
 		t.Fatal("Expected error for project name with spaces")
 	}
@@ -249,7 +241,7 @@ func TestNewCommandTitleConversion(t *testing.T) {
 
 	defer chdir(t, tmpDir)()
 
-	err := NewCommand([]string{"my-awesome-app"})
+	err := NewCommand([]string{"my-awesome-app"}, "")
 	if err != nil {
 		t.Fatalf("NewCommand failed: %v", err)
 	}
