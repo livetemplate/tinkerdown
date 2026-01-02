@@ -1,7 +1,7 @@
 # Tinkerdown: Unified Design & Implementation Plan
 
 **Date:** 2026-01-02
-**Version:** 4.0 - Consolidated V1.0 Roadmap
+**Version:** 4.0 - Consolidated v1.0 Roadmap
 **Status:** Living Document
 
 ---
@@ -27,8 +27,8 @@ Tinkerdown has a small grammar. These are the pieces you combine:
 | `- [ ] Task` | Interactive checkbox | Tracks completion |
 | `\| Table \|` | Editable data grid | Add/edit/delete rows |
 | `[Button](action:x)` | Triggers actions | API calls, scripts |
-| `{{variable}}` | Injects live data | From APIs, DBs, files |
-| `<!--trigger:...-->` | Runs on schedule | Automation, polling |
+| `` `expression` `` | Computed values | `count(x)`, `sum(x.field)` |
+| `@schedule` | Runs on schedule | `@daily:9am`, `@friday` |
 
 That's it. Six building blocks. Everything else is standard markdown rendered as content.
 
@@ -62,7 +62,7 @@ But the point is: **you decide what to build**. We provide the blocks.
 1. [Tinkering Stories](#tinkering-stories)
 2. [Markdown-Native Design](#markdown-native-design)
 3. [Architecture](#architecture)
-4. [V1.0 Roadmap](#v10-roadmap)
+4. [v1.0 Roadmap](#v10-roadmap)
 5. [Quick Reference](#quick-reference)
 6. [Success Metrics](#success-metrics)
 7. [Post-v1.0 Considerations](#post-v10-considerations)
@@ -867,7 +867,7 @@ When you need complete control over layout and interactions, use HTML with `lvt-
 
 ---
 
-## V1.0 Roadmap
+## v1.0 Roadmap
 
 This roadmap is designed to be imported directly into a GitHub project. Each milestone becomes a GitHub milestone; each task becomes an issue.
 
@@ -1055,13 +1055,13 @@ outputs:
 
 ### LVT Attributes (Tier 4: HTML)
 
-| Attribute | Purpose |
-|-----------|---------|
-| `lvt-source` | Bind element to data source |
-| `lvt-submit` | Form submission action |
-| `lvt-click` | Button click action |
-| `lvt-columns` | Table column spec |
-| `lvt-actions` | Row action buttons |
+| Attribute | Purpose | Example |
+|-----------|---------|---------|
+| `lvt-source` | Bind to data | `<table lvt-source="tasks">` |
+| `lvt-submit` | Form action | `<form lvt-submit="add">` |
+| `lvt-click` | Button action | `<button lvt-click="delete">` |
+| `lvt-columns` | Column spec | `lvt-columns="name,email"` |
+| `lvt-actions` | Row buttons | `lvt-actions="edit,delete"` |
 
 ---
 
@@ -1131,12 +1131,12 @@ Two lines. Working app. Zero configuration.
 
 ### The Milestones to v1.0
 
-1. **Works** - Markdown renders, changes persist
-2. **Connects** - External data sources
-3. **Acts** - Buttons, forms, API
-4. **Reacts** - Triggers, outputs
-5. **Ships** - Build, distribute
-6. **Launch** - Docs, examples, release
+1. **It Works** - Markdown renders, changes persist
+2. **It Connects** - External data sources
+3. **It Acts** - Buttons, forms, API
+4. **It Reacts** - Triggers, outputs
+5. **It Ships** - Build, distribute
+6. **v1.0 Launch** - Docs, examples, release
 
 ### Next Action
 
