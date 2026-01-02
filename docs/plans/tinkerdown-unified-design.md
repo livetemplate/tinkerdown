@@ -90,11 +90,9 @@ But the point is: **you decide what to build**. We provide the blocks.
 1. [Markdown-Native Design](#markdown-native-design)
 2. [Architecture](#architecture)
 3. [v1.0 Roadmap](#v10-roadmap)
-4. [Quick Reference](#quick-reference)
-5. [Success Metrics](#success-metrics)
-6. [Post-v1.0 Considerations](#post-v10-considerations)
-7. [Summary](#summary)
-8. [Appendix: Tinkering Stories](#appendix-tinkering-stories)
+4. [Post-v1.0 Considerations](#post-v10-considerations)
+5. [Summary](#summary)
+6. [Appendix: Tinkering Stories](#appendix-tinkering-stories)
 
 ---
 
@@ -949,86 +947,6 @@ This roadmap is designed to be imported directly into a GitHub project. Each mil
 | 6.8 | **Release** | GitHub release with binaries, changelog, announcement |
 
 **Testing:** Full test suite passes. Manual testing of all examples.
-
----
-
-## Quick Reference
-
-### Markdown Grammar
-
-```
-## Heading           → Data source (name from heading)
-- [ ] item           → Task list: {text, done: bool}
-- item               → Simple list: {text}
-1. item              → Ordered list: {text, order: int}
-| col | col |        → Table: {col: type, ...}
-
-@today @tomorrow     → Date mentions
-@daily:9am           → Schedule trigger
-@weekly:mon,wed      → Recurring trigger
-
-`count(x)`           → Computed value
-`sum(x.field)`       → Aggregation
-
-> ✅ Status          → Success banner
-> ⚠️ Warning         → Warning banner
-
-[Button]             → Action button
-[Text](action:x)     → Action link
-```
-
-### YAML Configuration
-
-```yaml
----
-# Tier 2: Type hints
-types:
-  expenses.amount: currency
-  tasks.priority: select:Critical,High,Medium,Low
-
-# Tier 3: External sources
-sources:
-  users: postgres://${DATABASE_URL}
-  data: ./local.db
-
-# Outputs
-outputs:
-  slack: "#channel"
-  email: "team@company.com"
----
-```
-
-### LVT Attributes (Tier 4: HTML)
-
-| Attribute | Purpose | Example |
-|-----------|---------|---------|
-| `lvt-source` | Bind to data | `<table lvt-source="tasks">` |
-| `lvt-submit` | Form action | `<form lvt-submit="add">` |
-| `lvt-click` | Button action | `<button lvt-click="delete">` |
-| `lvt-columns` | Column spec | `lvt-columns="name,email"` |
-| `lvt-actions` | Row buttons | `lvt-actions="edit,delete"` |
-
----
-
-## Success Metrics
-
-**Primary metric:** "Users built things we didn't anticipate."
-
-| Stage | Metric | Target |
-|-------|--------|--------|
-| **Try** | Install → first app running | < 2 min |
-| **Understand** | Can explain any example | 100% |
-| **Modify** | Successful first change | > 80% |
-| **Compose** | Combine features without docs | > 60% |
-| **Share** | App runs for others without help | 100% |
-
-**Technical quality:**
-
-| Metric | Target |
-|--------|--------|
-| Zero-config app works | 100% |
-| Hot reload latency | < 100ms |
-| Error messages suggest fix | 100% |
 
 ---
 
