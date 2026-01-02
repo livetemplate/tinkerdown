@@ -1,0 +1,8 @@
+[
+  {"id": "food", "name": "Food & Drink"},
+  {"id": "transport", "name": "Transportation"},
+  {"id": "software", "name": "Software & Subscriptions"},
+  {"id": "office", "name": "Office Supplies"},
+  {"id": "entertainment", "name": "Entertainment"},
+  {"id": "other", "name": "Other"}
+]
