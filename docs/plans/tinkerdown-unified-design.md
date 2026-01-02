@@ -75,17 +75,16 @@ But the point is: **you decide what to build**. We provide the blocks.
 
 1. [Tinkering Stories](#tinkering-stories)
 2. [Markdown-Native Design](#markdown-native-design)
-3. [The Layered Approach](#the-layered-approach)
-4. [Architecture](#architecture)
-5. [Feature Dependency Graph](#feature-dependency-graph)
-6. [Progressive Implementation Plan](#progressive-implementation-plan)
-7. [Feature Specifications](#feature-specifications)
-8. [Example Apps](#example-apps)
-9. [Security Considerations](#security-considerations)
-10. [Distribution Strategy](#distribution-strategy)
-11. [Success Metrics](#success-metrics)
-12. [Extended Roadmap (Post-v1.0)](#extended-roadmap-post-v10)
-13. [Summary](#summary)
+3. [Architecture](#architecture)
+4. [Feature Dependency Graph](#feature-dependency-graph)
+5. [Progressive Implementation Plan](#progressive-implementation-plan)
+6. [Feature Specifications](#feature-specifications)
+7. [Example Apps](#example-apps)
+8. [Security Considerations](#security-considerations)
+9. [Distribution Strategy](#distribution-strategy)
+10. [Success Metrics](#success-metrics)
+11. [Extended Roadmap (Post-v1.0)](#extended-roadmap-post-v10)
+12. [Summary](#summary)
 
 ---
 
@@ -386,75 +385,6 @@ Notify @daily:9am @weekdays
 ```
 
 > **Note:** Outputs use YAML frontmatter, not blockquotes. Blockquotes with emoji (✅, ⚠️, ❌) are status banners for display.
-
----
-
-## The Layered Approach
-
-Three layers for different complexity:
-
-> **Terminology note:** "Layers" describe the UI/templating abstraction (Markdown → YAML → HTML). "Tiers" in the Architecture section describe configuration complexity (Zero Config → Type Hints → Full SQL). These map to the same progression - Layer 1 = Tier 1, etc.
-
-### Layer 1: Pure Markdown (80% of apps)
-
-```markdown
-# Expense Tracker
-
-## Expenses
-| date | category | amount | note |
-|------|----------|--------|------|
-| 2024-01-15 | Food | $45 | Groceries |
-
-## Summary
-**Total:** `sum(expenses.amount)`
-```
-
-No YAML. No HTML. Just markdown.
-
-### Layer 2: YAML for Advanced Features
-
-```yaml
----
-sources:
-  tasks:
-    from: "#tasks"
-    types:
-      priority: select:Critical,High,Medium,Low
-      title: text
-    required: [title]
-
-outputs:
-  slack:
-    channel: "#alerts"
-    token: ${SLACK_TOKEN}
----
-```
-
-YAML only for:
-- Type hints when inference is wrong
-- External data sources (databases, REST)
-- Output configuration
-- Complex actions
-
-### Layer 3: HTML for Full Control
-
-```html
-<form lvt-submit="add" lvt-source="items">
-  <input name="title" required>
-  <button type="submit">Add</button>
-</form>
-
-{{range .items}}
-<div class="card">
-  <h3>{{.title}}</h3>
-</div>
-{{end}}
-```
-
-HTML + Go templates when you need:
-- Custom layouts
-- Complex interactions
-- Conditional rendering
 
 ---
 
@@ -871,6 +801,42 @@ CREATE TABLE tasks (
 | Foreign keys | Schema file |
 | Indexes | Schema file |
 | Complex defaults | Schema file |
+
+---
+
+#### HTML Templates (Full Control)
+
+When you need complete control over layout and interactions, use HTML with `lvt-*` attributes and Go templates:
+
+```html
+<form lvt-submit="add" lvt-source="items">
+  <input name="title" placeholder="New item" required>
+  <button type="submit">Add</button>
+</form>
+
+<div class="grid">
+  {{range .items}}
+  <div class="card">
+    <h3>{{.title}}</h3>
+    <p>Added: {{.created_at | formatDate}}</p>
+    <button lvt-click="delete" lvt-data-id="{{.id}}">Delete</button>
+  </div>
+  {{end}}
+</div>
+
+{{if eq (len .items) 0}}
+<p class="empty">No items yet. Add one above!</p>
+{{end}}
+```
+
+**Use HTML templates for:**
+- Custom card/grid layouts
+- Conditional rendering (`{{if}}`, `{{range}}`)
+- Complex multi-step forms
+- Custom styling and CSS classes
+- Integrating with external JS libraries
+
+**Progressive enhancement:** Start with pure markdown (Tier 1), add YAML when needed (Tier 2-3), drop to HTML only for specific sections that need custom rendering.
 
 ---
 
@@ -2546,9 +2512,9 @@ theme: dark
 ---
 ```
 
-### LVT Attributes (HTML Layer)
+### LVT Attributes (Tier 4: HTML Templates)
 
-For Layer 3 full control:
+For full control with HTML:
 
 | Attribute | Element | Purpose | Status |
 |-----------|---------|---------|--------|
@@ -2858,7 +2824,7 @@ auth:
 
 **Charts** - Already in Phase 6 core roadmap.
 
-> **Not adopting:** Component library (modals, toasts, accordions). These add significant complexity and are better served by the HTML layer (Layer 3) where users can use any JS library they prefer. Tinkerdown should not become a UI framework.
+> **Not adopting:** Component library (modals, toasts, accordions). These add significant complexity and are better served by Tier 4 (HTML templates) where users can use any JS library they prefer. Tinkerdown should not become a UI framework.
 
 #### Data Sources
 
@@ -2932,13 +2898,14 @@ Learnable in an afternoon. Fits on an index card:
 [Button](action:x)→ Action button
 ```
 
-### The Layers
+### The Tiers
 
-| Layer | For | Uses |
-|-------|-----|------|
-| 1 | 80% of apps | Pure markdown |
-| 2 | Advanced config | YAML frontmatter |
-| 3 | Full control | HTML + templates |
+| Tier | For | Uses |
+|------|-----|------|
+| 1 | 80% of apps | Pure markdown (zero config) |
+| 2 | Type overrides | YAML type hints |
+| 3 | External data | Databases, APIs, SQL |
+| 4 | Full control | HTML + Go templates |
 
 ### The Milestones
 
