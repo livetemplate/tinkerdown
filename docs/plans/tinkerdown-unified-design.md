@@ -1,8 +1,8 @@
 # Tinkerdown: Unified Design & Implementation Plan
 
-**Date:** 2026-01-02 (updated)
-**Version:** 2.1
-**Status:** Final Design
+**Date:** 2026-01-02
+**Version:** 3.0 - Tinkering Philosophy
+**Status:** Living Document
 
 ---
 
@@ -17,6 +17,37 @@ Tinkerdown turns markdown into apps. **If it's valid markdown, it's a working ap
 
 That's a complete app. Two lines. No YAML. No HTML. No configuration.
 
+### The Tinkering Philosophy
+
+Tinkerdown enables **tinkering** - exploration, experimentation, and discovery. The goal isn't to prescribe what you build, but to give you building blocks simple enough to understand and powerful enough to matter.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     THE TINKERING LOOP                          │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│    Wonder → Try → See → Understand → Modify → Try again         │
+│                                                                 │
+│    "What if I..."                                               │
+│         ↓                                                       │
+│    Make a small change                                          │
+│         ↓                                                       │
+│    Immediate feedback                                           │
+│         ↓                                                       │
+│    "Oh, that's how it works"                                    │
+│         ↓                                                       │
+│    "Now what if I..."                                           │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Core properties:**
+- **Learnable** - Master the grammar in an afternoon
+- **Deterministic** - What's simple for LLMs is simple for humans
+- **Composable** - Small pieces that combine without interference
+- **Recoverable** - You can always hand-edit if needed
+- **Portable** - Git-backed, grep-able, yours forever
+
 ### One Command, Three Modes
 
 ```bash
@@ -25,52 +56,119 @@ tinkerdown serve app.md --headless   # Background automation (triggers only)
 tinkerdown cli app.md <command>      # Terminal interface (no server)
 ```
 
-### The Three Pillars
+### What People Build
 
-| Pillar | What | Example |
-|--------|------|---------|
-| **Runbooks** | Incident procedures with tracking | `# DB Recovery` with steps |
-| **Productivity** | Personal/team trackers | `## Tasks` with items |
-| **Automation** | Scheduled bots, event handlers | `@daily:9am` triggers |
+People have used tinkerdown for things we didn't anticipate. Common patterns include:
 
-### Why Tinkerdown
+| Pattern | Example |
+|---------|---------|
+| **Runbooks** | Incident procedures with live system data and action buttons |
+| **Trackers** | Personal/team task lists, expense logs, inventory |
+| **Dashboards** | Database views, API monitors, system status |
+| **Bots** | Scheduled notifications, automated reports |
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    THE TINKERDOWN PROMISE                       │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  Need something?                                                │
-│       │                                                         │
-│       ▼                                                         │
-│  Ask LLM → Get markdown → tinkerdown serve → Done               │
-│                                                                 │
-│  Properties:                                                    │
-│  • Pure markdown (no HTML/YAML for 80% of apps)                 │
-│  • Schema inferred from data                                    │
-│  • Scheduling via @mentions                                     │
-│  • Throwaway-OK (cheap to create, OK to discard)                │
-│  • Data portable (git-backed, grep-able, yours forever)         │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
-```
+But the point is: **you decide what to build**. We provide the blocks.
 
 ---
 
 ## Table of Contents
 
-1. [Markdown-Native Design](#markdown-native-design)
-2. [The Layered Approach](#the-layered-approach)
-3. [Architecture](#architecture)
-4. [Feature Dependency Graph](#feature-dependency-graph)
-5. [Progressive Implementation Plan](#progressive-implementation-plan)
-6. [Feature Specifications](#feature-specifications)
-7. [Example Apps](#example-apps)
-8. [Security Considerations](#security-considerations)
-9. [Distribution Strategy](#distribution-strategy)
-10. [Success Metrics](#success-metrics)
-11. [Extended Roadmap (Post-v1.0)](#extended-roadmap-post-v10)
-12. [Summary](#summary)
+1. [Tinkering Stories](#tinkering-stories)
+2. [Markdown-Native Design](#markdown-native-design)
+3. [The Layered Approach](#the-layered-approach)
+4. [Architecture](#architecture)
+5. [Feature Dependency Graph](#feature-dependency-graph)
+6. [Progressive Implementation Plan](#progressive-implementation-plan)
+7. [Feature Specifications](#feature-specifications)
+8. [Example Apps](#example-apps)
+9. [Security Considerations](#security-considerations)
+10. [Distribution Strategy](#distribution-strategy)
+11. [Success Metrics](#success-metrics)
+12. [Extended Roadmap (Post-v1.0)](#extended-roadmap-post-v10)
+13. [Summary](#summary)
+
+---
+
+## Tinkering Stories
+
+These aren't traditional user stories ("As a [role], I want [feature]"). They're patterns of exploration that tinkerdown should enable.
+
+### Discovery Stories
+
+> **"I wonder if I can just..."**
+
+| Story | What it requires |
+|-------|------------------|
+| I can start with any markdown file I already have and see what happens | Zero barrier to start |
+| I can add one line and see it become interactive | Incremental enhancement |
+| I can look at an example, copy it, and modify it | Learn by doing |
+| I can break things without consequences - reload and I'm back | Safe experimentation |
+
+### Learning Stories
+
+> **"How does this actually work?"**
+
+| Story | What it requires |
+|-------|------------------|
+| I can read any tinkerdown app and understand what it does | Readable syntax |
+| When something doesn't work, the error tells me what right looks like | Helpful errors |
+| I can view the source of any running app | Transparency |
+| I can learn the grammar incrementally - don't need everything to start | Progressive disclosure |
+
+### Composition Stories
+
+> **"What if I combine these?"**
+
+| Story | What it requires |
+|-------|------------------|
+| I can add a second data source without breaking the first | Independent pieces |
+| I can copy a section from one app into another and it works | Self-contained blocks |
+| I can connect any action to any source - they're interchangeable | Uniform interfaces |
+| Multiple sources, actions, triggers compose without interference | No hidden coupling |
+
+### Iteration Stories
+
+> **"Let me try a different approach"**
+
+| Story | What it requires |
+|-------|------------------|
+| I change the markdown and see the result instantly | Hot reload |
+| I can try something, undo it, try something else | Fast experimentation |
+| I can start simple and add complexity piece by piece | Progressive enhancement |
+| I can rip out parts that don't work without breaking the rest | Graceful degradation |
+
+### Recovery Stories
+
+> **"Something's wrong, can I fix it?"**
+
+| Story | What it requires |
+|-------|------------------|
+| When something breaks, I can understand why | Clear error messages |
+| I can always hand-edit the markdown to fix a problem | Human-editable format |
+| A broken section doesn't take down the whole app | Fault isolation |
+| I can diff my changes and revert if needed | Version control friendly |
+
+### Sharing Stories
+
+> **"Look what I made"**
+
+| Story | What it requires |
+|-------|------------------|
+| I share my app by sharing the markdown file - nothing else needed | Self-contained |
+| Someone else can run it if they have tinkerdown - no setup | Portable |
+| I can explain how it works by showing the markdown | Self-documenting |
+| I can put it in git and collaborate | Text-based format |
+
+### Anti-Stories
+
+> **If these happen, we've failed:**
+
+- "I had to read the whole documentation before I could start"
+- "I made a small change and everything broke"
+- "I don't understand what this app does even though I'm looking at the source"
+- "I needed to set up three other things before tinkerdown would work"
+- "I can't share this because it depends on my local setup"
+- "The LLM generated this and I have no idea how to modify it"
 
 ---
 
@@ -922,33 +1020,76 @@ tinkerdown/
 | `graphql` | `https://...` | GraphQL endpoint |
 | `wasm` | `./module.wasm` | WebAssembly custom source |
 
-### Overview: 12 Weeks, 6 Phases
+### Overview: Capability Milestones
+
+Each milestone unlocks new tinkering possibilities. Ship each milestone, see what people build, learn.
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                    12-WEEK IMPLEMENTATION                       │
+│                    CAPABILITY MILESTONES                        │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
-│  PHASE 1 (Wk 1-2)    PHASE 2 (Wk 3-4)    PHASE 3 (Wk 5-6)     │
-│  Markdown-Native     Core Features       Pillar Features       │
+│  MILESTONE 1: It Works (Wk 1-2)                                 │
+│  ───────────────────────────────                                │
+│  Markdown → interactive app. Changes persist. Sources fetch.   │
 │                                                                 │
-│  • Test foundation   • Auto-timestamp    • Snapshots           │
-│  • Heading anchors   • Operator ID       • Step buttons        │
-│  • Table parsing     • Expressions       • Tabs                │
-│  • List parsing      • HTTP API          • Status banners      │
-│  • Schema inference  • CLI mode          • Action buttons      │
-│  • Auto-CRUD UI      • WS protocol tests • Source golden tests │
+│  Tinkering unlocked:                                            │
+│  • Discovery: "I can run my existing markdown"                  │
+│  • Learning: "I see how the syntax maps to UI"                  │
+│  • Iteration: "Hot reload shows my changes"                     │
 │                                                                 │
-│  PHASE 4 (Wk 7-8)    PHASE 5 (Wk 9-10)   PHASE 6 (Wk 11-12)   │
-│  Triggers/Outputs    Distribution        Polish                │
+│  MILESTONE 2: It Connects (Wk 3-4)                              │
+│  ─────────────────────────────────                              │
+│  External databases, APIs, shell commands as data sources.     │
 │                                                                 │
-│  • @schedule parse   • Build command     • Charts              │
-│  • Schedule runner   • Desktop app       • Templates           │
-│  • Webhooks          • tinkerdown.dev    • Documentation       │
-│  • Slack/Email       • CLI testscript    • Reduce browser tests│
+│  Tinkering unlocked:                                            │
+│  • Composition: "I can pull in my actual data"                  │
+│  • Discovery: "What if I connect to my database?"               │
+│                                                                 │
+│  MILESTONE 3: It Acts (Wk 5-6)                                  │
+│  ──────────────────────────────                                 │
+│  Action buttons, forms, HTTP API, CLI mode.                    │
+│                                                                 │
+│  Tinkering unlocked:                                            │
+│  • Composition: "Buttons can trigger any action"                │
+│  • Sharing: "Others can use my app via API"                     │
+│                                                                 │
+│  MILESTONE 4: It Reacts (Wk 7-8)                                │
+│  ───────────────────────────────                                │
+│  Schedules trigger, webhooks arrive, outputs notify.           │
+│                                                                 │
+│  Tinkering unlocked:                                            │
+│  • Discovery: "What if it runs automatically?"                  │
+│  • Composition: "Triggers + actions + outputs"                  │
+│                                                                 │
+│  MILESTONE 5: It Ships (Wk 9-10)                                │
+│  ────────────────────────────────                               │
+│  Build command, desktop app, distribution.                     │
+│                                                                 │
+│  Tinkering unlocked:                                            │
+│  • Sharing: "I can give this to non-developers"                 │
+│                                                                 │
+│  MILESTONE 6: It Scales (Wk 11-12)                              │
+│  ─────────────────────────────────                              │
+│  Charts, templates, documentation, polish.                     │
+│                                                                 │
+│  Tinkering unlocked:                                            │
+│  • Discovery: "What else can I visualize?"                      │
+│  • Learning: "Examples show me patterns"                        │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
+
+### Milestone → Stories Mapping
+
+| Milestone | Discovery | Learning | Composition | Iteration | Recovery | Sharing |
+|-----------|:---------:|:--------:|:-----------:|:---------:|:--------:|:-------:|
+| 1: Works | ✓ | ✓ | | ✓ | ✓ | |
+| 2: Connects | ✓ | ✓ | ✓ | ✓ | ✓ | |
+| 3: Acts | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| 4: Reacts | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| 5: Ships | | | ✓ | | | ✓ |
+| 6: Scales | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 
 ### Task Status Summary
 
@@ -2595,23 +2736,45 @@ if __name__ == "__main__":
 
 ## Success Metrics
 
-### By Pillar
+### Tinkering Health
 
-| Pillar | Metric | Target |
-|--------|--------|--------|
-| **All** | Pure markdown app works | 100% |
-| **All** | Zero-config for basic apps | Yes |
-| **Runbooks** | Time to log action | < 5 sec |
-| **Productivity** | LLM first-try success | > 90% |
-| **Automation** | Schedule reliability | 99.9% |
+The real success metric: **"Users built things we didn't anticipate."**
 
-### Adoption
+| Signal | What it means |
+|--------|---------------|
+| Unexpected use cases in issues/discussions | People are exploring |
+| Users sharing apps that surprise us | Composition is working |
+| "How do I do X?" questions (not complaints) | Curiosity, not frustration |
+| Users modifying LLM-generated apps | They understand and can tinker |
 
-| Metric | 3 months | 6 months |
-|--------|----------|----------|
-| GitHub stars | 500 | 1000 |
-| CLI installs | 200 | 500 |
-| Apps created | 1000 | 5000 |
+### Anti-Metrics
+
+| Signal | What it means |
+|--------|---------------|
+| "I can't figure out how to start" | Barrier too high |
+| "It broke and I don't know why" | Errors not helpful |
+| "I need help understanding this app" | Syntax not readable |
+| Users only using exact examples | Not feeling safe to experiment |
+
+### Tinkering Funnel
+
+| Stage | Metric | Target |
+|-------|--------|--------|
+| **Try** | Time from install to first app running | < 2 minutes |
+| **Understand** | Can read and explain any example | 100% |
+| **Modify** | Successfully make a change on first try | > 80% |
+| **Compose** | Combine two features without docs | > 60% |
+| **Share** | App runs for someone else without help | 100% |
+
+### Technical Quality
+
+| Metric | Target |
+|--------|--------|
+| Pure markdown app works (zero-config) | 100% |
+| LLM generation success rate | > 90% |
+| Error messages suggest fix | 100% |
+| Hot reload latency | < 100ms |
+| Graceful degradation (partial failure) | Yes |
 
 ---
 
@@ -2721,7 +2884,15 @@ Features beyond the core plan should be driven by observed user needs, not specu
 
 ## Summary
 
-### The Vision
+### The Philosophy
+
+**Tinkerdown enables tinkering.** We don't prescribe what you build - we give you blocks simple enough to understand and powerful enough to matter.
+
+```
+Wonder → Try → See → Understand → Modify → Try again
+```
+
+### The Promise
 
 ```markdown
 # Todo
@@ -2729,6 +2900,21 @@ Features beyond the core plan should be driven by observed user needs, not specu
 ```
 
 **Two lines. Working app. Zero configuration.**
+
+But more importantly: **you can read it, understand it, modify it, share it.**
+
+### The Grammar
+
+Learnable in an afternoon. Fits on an index card:
+
+```
+## Heading        → Data source
+- [ ] item        → Task list
+| col | col |     → Table
+`count(x)`        → Computed value
+@daily:9am        → Schedule trigger
+[Button](action:x)→ Action button
+```
 
 ### The Layers
 
@@ -2738,16 +2924,23 @@ Features beyond the core plan should be driven by observed user needs, not specu
 | 2 | Advanced config | YAML frontmatter |
 | 3 | Full control | HTML + templates |
 
-### The Pillars
+### The Milestones
 
-| Pillar | Key Feature | Complete at |
-|--------|-------------|-------------|
-| Runbooks | Snapshots, steps | Week 6 |
-| Productivity | Tabs, computed | Week 6 |
-| Automation | @triggers, outputs | Week 8 |
+| Milestone | What it unlocks |
+|-----------|----------------|
+| 1: Works | Discovery, Learning, Iteration |
+| 2: Connects | Composition with real data |
+| 3: Acts | Buttons, forms, API |
+| 4: Reacts | Automation, triggers |
+| 5: Ships | Distribution, sharing |
+| 6: Scales | Polish, examples |
+
+### The Success Metric
+
+**"Users built things we didn't anticipate."**
 
 ### Next Action
 
-**Week 1, Day 1:** Implement heading-as-anchor detection. Parse `## Tasks` and recognize the following list/table as the "tasks" source.
+Ship Milestone 1: A markdown file becomes an interactive app that persists changes.
 
-This single feature unlocks the markdown-native promise: valid markdown becomes working app.
+Enable the tinkering loop. See what people build. Learn. Iterate.
