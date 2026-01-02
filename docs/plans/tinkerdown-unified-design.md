@@ -1,7 +1,7 @@
 # Tinkerdown: Unified Design & Implementation Plan
 
-**Date:** 2025-12-31
-**Version:** 2.0
+**Date:** 2026-01-02 (updated)
+**Version:** 2.1
 **Status:** Final Design
 
 ---
@@ -20,9 +20,9 @@ That's a complete app. Two lines. No YAML. No HTML. No configuration.
 ### One Command, Three Modes
 
 ```bash
-tinkerdown serve app.md              # Interactive UI
-tinkerdown serve app.md --headless   # Background automation
-tinkerdown serve app.md --cli        # Terminal interface
+tinkerdown serve app.md              # Interactive UI (default)
+tinkerdown serve app.md --headless   # Background automation (triggers only)
+tinkerdown cli app.md <command>      # Terminal interface (no server)
 ```
 
 ### The Three Pillars
@@ -60,14 +60,17 @@ tinkerdown serve app.md --cli        # Terminal interface
 ## Table of Contents
 
 1. [Markdown-Native Design](#markdown-native-design)
-2. [Architecture](#architecture)
-3. [Feature Dependency Graph](#feature-dependency-graph)
-4. [Progressive Implementation Plan](#progressive-implementation-plan)
-5. [Feature Specifications](#feature-specifications)
-6. [Example Apps](#example-apps)
-7. [Security Considerations](#security-considerations)
-8. [Distribution Strategy](#distribution-strategy)
-9. [Extended Roadmap (Post-v1.0)](#extended-roadmap-post-v10)
+2. [The Layered Approach](#the-layered-approach)
+3. [Architecture](#architecture)
+4. [Feature Dependency Graph](#feature-dependency-graph)
+5. [Progressive Implementation Plan](#progressive-implementation-plan)
+6. [Feature Specifications](#feature-specifications)
+7. [Example Apps](#example-apps)
+8. [Security Considerations](#security-considerations)
+9. [Distribution Strategy](#distribution-strategy)
+10. [Success Metrics](#success-metrics)
+11. [Extended Roadmap (Post-v1.0)](#extended-roadmap-post-v10)
+12. [Summary](#summary)
 
 ---
 
@@ -218,13 +221,15 @@ Creates tabbed interface with automatic filtering.
 
 ### Outputs (Automation)
 
-Header block for notifications:
+YAML frontmatter for notifications (distinct from status banners):
 
 ```markdown
+---
+outputs:
+  slack: "#team-updates"
+  email: "team@company.com"
+---
 # Daily Standup Bot
-
-> Slack: #team-updates
-> Email: team@company.com
 
 ## Questions
 - What did you do yesterday?
@@ -233,11 +238,15 @@ Header block for notifications:
 Notify @daily:9am @weekdays
 ```
 
+> **Note:** Outputs use YAML frontmatter, not blockquotes. Blockquotes with emoji (✅, ⚠️, ❌) are status banners for display.
+
 ---
 
 ## The Layered Approach
 
 Three layers for different complexity:
+
+> **Terminology note:** "Layers" describe the UI/templating abstraction (Markdown → YAML → HTML). "Tiers" in the Architecture section describe configuration complexity (Zero Config → Type Hints → Full SQL). These map to the same progression - Layer 1 = Tier 1, etc.
 
 ### Layer 1: Pure Markdown (80% of apps)
 
@@ -886,7 +895,7 @@ tinkerdown/
 ├── cmd/
 │   └── tinkerdown/          # CLI entry point
 ├── internal/
-│   ├── source/              # Data sources (markdown, sqlite, rest, etc.)
+│   ├── source/              # Data sources (see list below)
 │   │   ├── source.go        # Source interface
 │   │   ├── markdown.go      # Markdown table/list source
 │   │   └── ...
@@ -898,6 +907,20 @@ tinkerdown/
 ├── web/                     # Frontend assets
 └── examples/                # Working examples
 ```
+
+**Implemented source types (9 total):**
+
+| Type | From | Description |
+|------|------|-------------|
+| `markdown` | `#heading` | Tables/lists in the .md file itself |
+| `sqlite` | `./file.db` | SQLite database file |
+| `postgres` | `postgres://...` | PostgreSQL database |
+| `json` | `./file.json` or URL | JSON file or REST endpoint |
+| `csv` | `./file.csv` | CSV file |
+| `rest` | `https://...` | REST API with headers/auth |
+| `exec` | shell command | Execute command, parse JSON output |
+| `graphql` | `https://...` | GraphQL endpoint |
+| `wasm` | `./module.wasm` | WebAssembly custom source |
 
 ### Overview: 12 Weeks, 6 Phases
 
@@ -1109,7 +1132,7 @@ After this task, all new features MUST include:
 
 **Goal:** Recognize `## Heading` as a data source anchor without explicit `#anchor` syntax.
 
-**Prerequisites:** None (first task)
+**Prerequisites:** Task 1.0 complete (testing infrastructure)
 
 **Files to read first:**
 - `internal/source/markdown.go` - Current markdown source implementation
@@ -1729,7 +1752,7 @@ go test -v -run TestWebSocketInitialState -count=10
 
 **Status:** `[ ] Not Started`
 
-**Goal:** Add golden file tests for all 8 source types.
+**Goal:** Add golden file tests for all 9 source types (see source types list above).
 
 **Prerequisites:** Task 1.0 (Testing Foundation) complete, existing source implementations
 
@@ -2255,12 +2278,13 @@ API Key                  → Definition list: {term, definition}
 ---                      → Section divider
 
 
-# OUTPUTS (in blockquotes)
+# OUTPUTS (in YAML frontmatter)
 ─────────────────────────────────────────────────────────
 
-> Slack: #channel        → Slack output
-> Email: addr@co.com     → Email output
-> Webhook: https://...   → Webhook output
+outputs:
+  slack: "#channel"      → Slack output
+  email: "addr@co.com"   → Email output
+  webhook: "https://..." → Webhook output
 
 
 # USER/TAG MENTIONS
