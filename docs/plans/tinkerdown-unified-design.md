@@ -228,6 +228,55 @@ Types inferred from data patterns, mapped to SQL types:
 - Value in every row → `NOT NULL`
 - Some rows empty → nullable (no constraint)
 
+### Auto-Generated Forms
+
+Every data collection gets an input form automatically. No HTML required.
+
+```markdown
+## Expenses
+| date | category | amount | note |
+|------|----------|--------|------|
+| 2024-01-15 | Food | $45.50 | Groceries |
+```
+
+**What you get:**
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  Add Expense                                                    │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  Date:     [📅 2024-01-16    ]  ← Date picker (from pattern)   │
+│                                                                 │
+│  Category: [▼ Food          ]  ← Dropdown (≤10 unique values)  │
+│                                                                 │
+│  Amount:   [$ 0.00          ]  ← Currency input (from $)       │
+│                                                                 │
+│  Note:     [                ]  ← Text input (default)          │
+│                                                                 │
+│            [ Add Expense ]                                      │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Form behavior:**
+- Submit adds a new row to the markdown table
+- Each row gets edit/delete actions
+- Changes persist back to the `.md` file
+- Real-time sync across browser tabs (WebSocket)
+
+**Task lists get inline editing:**
+
+```markdown
+## Tasks
+- [ ] Buy milk
+- [x] Call mom
+```
+
+- Click checkbox → toggles `[ ]` ↔ `[x]` in the file
+- Click text → inline edit
+- "Add" button → appends new `- [ ]` item
+
 ### Scheduling with @mentions
 
 Date mentions become triggers:
