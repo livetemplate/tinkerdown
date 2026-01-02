@@ -29,7 +29,7 @@ Tinkerdown is a tiered system. Start simple, add power as needed:
 | `- [ ] Task` | Interactive checkbox list |
 | `\| Table \|` | Editable data grid with auto-generated forms |
 | `[Button](action:x)` | Triggers actions |
-| `` `count(x)` `` | Computed values from your data |
+| ``=count(x)`` | Computed values from your data |
 | `@daily:9am` | Schedule triggers |
 
 **Tier 2-3: YAML Frontmatter** (external data)
@@ -127,6 +127,7 @@ The heading names the data. No anchors needed:
 ```
 
 **System infers:**
+
 - `## Tasks` → source named "tasks"
 - `## Expenses` → source named "expenses"
 - Task list → schema `{text, done}`
@@ -149,8 +150,12 @@ Types inferred from data patterns, mapped to SQL types:
 | Everything else | `TEXT` | Text input |
 
 **Validation inference (SQL constraints):**
+
 - Value in every row → `NOT NULL`
 - Some rows empty → nullable (no constraint)
+
+**Forgiving Inference:**
+If a user enters data that violates the inferred type (e.g., "1234A" in a number column), the UI will not reject it. Instead, it will offer to **"Upgrade column to Text"**, preventing data loss and frustration. Visual indicators in table headers show inferred types.
 
 ### Auto-Generated Forms
 
@@ -165,7 +170,7 @@ Every data collection gets an input form automatically. No HTML required.
 
 **What you get:**
 
-```
+```ini
 ┌─────────────────────────────────────────────────────────────────┐
 │  Add Expense                                                    │
 ├─────────────────────────────────────────────────────────────────┤
@@ -184,6 +189,7 @@ Every data collection gets an input form automatically. No HTML required.
 ```
 
 **Form behavior:**
+
 - Submit adds a new row to the markdown table
 - Each row gets edit/delete actions
 - Changes persist back to the `.md` file
@@ -201,9 +207,37 @@ Every data collection gets an input form automatically. No HTML required.
 - Click text → inline edit
 - "Add" button → appends new `- [ ]` item
 
+### Row Identification & Data Integrity
+
+To safely edit rows without requiring users to manually add IDs, Tinkerdown uses a **Hybrid Identification Strategy**:
+
+1.  **Explicit ID (Best):** If a row has `<!-- id:xyz -->`, it is used.
+2.  **Content Hash (Default):** If no ID exists, a hash of the row content is used (e.g., `hash("Buy milk")`).
+    *   *Limitation:* Duplicate rows (e.g., two "Buy milk" tasks) cannot be distinguished. The UI will warn about duplicates.
+3.  **Index (Fallback):** Never used for writes, only for display if hashing fails.
+
+**Explicit IDs are optional.** By default, the UI appends a hidden ID comment `<!-- id:xyz -->` when modifying a row to ensure future stability. However, users can disable this behavior to keep their markdown "clean", relying solely on content hashing (with the trade-off that duplicate rows cannot be distinguished).
+
+### Write-back, Conflicts, and Formatting (Normative v1)
+
+Tinkerdown treats the markdown file as the durable source of truth and writes changes back conservatively.
+
+**Write-back scope**
+- Lists: updates are line-oriented (toggle/update one list item line).
+- Tables: updates replace only the affected row line(s) and may append `<!-- id:... -->` to stabilize row identity.
+- Tinkerdown does not reflow unrelated prose or reformat entire sections.
+
+**Formatting guarantees**
+- Preserves surrounding whitespace and unrelated lines.
+- Does not guarantee markdown table column alignment (padding). If the user wants aligned tables, that is an optional formatter step (not required for correctness).
+
+**Conflict handling**
+- If the file changes on disk since it was last read, writes fail with a conflict error and a `*.conflict-<timestamp>.md` copy is created.
+- The UI should prompt the user to reload and reconcile.
+
 ### Scheduling with @mentions
 
-Date mentions become triggers:
+Date mentions can represent *due dates* on items, or *triggers* for automation (see the normative rules below).
 
 ```markdown
 ## Tasks
@@ -234,6 +268,30 @@ Date mentions become triggers:
 | `@monthly:1st` | Recurring monthly |
 | `@yearly:mar-15` | Recurring yearly |
 
+#### Scheduling & @mentions (Normative v1)
+
+This section is **normative**: implementations should match these rules.
+
+**Tokenization & scope**
+- A schedule token starts with `@` and must be preceded by start-of-line or whitespace.
+- Schedule tokens inside inline code spans, fenced code blocks, and HTML blocks are ignored.
+- Unknown `@word` tokens (e.g., `@alice`) are treated as plain text in v1 (not schedules).
+- Escape a literal schedule token with `\@` (e.g., `\@daily:9am`).
+
+**Due dates vs triggers**
+- `@...` tokens on list/table items are **metadata** (e.g., `due_at`) and do **not** execute automation.
+- Automation triggers must be explicit using an imperative line:
+  - `Notify @daily:9am @weekdays` (sends via `outputs:`)
+  - `Run action:my_action @daily:9am` (invokes an action)
+
+**Time zones & DST**
+- Default timezone is the server/process local timezone.
+- Optional override: `timezone: America/Los_Angeles` in frontmatter.
+- Recurring schedules run on local wall-clock time. If a time is skipped due to DST, run at the next valid wall-clock instant. If a time occurs twice, run once (first occurrence) unless `schedule.duplicates: allow` is explicitly set.
+
+**Parse failures**
+- If a token cannot be parsed, it is ignored and a warning is surfaced inline (never silently breaks the page).
+
 ### Computed Values
 
 Inline code with expressions:
@@ -241,21 +299,40 @@ Inline code with expressions:
 ```markdown
 ## Budget
 
-**Total Income:** `sum(income.amount)`
-**Total Expenses:** `sum(expenses.amount)`
-**Balance:** `sum(income.amount) - sum(expenses.amount)`
-**Tasks Done:** `count(tasks where done)` / `count(tasks)`
+**Total Income:** `=sum(income.amount)`
+**Total Expenses:** `=sum(expenses.amount)`
+**Balance:** `=sum(income.amount) - sum(expenses.amount)`
+**Tasks Done:** `=count(tasks where done)` / `=count(tasks)`
 ```
 
 **Expression functions:**
 
 | Function | Example |
 |----------|---------|
-| `count(source)` | `count(tasks)` |
-| `count(source where expr)` | `count(tasks where done)` |
-| `sum(source.field)` | `sum(expenses.amount)` |
-| `avg(source.field)` | `avg(scores.value)` |
-| `min/max(source.field)` | `min(tasks.due)` |
+| `=count(source)` | `=count(tasks)` |
+| `=count(source where expr)` | `=count(tasks where done)` |
+| `=sum(source.field)` | `=sum(expenses.amount)` |
+| `=avg(source.field)` | `=avg(scores.value)` |
+| `=min/max(source.field)` | `=min(tasks.due)` |
+
+**Error Visibility:**
+If an expression fails (e.g., typo in source name), it renders an **inline error** (e.g., `(Error: source 'taskss' not found)`) instead of breaking the page or showing a blank space.
+
+#### Expressions (Normative v1)
+
+To avoid ambiguity with normal markdown code spans, **only** inline code spans that start with `=` are treated as expressions.
+
+Examples:
+- Expression: `=sum(expenses.amount)`
+- Literal code: `sum(expenses.amount)`
+
+**Escaping**
+- If you need to show a literal that begins with `=`, write it as `` `\=literal` `` (renders as `\=literal`), or use fenced code blocks.
+
+**Evaluation model**
+- Expressions are read-only and cannot mutate state.
+- Expressions evaluate against the current in-memory state at render time.
+- Errors render inline (never crash the page).
 
 ### Status Banners
 
@@ -264,9 +341,9 @@ Blockquotes with emoji:
 ```markdown
 > ✅ All systems operational
 
-> ⚠️ `count(tasks where due < today and not done)` overdue
+> ⚠️ `=count(tasks where due < today and not done)` overdue
 
-> 📊 `count(deals)` active deals | `sum(deals.value)` pipeline
+> 📊 `=count(deals)` active deals | `=sum(deals.value)` pipeline
 ```
 
 ### Actions
@@ -279,6 +356,44 @@ Button links and action links:
 [Export CSV](export:csv)             → Export
 [← Back](back)                       → Navigation
 ```
+
+#### Action Model v1 (Normative)
+
+Actions are named, parameterized operations that can be invoked from **UI links**, **triggers**, **CLI**, and the **HTTP API**.
+
+**Declaration** (frontmatter)
+- Actions are declared under `actions:`.
+- If an action is invoked but not declared, it is an error (rendered inline / returned via API).
+
+```yaml
+---
+actions:
+  clear-done:
+    kind: sql
+    source: tasks
+    statement: |
+      DELETE FROM tasks WHERE done = true
+    confirm: "Clear all completed tasks?"
+
+  add-task:
+    kind: sql
+    source: tasks
+    statement: |
+      INSERT INTO tasks(text, done) VALUES (:text, false)
+    params:
+      text: { required: true }
+---
+```
+
+**Invocation**
+- Markdown links invoke actions by name: `[Clear Completed](action:clear-done)`.
+- Triggers invoke actions via imperative lines: `Run action:clear-done @daily:9am`.
+- Params come from (in priority order): explicit payload (API/CLI), UI form fields, or `params:` defaults.
+
+**Security defaults**
+- `kind: exec` is **disabled by default** and requires an explicit `--allow-exec` runtime flag.
+- All SQL statements must be parameterized (named params like `:text`).
+- Actions execute with the operator identity (`--operator`), available as `{{operator}}` for templating defaults/logging.
 
 ### Tabs and Views
 
@@ -317,7 +432,7 @@ Notify @daily:9am @weekdays
 
 ### Single Command, Multiple Modes
 
-```
+```ini
 ┌─────────────────────────────────────────────────────────────────┐
 │                      tinkerdown serve                           │
 ├─────────────────────────────────────────────────────────────────┤
@@ -329,7 +444,7 @@ Notify @daily:9am @weekdays
 │  │  ## Tasks                                                │   │
 │  │  - [ ] Example task @tomorrow                            │   │
 │  │                                                          │   │
-│  │  **Done:** `count(tasks where done)`                     │   │
+│  │  **Done:** `=count(tasks where done)`                    │   │
 │  └─────────────────────────────────────────────────────────┘   │
 │                              │                                  │
 │              ┌───────────────┼───────────────┐                 │
@@ -347,11 +462,24 @@ Notify @daily:9am @weekdays
 └─────────────────────────────────────────────────────────────────┘
 ```
 
+### Compatibility & Migration (v1)
+
+This doc introduces markdown-native sources (headings/lists/tables). The existing `lvt-source` model remains valid.
+
+**v1 compatibility goal:** support both styles in the same document:
+- Markdown-native blocks are auto-parsed into sources by heading.
+- `lvt-source` blocks reference sources defined via frontmatter or inferred from markdown-native blocks.
+
+**Migration path:**
+- Start with markdown-native Tier 1.
+- Add frontmatter `sources:` only when you need external data or overrides.
+- Use HTML templates only for custom rendering, not for basic CRUD.
+
 ### Schema & Configuration Tiers
 
 Three levels of configuration based on user needs:
 
-```
+```ini
 ┌─────────────────────────────────────────────────────────────────┐
 │                    CONFIGURATION TIERS                           │
 ├─────────────────────────────────────────────────────────────────┤
@@ -525,6 +653,9 @@ sources:
 | `write` | App → Markdown (changes written back to .md file) |
 | `both` | Bidirectional (default) |
 
+**Preservative Formatting:**
+When writing back to the markdown file, the system uses "Preservative Formatting". It respects the user's existing indentation, spacing, and alignment style. It only modifies the specific lines that changed, minimizing visual jumps and preserving the "hand-crafted" feel of the document.
+
 ---
 
 #### Tier 3: External Databases & Queries
@@ -655,14 +786,14 @@ Use full form when you need additional options (types, query, table, required, e
 
 **How it works internally:**
 
-```
+```ini
 ┌─────────────────────────────────────────────────────────────────┐
 │                    UNIFIED SQL ENGINE                            │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
 │  1. Markdown tables → loaded into in-memory SQLite              │
 │  2. External DBs → connected via drivers                        │
-│  3. Cross-source queries → federated via SQL                    │
+│  3. Cross-source queries → joined in local SQLite snapshots     │
 │                                                                 │
 │  ┌─────────────┐     ┌─────────────┐     ┌─────────────┐       │
 │  │  ## Table   │     │  SQLite     │     │  PostgreSQL │       │
@@ -674,12 +805,27 @@ Use full form when you need additional options (types, query, table, required, e
 │                       ▼                   ▼                     │
 │              ┌─────────────────────────────────┐                │
 │              │     Unified Query Layer         │                │
-│              │  (SQLite for markdown + proxy   │                │
-│              │   for external DBs)             │                │
+│              │  (SQLite for markdown + cached  │                │
+│              │   snapshots for external DBs)   │                │
 │              └─────────────────────────────────┘                │
 │                                                                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
+
+#### Cross-Source Queries (v1 constraints)
+
+To keep v1 shippable, cross-source SQL is defined as **local joins over snapshots**:
+- Each source (markdown, REST, Postgres, MySQL, SQLite) can be materialized into a local SQLite table/view.
+- `query:` sources run against the local SQLite snapshot, not as a distributed query planner.
+- External DB sources may still support **pass-through queries** (server-side filtering) when `from:` is set and the query references only that remote source.
+
+**Write rules**
+- Writes are allowed only to sources explicitly configured as writable (`sync: write|both` for markdown; explicit config for databases).
+- `query:` result sets are always read-only (no implicit `UPDATE`/`DELETE` through views).
+
+**Performance safety**
+- Every external source must have caching controls (TTL) and an optional row/byte limit for snapshotting.
+- The UI should surface when data is stale and when it will refresh.
 
 ---
 
@@ -755,6 +901,7 @@ When you need complete control over layout and interactions, use HTML with `lvt-
 ```
 
 **Use HTML templates for:**
+
 - Custom card/grid layouts
 - Conditional rendering (`{{if}}`, `{{range}}`)
 - Complex multi-step forms
@@ -767,7 +914,7 @@ When you need complete control over layout and interactions, use HTML with `lvt-
 
 ### Data Flow
 
-```
+```ini
 ┌─────────────────────────────────────────────────────────────────┐
 │                        DATA FLOW                                │
 ├─────────────────────────────────────────────────────────────────┤
@@ -793,6 +940,7 @@ When you need complete control over layout and interactions, use HTML with `lvt-
 │              │                                                  │
 │              ▼ (if sync: write | both)                          │
 │         Update markdown file                                    │
+│         (Conflict Check: Reload if file changed on disk)        │
 │                                                                 │
 │  TRIGGERS (invoke actions)                                      │
 │  ─────────────────────────                                      │
@@ -825,6 +973,17 @@ This roadmap is designed to be imported directly into a GitHub project. Each mil
 | 5 | **It Ships** | Distribution | Build command produces standalone binary |
 | 6 | **v1.0 Launch** | Polish & launch | Docs complete, examples work, release published |
 
+### Milestone Scope Guardrails (Non-goals)
+
+These are explicit **non-goals** to keep each milestone shippable.
+
+- **Milestone 1:** No external sources; no automation triggers; no custom actions; no expressions (beyond static rendering).
+- **Milestone 2:** Cross-source queries are limited to the v1 snapshot model (see Architecture); no distributed query planner; exec remains off by default.
+- **Milestone 3:** Expressions require the `=` prefix and are read-only; action invocation requires declared `actions:`; no implicit mutations from expressions.
+- **Milestone 4:** Schedules execute only from explicit imperative lines (`Notify ...`, `Run action:...`), never from due dates on items; webhook triggers must validate secrets.
+- **Milestone 5:** Packaging/distribution only (no new language features); security focuses on secret hygiene and least-privilege runtime config.
+- **Milestone 6:** Docs/examples/perf/security hardening; feature scope is frozen except for critical fixes.
+
 ---
 
 ### Milestone 1: It Works
@@ -840,11 +999,13 @@ This roadmap is designed to be imported directly into a GitHub project. Each mil
 | 1.5 | **Schema Inference** | Dates, numbers, booleans auto-detected from patterns |
 | 1.6 | **Auto-CRUD UI** | Tables get add form, task lists get checkbox toggle |
 | 1.7 | **Hot Reload** | File changes reflect in browser within 100ms |
-| 1.8 | **Example: Two-Line Todo** | `# Todo\n- [ ] task` runs as complete app |
+| 1.8 | **Row Identification** | Hybrid ID strategy (Explicit > Hash) implemented |
+| 1.9 | **Concurrency Control** | File watching detects external edits; UI prompts reload |
+| 1.10 | **Example: Two-Line Todo** | `# Todo\n- [ ] task` runs as complete app |
 
 **Security:** Input validation on all form submissions. Sanitize markdown content.
 
-**Testing:** Golden file tests for parser output. Browser test for hot reload.
+**Testing:** Golden file tests for parser output. Browser test for hot reload. Concurrency tests (write while file changes).
 
 ---
 
@@ -856,17 +1017,20 @@ This roadmap is designed to be imported directly into a GitHub project. Each mil
 |------|-------------|---------------------|
 | 2.1 | **SQLite Source** | `from: ./data.db` loads SQLite tables |
 | 2.2 | **PostgreSQL Source** | `from: postgres://...` connects and queries |
-| 2.3 | **REST Source** | `from: https://...` fetches JSON with headers/auth |
-| 2.4 | **Exec Source** | `type: exec` runs shell command, parses JSON output |
+| 2.3 | **REST Source** | `from: https://...` fetches JSON. Supports pass-through queries. |
+| 2.4 | **Exec Source** | `type: exec` runs command. **Disabled by default.** |
 | 2.5 | **Source Caching** | TTL and stale-while-revalidate work |
 | 2.6 | **Cross-Source Queries** | SQL JOINs across markdown + external sources |
 | 2.7 | **Auto-Timestamp** | `{{now}}` fills current date/time on submit |
 | 2.8 | **Operator Identity** | `--operator alice` sets `{{operator}}` |
 | 2.9 | **Example: Expense Tracker** | Markdown + SQLite source working together |
 
-**Security:** Parameterized queries only. No string interpolation in SQL. Exec sources log all commands.
+**Security:**
+-   **Exec Sources:** Disabled by default. Require `--allow-exec` flag or explicit user confirmation.
+-   **SQL:** Parameterized queries only. No string interpolation.
+-   **REST:** Clarify that SQL-over-REST fetches all data; use pass-through for server-side filtering.
 
-**Testing:** Golden tests for each source type. Integration test with test Postgres container.
+**Testing:** Golden tests for each source type. Integration test with test Postgres container. Verify exec sources fail without flag.
 
 ---
 
@@ -877,7 +1041,7 @@ This roadmap is designed to be imported directly into a GitHub project. Each mil
 | Task | Description | Acceptance Criteria |
 |------|-------------|---------------------|
 | 3.1 | **Action Buttons** | `[Button](action:name)` triggers named action |
-| 3.2 | **Computed Expressions** | `` `count(tasks where done)` `` evaluates live |
+| 3.2 | **Computed Expressions** | ``=count(tasks where done)`` evaluates live |
 | 3.3 | **Tabs & Filtering** | `## [All] \| [Active] not done` creates tabbed view |
 | 3.4 | **Status Banners** | `> ✅ text` renders as styled banner |
 | 3.5 | **HTTP API** | `GET/POST /api/sources/{name}` CRUD endpoints |
@@ -939,7 +1103,7 @@ This roadmap is designed to be imported directly into a GitHub project. Each mil
 |------|-------------|---------------------|
 | 6.1 | **User Documentation** | Getting started, syntax reference, examples |
 | 6.2 | **Template Gallery** | 7+ starter templates via `tinkerdown new` |
-| 6.3 | **Charts** | `` ```chart `` `` code blocks render visualizations |
+| 6.3 | **Charts** | ````chart` `` code blocks render visualizations |
 | 6.4 | **Example Suite** | 10+ working examples covering all features |
 | 6.5 | **Reduce Browser Tests** | Replace slow chromedp with fast protocol tests |
 | 6.6 | **Performance Baseline** | Documented latency targets met |
@@ -955,16 +1119,19 @@ This roadmap is designed to be imported directly into a GitHub project. Each mil
 > Features below are **not committed**. They represent directions to explore based on user demand.
 
 **High priority if demanded:**
+
 - WASM Source SDK (`tinkerdown wasm init`)
 - Authentication middleware (GitHub/OAuth)
 - Pagination & sorting for large datasets
 
 **Likely better solved elsewhere:**
+
 - Rate limiting → reverse proxy (nginx)
 - Complex UI components → Tier 4 HTML templates
 - New database types → WASM modules
 
 **Philosophy check before adding:**
+
 1. Does it require config? Can 80% use case work without it?
 2. Does WASM already solve this?
 3. Is this a tinkerdown feature or deployment concern?
@@ -1021,6 +1188,7 @@ Patterns of exploration that tinkerdown should enable. Not traditional user stor
 | **Sharing** | "I share my app by sharing the markdown file" | Self-contained |
 
 **Anti-patterns (if these happen, we've failed):**
+
 - "I had to read the whole documentation before I could start"
 - "I made a small change and everything broke"
 - "I don't understand what this app does even though I'm looking at the source"
