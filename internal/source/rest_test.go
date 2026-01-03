@@ -85,9 +85,23 @@ func TestNewRestSourceOptions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			src, err := NewRestSource("test", "http://localhost/api", tt.options)
+			var receivedMethod string
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				receivedMethod = r.Method
+				w.Header().Set("Content-Type", "application/json")
+				w.Write([]byte("[]"))
+			}))
+			defer server.Close()
+
+			src, err := NewRestSource("test", server.URL, tt.options)
 			require.NoError(t, err)
-			assert.Equal(t, tt.expectedMethod, src.method)
+
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+
+			_, err = src.Fetch(ctx)
+			require.NoError(t, err)
+			assert.Equal(t, tt.expectedMethod, receivedMethod)
 		})
 	}
 }
@@ -357,14 +371,30 @@ func TestRestSourceApiKey(t *testing.T) {
 }
 
 func TestRestSourceEnvVarExpansion(t *testing.T) {
-	// Set env var for test
+	// Create a test server to verify the URL is correct
+	var receivedPath string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedPath = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte("[]"))
+	}))
+	defer server.Close()
+
+	// Set env var for test using server URL
 	oldVal := os.Getenv("TEST_REST_URL")
-	os.Setenv("TEST_REST_URL", "http://example.com")
+	os.Setenv("TEST_REST_URL", server.URL)
 	defer os.Setenv("TEST_REST_URL", oldVal)
 
-	src, err := NewRestSource("test", "${TEST_REST_URL}/api", nil)
+	src, err := NewRestSource("test", "${TEST_REST_URL}/api/data", nil)
 	require.NoError(t, err)
-	assert.Equal(t, "http://example.com/api", src.url)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	_, err = src.Fetch(ctx)
+	require.NoError(t, err)
+	// Verify the path portion was correctly expanded
+	assert.Equal(t, "/api/data", receivedPath)
 }
 
 func TestRestSourceClose(t *testing.T) {

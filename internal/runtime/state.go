@@ -129,7 +129,11 @@ func createSource(name string, cfg config.SourceConfig, siteDir, currentFile str
 	switch cfg.Type {
 	case "exec":
 		if !config.IsExecAllowed() {
-			return nil, fmt.Errorf("source %q: exec sources are disabled by default for security. Use --allow-exec flag to enable", name)
+			return nil, &source.ValidationError{
+				Source: name,
+				Field:  "type",
+				Reason: "exec sources are disabled by default for security. Use --allow-exec flag to enable.",
+			}
 		}
 		return source.NewExecSource(name, cfg.Cmd, siteDir)
 	case "pg":

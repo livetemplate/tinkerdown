@@ -43,16 +43,16 @@ func TestGetOperatorEmpty(t *testing.T) {
 }
 
 func TestExecAllowedDefault(t *testing.T) {
-	// Reset state
-	globalRuntime.allowExec = false
+	// Reset state using the proper setter to avoid race conditions
+	SetAllowExec(false)
 
 	// By default, exec should NOT be allowed
 	assert.False(t, IsExecAllowed())
 }
 
 func TestSetAllowExec(t *testing.T) {
-	// Reset state
-	globalRuntime.allowExec = false
+	// Reset state using the proper setter to avoid race conditions
+	SetAllowExec(false)
 
 	// Enable exec
 	SetAllowExec(true)
