@@ -7,11 +7,6 @@ sources:
     db: "./expenses.db"
     table: expenses
     readonly: false
-  categories:
-    type: sqlite
-    db: "./expenses.db"
-    table: categories
-    readonly: true
 ---
 
 # Expense Tracker
@@ -117,7 +112,6 @@ This example demonstrates:
 - **Add Action**: Form submission creates new expense records
 - **Delete Action**: Remove expenses with a single click
 - **Refresh Action**: Reload data from the database
-- **Template Functions**: Formatting amounts with `printf`
 
 ## Getting Started
 

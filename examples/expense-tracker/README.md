@@ -85,5 +85,5 @@ Then in your form, use a hidden field with `{{.operator}}` to auto-fill the crea
 ## Technical Notes
 
 - Data is ordered by `created_at DESC` (newest first)
-- Amount formatting uses Go's `printf "%.2f"` for currency display
+- Amounts are displayed as stored in SQLite (no additional formatting applied)
 - The database file is created in the same directory as `index.md`

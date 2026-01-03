@@ -1,7 +1,7 @@
 package runtime
 
 import (
-	"strings"
+	"fmt"
 	"testing"
 	"time"
 
@@ -48,18 +48,17 @@ func TestResolveUnix(t *testing.T) {
 	// The result is a string representation of the unix timestamp
 	assert.NotEmpty(t, result)
 
-	// Parse the unix timestamp from the result
+	// Parse the unix timestamp string to int64 and verify it's within range
+	resultStr, ok := result.(string)
+	require.True(t, ok, "result should be a string")
+
 	var unix int64
-	_, parseErr := strings.NewReader(result.(string)).Read(make([]byte, 0))
-	assert.NoError(t, parseErr)
+	_, parseErr := fmt.Sscanf(resultStr, "%d", &unix)
+	require.NoError(t, parseErr, "should parse unix timestamp as int64")
 
 	// The unix value should be between before and after
-	// Since it's now a string in the template output, just verify it's not empty
-	// and contains reasonable digits
-	_ = unix
-	_ = before
-	_ = after
-	assert.True(t, len(result.(string)) > 5, "unix timestamp should be several digits")
+	assert.GreaterOrEqual(t, unix, before, "unix timestamp should be >= before")
+	assert.LessOrEqual(t, unix, after, "unix timestamp should be <= after")
 }
 
 func TestResolveOperator(t *testing.T) {
