@@ -44,6 +44,9 @@ type SourceConfig struct {
 	Readonly    *bool                  `yaml:"readonly,omitempty"`     // For markdown/sqlite: read-only mode (default: true, set to false for writes)
 	Options     map[string]string      `yaml:"options,omitempty"`      // Type-specific options (also used for wasm init config)
 	Manual      bool                   `yaml:"manual,omitempty"`       // For exec: require Run button click
+	Format      string                 `yaml:"format,omitempty"`       // For exec: output format (json, lines, csv). Default: json
+	Delimiter   string                 `yaml:"delimiter,omitempty"`    // For exec CSV: field delimiter. Default: ","
+	Env         map[string]string      `yaml:"env,omitempty"`          // For exec: environment variables (env vars expanded)
 	Timeout     string                 `yaml:"timeout,omitempty"`      // Request timeout (e.g., "30s", "1m"). Default: 10s
 	Retry       *RetryConfig           `yaml:"retry,omitempty"`        // Retry configuration
 	Cache       *CacheConfig           `yaml:"cache,omitempty"`        // Cache configuration

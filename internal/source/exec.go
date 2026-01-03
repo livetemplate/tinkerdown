@@ -1,31 +1,87 @@
 package source
 
 import (
+	"bytes"
 	"context"
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
+	"io"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/livetemplate/tinkerdown/internal/config"
 )
 
-// ExecSource runs a command and parses JSON output as data
+// ExecSource runs a command and parses output as data
 type ExecSource struct {
-	name    string
-	cmd     string
-	siteDir string
+	name      string
+	cmd       string
+	siteDir   string
+	format    string            // "json" (default), "lines", "csv"
+	delimiter string            // for csv format, default ","
+	env       map[string]string // environment variables (already expanded)
+	timeout   time.Duration     // command timeout (default 30s)
 }
 
-// NewExecSource creates a new exec source
+// NewExecSource creates a new exec source (legacy constructor for backwards compatibility)
 func NewExecSource(name, cmd, siteDir string) (*ExecSource, error) {
 	if cmd == "" {
 		return nil, fmt.Errorf("exec source %q: cmd is required", name)
 	}
 	return &ExecSource{
-		name:    name,
-		cmd:     cmd,
-		siteDir: siteDir,
+		name:      name,
+		cmd:       cmd,
+		siteDir:   siteDir,
+		format:    "json",
+		delimiter: ",",
+		timeout:   30 * time.Second,
+	}, nil
+}
+
+// NewExecSourceWithConfig creates a new exec source from config
+func NewExecSourceWithConfig(name string, cfg config.SourceConfig, siteDir string) (*ExecSource, error) {
+	if cfg.Cmd == "" {
+		return nil, fmt.Errorf("exec source %q: cmd is required", name)
+	}
+
+	// Default format to json
+	format := cfg.Format
+	if format == "" {
+		format = "json"
+	}
+
+	// Default delimiter to comma
+	delimiter := cfg.Delimiter
+	if delimiter == "" {
+		delimiter = ","
+	}
+
+	// Default timeout to 30s, but allow config override
+	timeout := 30 * time.Second
+	if cfg.Timeout != "" {
+		if d, err := time.ParseDuration(cfg.Timeout); err == nil {
+			timeout = d
+		}
+	}
+
+	// Expand environment variables in env map
+	env := make(map[string]string)
+	for k, v := range cfg.Env {
+		env[k] = os.ExpandEnv(v)
+	}
+
+	return &ExecSource{
+		name:      name,
+		cmd:       cfg.Cmd,
+		siteDir:   siteDir,
+		format:    format,
+		delimiter: delimiter,
+		env:       env,
+		timeout:   timeout,
 	}, nil
 }
 
@@ -34,7 +90,7 @@ func (s *ExecSource) Name() string {
 	return s.name
 }
 
-// Fetch executes the command and parses JSON output
+// Fetch executes the command and parses output according to format
 func (s *ExecSource) Fetch(ctx context.Context) ([]map[string]interface{}, error) {
 	// Parse command - split by spaces (simple parsing)
 	parts := strings.Fields(s.cmd)
@@ -46,11 +102,21 @@ func (s *ExecSource) Fetch(ctx context.Context) ([]map[string]interface{}, error
 	args := parts[1:]
 
 	// Create command with context and timeout
-	cmdCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	timeout := s.timeout
+	if timeout == 0 {
+		timeout = 30 * time.Second
+	}
+	cmdCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	cmd := exec.CommandContext(cmdCtx, cmdName, args...)
 	cmd.Dir = s.siteDir
+
+	// Set environment: inherit current + add custom
+	cmd.Env = os.Environ()
+	for k, v := range s.env {
+		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
+	}
 
 	// Execute and capture output
 	output, err := cmd.Output()
@@ -62,8 +128,89 @@ func (s *ExecSource) Fetch(ctx context.Context) ([]map[string]interface{}, error
 		return nil, fmt.Errorf("exec source %q: %w", s.name, err)
 	}
 
-	// Parse JSON output
-	return s.parseJSON(output)
+	// Parse output according to format
+	return s.parseOutput(output)
+}
+
+// parseOutput dispatches to the appropriate parser based on format
+func (s *ExecSource) parseOutput(output []byte) ([]map[string]interface{}, error) {
+	switch s.format {
+	case "lines":
+		return s.parseLines(output)
+	case "csv":
+		return s.parseCSV(output)
+	default: // "json" or empty
+		return s.parseJSON(output)
+	}
+}
+
+// parseLines parses output as plain text lines
+func (s *ExecSource) parseLines(data []byte) ([]map[string]interface{}, error) {
+	content := strings.TrimSpace(string(data))
+	if content == "" {
+		return []map[string]interface{}{}, nil
+	}
+
+	lines := strings.Split(content, "\n")
+	results := make([]map[string]interface{}, 0, len(lines))
+
+	for i, line := range lines {
+		if line == "" {
+			continue
+		}
+		results = append(results, map[string]interface{}{
+			"line":  line,
+			"index": i,
+		})
+	}
+
+	return results, nil
+}
+
+// parseCSV parses output as CSV with first row as headers
+func (s *ExecSource) parseCSV(data []byte) ([]map[string]interface{}, error) {
+	content := strings.TrimSpace(string(data))
+	if content == "" {
+		return []map[string]interface{}{}, nil
+	}
+
+	reader := csv.NewReader(bytes.NewReader([]byte(content)))
+
+	// Set delimiter (must be a single rune)
+	if len(s.delimiter) > 0 {
+		reader.Comma = rune(s.delimiter[0])
+	}
+
+	// Read header row
+	headers, err := reader.Read()
+	if err != nil {
+		if err == io.EOF {
+			return []map[string]interface{}{}, nil
+		}
+		return nil, fmt.Errorf("exec source %q: failed to read CSV headers: %w", s.name, err)
+	}
+
+	// Read data rows
+	var results []map[string]interface{}
+	for {
+		record, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("exec source %q: failed to read CSV row: %w", s.name, err)
+		}
+
+		row := make(map[string]interface{})
+		for i, header := range headers {
+			if i < len(record) {
+				row[header] = record[i]
+			}
+		}
+		results = append(results, row)
+	}
+
+	return results, nil
 }
 
 // parseJSON handles both array and object JSON responses

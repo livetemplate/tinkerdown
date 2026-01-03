@@ -33,7 +33,10 @@ type SourceConfig struct {
 	ResultPath  string            `yaml:"result_path,omitempty"`  // For rest: dot-path to extract array (e.g., "data.items")
 	Readonly    *bool             `yaml:"readonly,omitempty"`     // For markdown/sqlite: read-only mode (default: true)
 	Options     map[string]string `yaml:"options,omitempty"`
-	Manual      bool              `yaml:"manual,omitempty"` // For exec: require Run button click
+	Manual      bool              `yaml:"manual,omitempty"`      // For exec: require Run button click
+	Format      string            `yaml:"format,omitempty"`      // For exec: output format (json, lines, csv)
+	Delimiter   string            `yaml:"delimiter,omitempty"`   // For exec CSV: field delimiter (default ",")
+	Env         map[string]string `yaml:"env,omitempty"`         // For exec: environment variables (env vars expanded)
 }
 
 // StylingConfig represents styling/theme configuration.
