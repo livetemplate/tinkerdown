@@ -150,7 +150,7 @@ func createSource(name string, cfg config.SourceConfig, siteDir, currentFile str
 				Reason: "exec sources are disabled by default for security. Use --allow-exec flag to enable.",
 			}
 		}
-		return NewExecSource(name, cfg.Cmd, siteDir)
+		return NewExecSourceWithConfig(name, cfg, siteDir)
 	case "pg":
 		return NewPostgresSourceWithConfig(name, cfg.Query, cfg.Options, cfg)
 	case "rest":
