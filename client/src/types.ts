@@ -21,11 +21,20 @@ export interface ExecMeta {
   command?: string;
 }
 
+export interface CacheMeta {
+  cached: boolean;
+  age?: string;
+  expires_in?: string;
+  stale: boolean;
+  refreshing: boolean;
+}
+
 export interface MessageEnvelope {
   blockID: string;
   action: string;
   data: any;
   execMeta?: ExecMeta;
+  cacheMeta?: CacheMeta;
 }
 
 export interface TinkerdownClientOptions {

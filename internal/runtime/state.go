@@ -11,6 +11,7 @@ import (
 
 	"github.com/livetemplate/components/datatable"
 
+	"github.com/livetemplate/tinkerdown/internal/cache"
 	"github.com/livetemplate/tinkerdown/internal/config"
 	"github.com/livetemplate/tinkerdown/internal/source"
 	"github.com/livetemplate/tinkerdown/internal/wasm"
@@ -34,6 +35,9 @@ type GenericState struct {
 
 	// Datatable field - used when source is rendered in a table element
 	Table *datatable.DataTable `json:"table,omitempty"`
+
+	// Cache metadata for UI display
+	CacheInfo *cache.CacheInfo `json:"cache_info,omitempty"`
 
 	// Exec-specific fields
 	Output     string   `json:"output,omitempty"`
@@ -358,6 +362,11 @@ func (s *GenericState) refresh() error {
 
 	s.Data = data
 	s.Error = ""
+
+	// Populate CacheInfo if source supports it
+	if provider, ok := s.source.(source.CacheInfoProvider); ok {
+		s.CacheInfo = provider.GetCacheInfo()
+	}
 
 	// Build DataTable if this is a table element
 	if s.elementType == "table" {
