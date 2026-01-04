@@ -27,6 +27,10 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
+// ExpressionsBlockID is the special block ID used for routing expression update messages.
+// This must match the value expected by the client-side MessageRouter.
+const ExpressionsBlockID = "__expressions__"
+
 // MessageEnvelope represents a multiplexed WebSocket message.
 type MessageEnvelope struct {
 	BlockID   string          `json:"blockID"`
@@ -670,7 +674,7 @@ func (h *WebSocketHandler) evaluateAndSendExpressions(conn *websocket.Conn) {
 	}
 
 	response := MessageEnvelope{
-		BlockID: "__expressions__", // Special block ID for expressions
+		BlockID: ExpressionsBlockID, // Special block ID for expressions
 		Action:  "expr-update",
 		Data:    json.RawMessage(exprData),
 	}

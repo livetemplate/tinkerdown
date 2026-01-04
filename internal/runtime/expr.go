@@ -1,6 +1,30 @@
 // Package runtime provides expression evaluation for computed expressions.
 // Expressions are inline code spans starting with = that evaluate against source data.
 // Example: `=count(tasks where done)` evaluates the count of done tasks.
+//
+// # Security Considerations
+//
+// Expression evaluation operates on data from configured sources (lvt-source).
+// This has security implications that developers should be aware of:
+//
+//   - Source Access: Expressions can access any data exposed by sources defined
+//     in the page frontmatter or site config. Ensure sources only expose data
+//     appropriate for the page's audience.
+//
+//   - No Code Execution: Expressions use a restricted DSL (count, sum, avg, min, max)
+//     with where clauses. They cannot execute arbitrary code or access system resources.
+//
+//   - Error Messages: Parse and evaluation errors are returned to the client and
+//     displayed in the UI. Error messages should not leak sensitive information.
+//     The escapeAttr function sanitizes error text for safe HTML attribute rendering.
+//
+//   - Field Access: The case-insensitive field matching (getFieldValue) allows
+//     accessing fields regardless of casing. This is intentional for usability
+//     but means field names are not access-controlled within a source.
+//
+//   - No Injection: The expression parser validates syntax before evaluation.
+//     Source names and field names must match alphanumeric patterns, preventing
+//     injection attacks through expression strings.
 package runtime
 
 import (

@@ -5,6 +5,9 @@
 import { MessageEnvelope, ExecMeta, CacheMeta } from "../types";
 import "./expressions.css";
 
+/** Special block ID for routing expression update messages from the server. */
+const EXPRESSIONS_BLOCK_ID = "__expressions__";
+
 export type MessageHandler = (action: string, data: any, execMeta?: ExecMeta, cacheMeta?: CacheMeta) => void;
 
 export class MessageRouter {
@@ -55,7 +58,7 @@ export class MessageRouter {
       }
 
       // Handle expression updates (special blockID)
-      if (blockID === "__expressions__" && action === "expr-update") {
+      if (blockID === EXPRESSIONS_BLOCK_ID && action === "expr-update") {
         this.handleExpressionUpdate(data);
         return;
       }
@@ -133,13 +136,29 @@ export class MessageRouter {
   }
 
   /**
-   * Format an expression value for display
+   * Format an expression value for display.
+   * Handles various types safely with proper type guards.
    */
-  private formatExprValue(value: any): string {
+  private formatExprValue(value: unknown): string {
+    // Null/undefined
     if (value === null || value === undefined) {
       return "–"; // En-dash for null/undefined
     }
+
+    // Boolean
+    if (typeof value === "boolean") {
+      return value ? "✓" : "✗";
+    }
+
+    // Number
     if (typeof value === "number") {
+      // Handle special numeric values
+      if (Number.isNaN(value)) {
+        return "NaN";
+      }
+      if (!Number.isFinite(value)) {
+        return value > 0 ? "∞" : "-∞";
+      }
       // Format numbers nicely
       if (Number.isInteger(value)) {
         return value.toLocaleString();
@@ -150,6 +169,33 @@ export class MessageRouter {
         maximumFractionDigits: 2,
       });
     }
+
+    // String
+    if (typeof value === "string") {
+      return value;
+    }
+
+    // Array - show count or comma-separated if short
+    if (Array.isArray(value)) {
+      if (value.length === 0) {
+        return "[]";
+      }
+      if (value.length <= 3) {
+        return value.map((v) => this.formatExprValue(v)).join(", ");
+      }
+      return `[${value.length} items]`;
+    }
+
+    // Object - show as JSON or summary
+    if (typeof value === "object") {
+      const keys = Object.keys(value);
+      if (keys.length === 0) {
+        return "{}";
+      }
+      return `{${keys.length} fields}`;
+    }
+
+    // Fallback for any other type (symbol, bigint, function)
     return String(value);
   }
 

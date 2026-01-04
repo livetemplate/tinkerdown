@@ -866,3 +866,38 @@ title: "Expression Test"
 		t.Error("HTML does not contain data-expr-id")
 	}
 }
+
+func TestParseMarkdownWithEscapedExpression(t *testing.T) {
+	// Test that escaped expressions (prefixed with backslash) render as literal text
+	// Markdown: `\=count(tasks)` should become <code>=count(tasks)</code> (literal, not evaluated)
+	content := `---
+title: "Escaped Expression Test"
+---
+
+# Documentation
+
+To show an expression literally, use: ` + "`\\=count(tasks)`" + `
+
+This is a real expression: ` + "`=count(items)`" + `
+`
+
+	fm, _, html, err := ParseMarkdown([]byte(content))
+	if err != nil {
+		t.Fatalf("ParseMarkdown failed: %v", err)
+	}
+
+	// Only one expression should be extracted (the real one, not the escaped one)
+	if len(fm.Expressions) != 1 {
+		t.Errorf("got %d expressions, want 1 (escaped should not be counted)", len(fm.Expressions))
+	}
+
+	// The escaped expression should appear as literal text with the = sign
+	if !strings.Contains(html, `<code>=count(tasks)</code>`) {
+		t.Errorf("escaped expression should render as literal <code>=count(tasks)</code>\ngot: %s", html)
+	}
+
+	// The real expression should be converted to a span placeholder
+	if !strings.Contains(html, `data-expr="count(items)"`) {
+		t.Error("real expression should be converted to placeholder span")
+	}
+}
