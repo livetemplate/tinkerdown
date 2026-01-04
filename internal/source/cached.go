@@ -248,22 +248,43 @@ func (s *CachedWritableSource) IsReadonly() bool {
 }
 
 // truncateToMaxBytes removes rows from the end until data fits within maxBytes
+// Uses binary search to minimize JSON marshal operations (O(log n) instead of O(n²))
 func truncateToMaxBytes(data []map[string]interface{}, maxBytes int) []map[string]interface{} {
-	for len(data) > 0 {
-		size := estimateSize(data)
-		if size <= maxBytes {
-			return data
-		}
-		// Remove last row
-		data = data[:len(data)-1]
+	// If everything fits, return as-is
+	if len(data) == 0 || estimateSize(data) <= maxBytes {
+		return data
 	}
-	return data
+
+	// Binary search for the largest prefix that fits within maxBytes
+	low, high := 1, len(data)
+	best := 0
+
+	for low <= high {
+		mid := (low + high) / 2
+		size := estimateSize(data[:mid])
+
+		if size <= maxBytes {
+			best = mid
+			low = mid + 1
+		} else {
+			high = mid - 1
+		}
+	}
+
+	// If even a single row does not fit, return an empty slice
+	if best == 0 {
+		return data[:0]
+	}
+
+	return data[:best]
 }
 
 // estimateSize returns the approximate JSON-serialized size of the data in bytes
 func estimateSize(data []map[string]interface{}) int {
 	b, err := json.Marshal(data)
 	if err != nil {
+		// Log error as it could indicate data serialization issues affecting cache storage
+		log.Printf("[cache] estimateSize marshal error: %v", err)
 		return 0
 	}
 	return len(b)
