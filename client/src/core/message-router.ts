@@ -3,6 +3,7 @@
  */
 
 import { MessageEnvelope, ExecMeta, CacheMeta } from "../types";
+import "./expressions.css";
 
 export type MessageHandler = (action: string, data: any, execMeta?: ExecMeta, cacheMeta?: CacheMeta) => void;
 
@@ -53,6 +54,12 @@ export class MessageRouter {
         return;
       }
 
+      // Handle expression updates (special blockID)
+      if (blockID === "__expressions__" && action === "expr-update") {
+        this.handleExpressionUpdate(data);
+        return;
+      }
+
       if (!blockID) {
         console.error("[MessageRouter] Message missing blockID:", envelope);
         return;
@@ -72,6 +79,78 @@ export class MessageRouter {
     } catch (error) {
       console.error("[MessageRouter] Error routing message:", error);
     }
+  }
+
+  /**
+   * Handle expression update message from server
+   * Updates all expression placeholders in the DOM with computed values
+   */
+  private handleExpressionUpdate(data: Record<string, any>): void {
+    if (this.debug) {
+      console.log("[MessageRouter] Expression update received:", data);
+    }
+
+    // Update each expression in the DOM
+    for (const [exprId, value] of Object.entries(data)) {
+      const exprEl = document.querySelector(
+        `.tinkerdown-expr[data-expr-id="${exprId}"]`
+      );
+      if (!exprEl) {
+        if (this.debug) {
+          console.warn(`[MessageRouter] Expression element not found: ${exprId}`);
+        }
+        continue;
+      }
+
+      // Clear existing content
+      while (exprEl.firstChild) {
+        exprEl.removeChild(exprEl.firstChild);
+      }
+
+      // Check if there's an error
+      if (value && typeof value === "object" && "error" in value) {
+        const errorSpan = document.createElement("span");
+        errorSpan.className = "expr-error";
+        errorSpan.title = String(value.error);
+        errorSpan.textContent = "⚠";
+        exprEl.appendChild(errorSpan);
+        exprEl.classList.add("has-error");
+        exprEl.classList.remove("has-value");
+      } else {
+        // Format the value for display
+        const displayValue = this.formatExprValue(value);
+        const valueSpan = document.createElement("span");
+        valueSpan.className = "expr-value";
+        valueSpan.textContent = displayValue;
+        exprEl.appendChild(valueSpan);
+        exprEl.classList.add("has-value");
+        exprEl.classList.remove("has-error");
+      }
+
+      // Remove loading class
+      exprEl.classList.remove("loading");
+    }
+  }
+
+  /**
+   * Format an expression value for display
+   */
+  private formatExprValue(value: any): string {
+    if (value === null || value === undefined) {
+      return "–"; // En-dash for null/undefined
+    }
+    if (typeof value === "number") {
+      // Format numbers nicely
+      if (Number.isInteger(value)) {
+        return value.toLocaleString();
+      }
+      // Round to 2 decimal places for floats
+      return value.toLocaleString(undefined, {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 2,
+      });
+    }
+    return String(value);
   }
 
   /**

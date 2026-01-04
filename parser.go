@@ -97,6 +97,10 @@ type Frontmatter struct {
 	Styling  *StylingConfig          `yaml:"styling,omitempty"`
 	Blocks   *BlocksConfig           `yaml:"blocks,omitempty"`
 	Features *FeaturesConfig         `yaml:"features,omitempty"`
+
+	// Computed expressions found in the markdown content (populated during parsing)
+	// Map of expression ID to expression string (e.g., "expr-1" -> "count(tasks where done)")
+	Expressions map[string]string `yaml:"-"`
 }
 
 // CodeBlock represents a code block extracted from markdown.
@@ -167,6 +171,12 @@ func ParseMarkdown(content []byte) (*Frontmatter, []*CodeBlock, string, error) {
 	// Post-process HTML to add data attributes to livemdtools blocks
 	html := htmlBuf.String()
 	html = injectBlockAttributes(html, codeBlocks, frontmatter.Sources)
+
+	// Process computed expressions (`=expr` code spans)
+	html, expressions := processExpressions(html)
+	if len(expressions) > 0 {
+		frontmatter.Expressions = expressions
+	}
 
 	return frontmatter, codeBlocks, html, nil
 }
@@ -329,6 +339,79 @@ func containsFlag(flags []string, flag string) bool {
 // escapeHTML escapes HTML special characters.
 func escapeHTML(s string) string {
 	return html.EscapeString(s)
+}
+
+// exprCodePattern matches inline code spans: <code>...</code>
+// We look for <code> tags containing content starting with =
+var exprCodePattern = regexp.MustCompile(`<code>([^<]+)</code>`)
+
+// escapedExprPattern matches literal escaped expressions: `\=...`
+// These should NOT be treated as expressions
+var escapedExprPattern = regexp.MustCompile(`<code>\\=([^<]+)</code>`)
+
+// processExpressions scans HTML for expression code spans (`=expr`) and replaces
+// them with span placeholders that will be evaluated at runtime.
+// Returns the modified HTML and a map of expression ID to expression string.
+func processExpressions(htmlStr string) (string, map[string]string) {
+	expressions := make(map[string]string)
+	exprCounter := 0
+
+	// First, temporarily protect escaped expressions
+	// Replace `\=something` with a placeholder
+	escapedPlaceholders := make(map[string]string)
+	htmlStr = escapedExprPattern.ReplaceAllStringFunc(htmlStr, func(match string) string {
+		// Extract the content after \=
+		submatch := escapedExprPattern.FindStringSubmatch(match)
+		if len(submatch) < 2 {
+			return match
+		}
+		placeholder := fmt.Sprintf("__ESCAPED_EXPR_%d__", len(escapedPlaceholders))
+		// Store the original content (without the backslash)
+		escapedPlaceholders[placeholder] = fmt.Sprintf("<code>=%s</code>", submatch[1])
+		return placeholder
+	})
+
+	// Now process actual expressions
+	htmlStr = exprCodePattern.ReplaceAllStringFunc(htmlStr, func(match string) string {
+		submatch := exprCodePattern.FindStringSubmatch(match)
+		if len(submatch) < 2 {
+			return match
+		}
+
+		content := submatch[1]
+
+		// Check if this is an expression (starts with =)
+		if !strings.HasPrefix(content, "=") {
+			return match // Not an expression, leave as-is
+		}
+
+		// Extract the expression (remove leading =)
+		expr := strings.TrimPrefix(content, "=")
+		if expr == "" {
+			return match // Empty expression, leave as-is
+		}
+
+		// Generate unique ID
+		id := fmt.Sprintf("expr-%d", exprCounter)
+		exprCounter++
+
+		// Store the expression
+		expressions[id] = expr
+
+		// Return a span placeholder that will be filled at runtime
+		return fmt.Sprintf(
+			`<span class="tinkerdown-expr" data-expr-id="%s" data-expr="%s"><span class="expr-loading">…</span></span>`,
+			id,
+			html.EscapeString(expr),
+		)
+	})
+
+	// Restore escaped expressions (now shown as literal `=something`)
+	for placeholder, original := range escapedPlaceholders {
+		htmlStr = strings.ReplaceAll(htmlStr, placeholder, original)
+	}
+
+	return htmlStr, expressions
 }
 
 // parseCodeBlock parses a fenced code block and extracts livemdtools metadata.
@@ -548,6 +631,12 @@ func ParseMarkdownWithPartials(content []byte, baseDir string) (*Frontmatter, []
 	// Post-process HTML to add data attributes
 	htmlStr := htmlBuf.String()
 	htmlStr = injectBlockAttributes(htmlStr, codeBlocks, frontmatter.Sources)
+
+	// Process computed expressions (`=expr` code spans)
+	htmlStr, expressions := processExpressions(htmlStr)
+	if len(expressions) > 0 {
+		frontmatter.Expressions = expressions
+	}
 
 	return frontmatter, codeBlocks, htmlStr, nil
 }

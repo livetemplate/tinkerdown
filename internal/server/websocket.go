@@ -344,123 +344,141 @@ func (h *WebSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // initializeInstances creates LiveTemplate instances for each interactive block.
 func (h *WebSocketHandler) initializeInstances(conn *websocket.Conn) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
+	// Create instances under lock
+	var instances []*BlockInstance
+	func() {
+		h.mu.Lock()
+		defer h.mu.Unlock()
 
-	for blockID, block := range h.page.InteractiveBlocks {
-		// Get the state from the server block it references
-		stateBlock, ok := h.page.ServerBlocks[block.StateRef]
-		if !ok {
-			log.Printf("[WS] Interactive block %s references unknown state %s", blockID, block.StateRef)
-			continue
+		for blockID, block := range h.page.InteractiveBlocks {
+			// Get the state from the server block it references
+			stateBlock, ok := h.page.ServerBlocks[block.StateRef]
+			if !ok {
+				log.Printf("[WS] Interactive block %s references unknown state %s", blockID, block.StateRef)
+				continue
+			}
+
+			// Get the compiled state factory
+			factory, ok := h.stateFactories[block.StateRef]
+			if !ok {
+				log.Printf("[WS] No compiled factory for state %s", block.StateRef)
+				continue
+			}
+
+			// Create state instance using the compiled factory
+			state := factory()
+
+			// Create template from inline content
+			// Since livetemplate.New() requires template files, we use a workaround:
+			// Write content to a temp file, parse it, then delete
+			tmpFile := fmt.Sprintf("/tmp/lvt-%s.tmpl", blockID)
+			if h.debug {
+				log.Printf("[WS] Block %s template content:\n%s", blockID, block.Content)
+			}
+			if err := os.WriteFile(tmpFile, []byte(block.Content), 0644); err != nil {
+				log.Printf("[WS] Failed to write temp template for block %s: %v", blockID, err)
+				continue
+			}
+			defer os.Remove(tmpFile)
+
+			tmpl, err := livetemplate.New(blockID,
+				livetemplate.WithComponentTemplates(getComponentTemplates()...),
+				livetemplate.WithParseFiles(tmpFile))
+			if err != nil {
+				log.Printf("[WS] Failed to create template for block %s: %v", blockID, err)
+				continue
+			}
+
+			// Register component-specific template functions for tree generation
+			// These are needed because WithComponentTemplates adds funcs to t.tmpl but not t.funcs
+			tmpl.Funcs(getComponentFuncs())
+
+			instance := &BlockInstance{
+				blockID:  blockID,
+				state:    state,
+				template: tmpl,
+				conn:     conn,
+			}
+
+			h.instances[blockID] = instance
+			instances = append(instances, instance)
+
+			if h.debug {
+				log.Printf("[WS] Initialized block: %s (state ref: %s)", blockID, block.StateRef)
+			}
+
+			_ = stateBlock // Mark as used
 		}
+	}()
 
-		// Get the compiled state factory
-		factory, ok := h.stateFactories[block.StateRef]
-		if !ok {
-			log.Printf("[WS] No compiled factory for state %s", block.StateRef)
-			continue
-		}
-
-		// Create state instance using the compiled factory
-		state := factory()
-
-		// Create template from inline content
-		// Since livetemplate.New() requires template files, we use a workaround:
-		// Write content to a temp file, parse it, then delete
-		tmpFile := fmt.Sprintf("/tmp/lvt-%s.tmpl", blockID)
-		if h.debug {
-			log.Printf("[WS] Block %s template content:\n%s", blockID, block.Content)
-		}
-		if err := os.WriteFile(tmpFile, []byte(block.Content), 0644); err != nil {
-			log.Printf("[WS] Failed to write temp template for block %s: %v", blockID, err)
-			continue
-		}
-		defer os.Remove(tmpFile)
-
-		tmpl, err := livetemplate.New(blockID,
-			livetemplate.WithComponentTemplates(getComponentTemplates()...),
-			livetemplate.WithParseFiles(tmpFile))
-		if err != nil {
-			log.Printf("[WS] Failed to create template for block %s: %v", blockID, err)
-			continue
-		}
-
-		// Register component-specific template functions for tree generation
-		// These are needed because WithComponentTemplates adds funcs to t.tmpl but not t.funcs
-		tmpl.Funcs(getComponentFuncs())
-
-		instance := &BlockInstance{
-			blockID:  blockID,
-			state:    state,
-			template: tmpl,
-			conn:     conn,
-		}
-
-		h.instances[blockID] = instance
-
-		// Send initial state
+	// Send initial states (outside the h.mu lock)
+	for _, instance := range instances {
 		h.sendInitialState(instance)
-
-		if h.debug {
-			log.Printf("[WS] Initialized block: %s (state ref: %s)", blockID, block.StateRef)
-		}
-
-		_ = stateBlock // Mark as used
 	}
+
+	// Evaluate and send expression updates once after all blocks are initialized
+	h.evaluateAndSendExpressions(conn)
 }
 
 // sendInitialState sends the initial tree update to the client.
 func (h *WebSocketHandler) sendInitialState(instance *BlockInstance) {
-	instance.mu.Lock()
-	defer instance.mu.Unlock()
+	// Get state data and render under instance lock
+	var response MessageEnvelope
+	func() {
+		instance.mu.Lock()
+		defer instance.mu.Unlock()
 
-	// Get state data for rendering
-	var stateData interface{}
+		// Get state data for rendering
+		var stateData interface{}
 
-	// Check if this is an RPC adapter with GetStateAsInterface method
-	type StateGetter interface {
-		GetStateAsInterface() (interface{}, error)
-	}
+		// Check if this is an RPC adapter with GetStateAsInterface method
+		type StateGetter interface {
+			GetStateAsInterface() (interface{}, error)
+		}
 
-	if getter, ok := instance.state.(StateGetter); ok {
-		// RPC plugin - fetch state via RPC
-		var err error
-		stateData, err = getter.GetStateAsInterface()
-		if err != nil {
-			log.Printf("[WS] Failed to get state for %s: %v", instance.blockID, err)
+		if getter, ok := instance.state.(StateGetter); ok {
+			// RPC plugin - fetch state via RPC
+			var err error
+			stateData, err = getter.GetStateAsInterface()
+			if err != nil {
+				log.Printf("[WS] Failed to get state for %s: %v", instance.blockID, err)
+				return
+			}
+			// Hydrate datatable structs so template methods work
+			stateData = hydrateDataTableState(stateData)
+			if h.debug {
+				log.Printf("[WS] RPC state for %s: %+v (type: %T)", instance.blockID, stateData, stateData)
+			}
+		} else {
+			// Regular in-process state
+			stateData = instance.state
+			if h.debug {
+				log.Printf("[WS] Direct state for %s: %+v (type: %T)", instance.blockID, stateData, stateData)
+			}
+		}
+
+		// Render tree update using ExecuteUpdates (follows LiveTemplate tree-update specification)
+		var buf bytes.Buffer
+		if err := instance.template.ExecuteUpdates(&buf, stateData); err != nil {
+			log.Printf("[WS] Failed to render initial state for %s: %v", instance.blockID, err)
 			return
 		}
-		// Hydrate datatable structs so template methods work
-		stateData = hydrateDataTableState(stateData)
-		if h.debug {
-			log.Printf("[WS] RPC state for %s: %+v (type: %T)", instance.blockID, stateData, stateData)
+
+		// The buffer contains the tree JSON directly
+		response = MessageEnvelope{
+			BlockID:   instance.blockID,
+			Action:    "tree",
+			Data:      json.RawMessage(buf.Bytes()),
+			ExecMeta:  extractExecMeta(stateData),
+			CacheMeta: extractCacheMeta(stateData),
 		}
-	} else {
-		// Regular in-process state
-		stateData = instance.state
-		if h.debug {
-			log.Printf("[WS] Direct state for %s: %+v (type: %T)", instance.blockID, stateData, stateData)
-		}
-	}
+	}()
 
-	// Render tree update using ExecuteUpdates (follows LiveTemplate tree-update specification)
-	var buf bytes.Buffer
-	if err := instance.template.ExecuteUpdates(&buf, stateData); err != nil {
-		log.Printf("[WS] Failed to render initial state for %s: %v", instance.blockID, err)
-		return
+	// Send tree update (outside the instance lock)
+	if response.BlockID != "" {
+		h.sendMessage(instance.conn, response)
 	}
-
-	// The buffer contains the tree JSON directly
-	response := MessageEnvelope{
-		BlockID:   instance.blockID,
-		Action:    "tree",
-		Data:      json.RawMessage(buf.Bytes()),
-		ExecMeta:  extractExecMeta(stateData),
-		CacheMeta: extractCacheMeta(stateData),
-	}
-
-	h.sendMessage(instance.conn, response)
+	// Note: Expression updates are sent by initializeInstances after all blocks are initialized
 }
 
 // handleMessage routes incoming messages to the appropriate block instance.
@@ -519,50 +537,60 @@ func (h *WebSocketHandler) handleAction(instance *BlockInstance, action string, 
 
 // sendUpdate re-renders the state and sends a tree update to the client.
 func (h *WebSocketHandler) sendUpdate(instance *BlockInstance) {
-	instance.mu.Lock()
-	defer instance.mu.Unlock()
+	// Get state data and render under instance lock
+	var response MessageEnvelope
+	func() {
+		instance.mu.Lock()
+		defer instance.mu.Unlock()
 
-	// Get state data for rendering
-	var stateData interface{}
+		// Get state data for rendering
+		var stateData interface{}
 
-	// Check if this is an RPC adapter with GetStateAsInterface method
-	type StateGetter interface {
-		GetStateAsInterface() (interface{}, error)
-	}
+		// Check if this is an RPC adapter with GetStateAsInterface method
+		type StateGetter interface {
+			GetStateAsInterface() (interface{}, error)
+		}
 
-	if getter, ok := instance.state.(StateGetter); ok {
-		// RPC plugin - fetch state via RPC
-		var err error
-		stateData, err = getter.GetStateAsInterface()
-		if err != nil {
-			log.Printf("[WS] Failed to get state for %s: %v", instance.blockID, err)
+		if getter, ok := instance.state.(StateGetter); ok {
+			// RPC plugin - fetch state via RPC
+			var err error
+			stateData, err = getter.GetStateAsInterface()
+			if err != nil {
+				log.Printf("[WS] Failed to get state for %s: %v", instance.blockID, err)
+				return
+			}
+			// Hydrate datatable structs so template methods work
+			stateData = hydrateDataTableState(stateData)
+		} else {
+			// Regular in-process state
+			stateData = instance.state
+		}
+
+		// Render tree update using ExecuteUpdates (follows LiveTemplate tree-update specification)
+		// ExecuteUpdates returns only changed dynamics after the first render
+		var buf bytes.Buffer
+		if err := instance.template.ExecuteUpdates(&buf, stateData); err != nil {
+			log.Printf("[WS] Failed to render update for %s: %v", instance.blockID, err)
 			return
 		}
-		// Hydrate datatable structs so template methods work
-		stateData = hydrateDataTableState(stateData)
-	} else {
-		// Regular in-process state
-		stateData = instance.state
+
+		// The buffer contains the tree JSON directly
+		response = MessageEnvelope{
+			BlockID:   instance.blockID,
+			Action:    "tree",
+			Data:      json.RawMessage(buf.Bytes()),
+			ExecMeta:  extractExecMeta(stateData),
+			CacheMeta: extractCacheMeta(stateData),
+		}
+	}()
+
+	// Send tree update (outside the instance lock)
+	if response.BlockID != "" {
+		h.sendMessage(instance.conn, response)
 	}
 
-	// Render tree update using ExecuteUpdates (follows LiveTemplate tree-update specification)
-	// ExecuteUpdates returns only changed dynamics after the first render
-	var buf bytes.Buffer
-	if err := instance.template.ExecuteUpdates(&buf, stateData); err != nil {
-		log.Printf("[WS] Failed to render update for %s: %v", instance.blockID, err)
-		return
-	}
-
-	// The buffer contains the tree JSON directly
-	response := MessageEnvelope{
-		BlockID:   instance.blockID,
-		Action:    "tree",
-		Data:      json.RawMessage(buf.Bytes()),
-		ExecMeta:  extractExecMeta(stateData),
-		CacheMeta: extractCacheMeta(stateData),
-	}
-
-	h.sendMessage(instance.conn, response)
+	// Evaluate and send expression updates (outside the instance lock)
+	h.evaluateAndSendExpressions(instance.conn)
 }
 
 // sendMessage sends a message envelope over WebSocket.
@@ -581,6 +609,166 @@ func (h *WebSocketHandler) sendMessage(conn *websocket.Conn, envelope MessageEnv
 	if h.debug {
 		log.Printf("[WS] Sent: %s", data)
 	}
+}
+
+// evaluateAndSendExpressions evaluates all page expressions and sends updates to the client.
+// This should be called after any block state update.
+func (h *WebSocketHandler) evaluateAndSendExpressions(conn *websocket.Conn) {
+	if h.page.Expressions == nil || len(h.page.Expressions) == 0 {
+		if h.debug {
+			log.Printf("[WS] No expressions to evaluate (expressions=%v)", h.page.Expressions)
+		}
+		return
+	}
+
+	if h.debug {
+		log.Printf("[WS] Evaluating %d expressions: %v", len(h.page.Expressions), h.page.Expressions)
+	}
+
+	// Build evaluation context from all block instances
+	ctx := h.buildEvalContext()
+
+	if h.debug {
+		log.Printf("[WS] Eval context sources: %v", getSourceNames(ctx))
+	}
+
+	// Evaluate all expressions
+	results := runtime.EvaluateExpressions(h.page.Expressions, ctx)
+
+	if h.debug {
+		log.Printf("[WS] Expression evaluation returned %d results", len(results))
+		for id, result := range results {
+			if result.Error != "" {
+				log.Printf("[WS] Expression %s error: %s", id, result.Error)
+			} else {
+				log.Printf("[WS] Expression %s = %v", id, result.Value)
+			}
+		}
+	}
+
+	// Build the expression values map
+	exprValues := make(map[string]interface{})
+	for id, result := range results {
+		if result.Error != "" {
+			exprValues[id] = map[string]interface{}{
+				"error": result.Error,
+			}
+		} else {
+			exprValues[id] = result.Value
+		}
+	}
+
+	// Send expression update message
+	exprData, err := json.Marshal(exprValues)
+	if err != nil {
+		log.Printf("[WS] Failed to marshal expression results: %v", err)
+		return
+	}
+
+	if h.debug {
+		log.Printf("[WS] Sending expression update: %s", string(exprData))
+	}
+
+	response := MessageEnvelope{
+		BlockID: "__expressions__", // Special block ID for expressions
+		Action:  "expr-update",
+		Data:    json.RawMessage(exprData),
+	}
+
+	h.sendMessage(conn, response)
+
+	if h.debug {
+		log.Printf("[WS] Expression update sent successfully")
+	}
+}
+
+// buildEvalContext builds an evaluation context from all block instances.
+// It collects Data from each block's state and maps it by source name.
+func (h *WebSocketHandler) buildEvalContext() *runtime.EvalContext {
+	ctx := runtime.NewEvalContext()
+
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	// Iterate through interactive blocks (which have instances) and get source names
+	// from the server blocks they reference
+	for blockID, interactiveBlock := range h.page.InteractiveBlocks {
+		// Get the instance for this interactive block
+		instance, ok := h.instances[blockID]
+		if !ok {
+			continue
+		}
+
+		// Get the server block this interactive block references
+		serverBlock, ok := h.page.ServerBlocks[interactiveBlock.StateRef]
+		if !ok {
+			continue
+		}
+
+		// Get state data
+		var stateData interface{}
+		type StateGetter interface {
+			GetStateAsInterface() (interface{}, error)
+		}
+
+		instance.mu.Lock()
+		if getter, ok := instance.state.(StateGetter); ok {
+			var err error
+			stateData, err = getter.GetStateAsInterface()
+			if err != nil {
+				instance.mu.Unlock()
+				continue
+			}
+		} else {
+			stateData = instance.state
+		}
+		instance.mu.Unlock()
+
+		// Extract source name from server block metadata
+		sourceName := ""
+		if serverBlock.Metadata != nil {
+			if sn, ok := serverBlock.Metadata["lvt-source"]; ok {
+				sourceName = sn
+			}
+		}
+
+		// If no source name in metadata, use the StateRef as fallback
+		if sourceName == "" {
+			sourceName = interactiveBlock.StateRef
+		}
+
+		// Extract Data array from state
+		if stateMap, ok := stateData.(map[string]interface{}); ok {
+			// Try lowercase "data" first, then titlecase "Data"
+			if data, ok := stateMap["data"].([]interface{}); ok {
+				ctx.Sources[sourceName] = convertToMapSlice(data)
+			} else if data, ok := stateMap["Data"].([]interface{}); ok {
+				ctx.Sources[sourceName] = convertToMapSlice(data)
+			}
+		}
+	}
+
+	return ctx
+}
+
+// convertToMapSlice converts a []interface{} to []map[string]interface{}
+func convertToMapSlice(data []interface{}) []map[string]interface{} {
+	result := make([]map[string]interface{}, 0, len(data))
+	for _, item := range data {
+		if m, ok := item.(map[string]interface{}); ok {
+			result = append(result, m)
+		}
+	}
+	return result
+}
+
+// getSourceNames returns the names of sources in an eval context (for debugging)
+func getSourceNames(ctx *runtime.EvalContext) []string {
+	names := make([]string, 0, len(ctx.Sources))
+	for name := range ctx.Sources {
+		names = append(names, name)
+	}
+	return names
 }
 
 // extractExecMeta extracts exec state metadata from a state object.
