@@ -465,10 +465,8 @@ func processTabbedHeadings(htmlStr string) string {
 		tabsCounter++
 
 		// Extract existing id from heading if present
-		headingID := ""
 		if idMatch := headingIDPattern.FindStringSubmatch(attrs); len(idMatch) > 1 {
-			headingID = idMatch[1]
-			tabsID = headingID + "-tabs"
+			tabsID = idMatch[1] + "-tabs"
 		}
 
 		// Build the tab bar HTML
