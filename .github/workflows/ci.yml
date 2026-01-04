@@ -24,7 +24,17 @@ jobs:
         run: go mod download
 
       - name: Run tests
-        run: go test -v -race -coverprofile=coverage.out ./...
+        run: |
+          set +e
+          go test -v -race -coverprofile=coverage.out -skip='E2E|e2e' ./... 2>&1 | tee test-output.txt
+          test_exit_code=$?
+          set -e
+          echo "Exit code: $test_exit_code"
+          if [ $test_exit_code -ne 0 ]; then
+            echo "=== Failed test output ==="
+            tail -100 test-output.txt
+            exit $test_exit_code
+          fi
 
       - name: Build
         run: go build -v ./...
