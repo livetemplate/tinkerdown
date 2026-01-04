@@ -1,0 +1,56 @@
+/**
+ * Cache indicator styles for cached source blocks
+ *
+ * Data attributes applied by interactive-block.ts:
+ * - data-cache-stale="true" - Data is stale but still usable
+ * - data-cache-refreshing="true" - Background refresh in progress
+ * - data-cache-cached="true" - Data was served from cache
+ * - data-cache-age="2m30s" - How old the cached data is
+ * - data-cache-expires-in="4m15s" - Time until expiry
+ */
+
+/* Container with cache indicator */
+[data-cache-stale="true"] {
+  position: relative;
+}
+
+/* Stale indicator badge */
+[data-cache-stale="true"]::before {
+  content: "⟳ Refreshing...";
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  font-size: 0.75rem;
+  color: #666;
+  background: rgba(240, 240, 240, 0.95);
+  padding: 2px 8px;
+  border-radius: 4px;
+  z-index: 10;
+  pointer-events: none;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+/* Pulse animation for refreshing state */
+[data-cache-refreshing="true"]::before {
+  animation: cache-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes cache-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* Dim content slightly when stale */
+[data-cache-stale="true"] > [data-interactive-content] {
+  opacity: 0.85;
+  transition: opacity 0.2s ease;
+}
+
+/* Restore full opacity when fresh */
+[data-cache-cached="true"]:not([data-cache-stale="true"]) > [data-interactive-content] {
+  opacity: 1;
+}

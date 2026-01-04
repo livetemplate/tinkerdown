@@ -61,8 +61,10 @@ type RetryConfig struct {
 
 // CacheConfig configures caching behavior for a source
 type CacheConfig struct {
-	TTL      string `yaml:"ttl,omitempty"`      // Cache TTL (e.g., "5m", "1h"). Default: disabled (empty)
-	Strategy string `yaml:"strategy,omitempty"` // Cache strategy: "simple" or "stale-while-revalidate". Default: "simple"
+	TTL      string `yaml:"ttl,omitempty"`       // Cache TTL (e.g., "5m", "1h"). Default: disabled (empty)
+	Strategy string `yaml:"strategy,omitempty"`  // Cache strategy: "simple" or "stale-while-revalidate". Default: "simple"
+	MaxRows  int    `yaml:"max_rows,omitempty"`  // Maximum rows to cache (truncates if exceeded). Default: unlimited
+	MaxBytes int    `yaml:"max_bytes,omitempty"` // Maximum bytes to cache (truncates if exceeded). Default: unlimited
 }
 
 // IsReadonly returns true if the source is read-only (default: true for markdown sources)
@@ -148,6 +150,22 @@ func (c SourceConfig) GetCacheStrategy() string {
 // IsStaleWhileRevalidate returns true if using stale-while-revalidate strategy
 func (c SourceConfig) IsStaleWhileRevalidate() bool {
 	return c.GetCacheStrategy() == "stale-while-revalidate"
+}
+
+// GetCacheMaxRows returns the max rows limit (0 = unlimited)
+func (c SourceConfig) GetCacheMaxRows() int {
+	if c.Cache == nil {
+		return 0
+	}
+	return c.Cache.MaxRows
+}
+
+// GetCacheMaxBytes returns the max bytes limit (0 = unlimited)
+func (c SourceConfig) GetCacheMaxBytes() int {
+	if c.Cache == nil {
+		return 0
+	}
+	return c.Cache.MaxBytes
 }
 
 // Action defines a custom action that can be triggered via lvt-click

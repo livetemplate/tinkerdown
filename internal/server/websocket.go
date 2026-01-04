@@ -29,10 +29,11 @@ var upgrader = websocket.Upgrader{
 
 // MessageEnvelope represents a multiplexed WebSocket message.
 type MessageEnvelope struct {
-	BlockID  string          `json:"blockID"`
-	Action   string          `json:"action"`
-	Data     json.RawMessage `json:"data"`
-	ExecMeta *ExecMeta       `json:"execMeta,omitempty"` // Optional exec source metadata
+	BlockID   string          `json:"blockID"`
+	Action    string          `json:"action"`
+	Data      json.RawMessage `json:"data"`
+	ExecMeta  *ExecMeta       `json:"execMeta,omitempty"`  // Optional exec source metadata
+	CacheMeta *CacheMeta      `json:"cacheMeta,omitempty"` // Optional cache metadata
 }
 
 // ExecMeta contains execution state for exec source blocks
@@ -42,6 +43,15 @@ type ExecMeta struct {
 	Output   string `json:"output,omitempty"`
 	Stderr   string `json:"stderr,omitempty"`
 	Command  string `json:"command,omitempty"`
+}
+
+// CacheMeta contains cache state for cached source blocks
+type CacheMeta struct {
+	Cached     bool   `json:"cached"`
+	Age        string `json:"age,omitempty"`
+	ExpiresIn  string `json:"expires_in,omitempty"`
+	Stale      bool   `json:"stale"`
+	Refreshing bool   `json:"refreshing"`
 }
 
 // WebSocketHandler handles WebSocket connections for interactive blocks.
@@ -443,10 +453,11 @@ func (h *WebSocketHandler) sendInitialState(instance *BlockInstance) {
 
 	// The buffer contains the tree JSON directly
 	response := MessageEnvelope{
-		BlockID:  instance.blockID,
-		Action:   "tree",
-		Data:     json.RawMessage(buf.Bytes()),
-		ExecMeta: extractExecMeta(stateData),
+		BlockID:   instance.blockID,
+		Action:    "tree",
+		Data:      json.RawMessage(buf.Bytes()),
+		ExecMeta:  extractExecMeta(stateData),
+		CacheMeta: extractCacheMeta(stateData),
 	}
 
 	h.sendMessage(instance.conn, response)
@@ -544,10 +555,11 @@ func (h *WebSocketHandler) sendUpdate(instance *BlockInstance) {
 
 	// The buffer contains the tree JSON directly
 	response := MessageEnvelope{
-		BlockID:  instance.blockID,
-		Action:   "tree",
-		Data:     json.RawMessage(buf.Bytes()),
-		ExecMeta: extractExecMeta(stateData),
+		BlockID:   instance.blockID,
+		Action:    "tree",
+		Data:      json.RawMessage(buf.Bytes()),
+		ExecMeta:  extractExecMeta(stateData),
+		CacheMeta: extractCacheMeta(stateData),
 	}
 
 	h.sendMessage(instance.conn, response)
@@ -608,6 +620,51 @@ func extractExecMeta(stateData interface{}) *ExecMeta {
 
 	if command, ok := stateMap["Command"].(string); ok {
 		meta.Command = command
+	}
+
+	return meta
+}
+
+// extractCacheMeta extracts cache state metadata from a state object.
+// Returns nil if the state doesn't contain cache metadata (CacheInfo field).
+func extractCacheMeta(stateData interface{}) *CacheMeta {
+	stateMap, ok := stateData.(map[string]interface{})
+	if !ok {
+		return nil
+	}
+
+	// Check if this state has cache metadata by looking for CacheInfo or cache_info field
+	var cacheInfo map[string]interface{}
+	if ci, ok := stateMap["CacheInfo"].(map[string]interface{}); ok {
+		cacheInfo = ci
+	} else if ci, ok := stateMap["cache_info"].(map[string]interface{}); ok {
+		cacheInfo = ci
+	}
+
+	if cacheInfo == nil {
+		return nil
+	}
+
+	meta := &CacheMeta{}
+
+	if cached, ok := cacheInfo["cached"].(bool); ok {
+		meta.Cached = cached
+	}
+
+	if age, ok := cacheInfo["age"].(string); ok {
+		meta.Age = age
+	}
+
+	if expiresIn, ok := cacheInfo["expires_in"].(string); ok {
+		meta.ExpiresIn = expiresIn
+	}
+
+	if stale, ok := cacheInfo["stale"].(bool); ok {
+		meta.Stale = stale
+	}
+
+	if refreshing, ok := cacheInfo["refreshing"].(bool); ok {
+		meta.Refreshing = refreshing
 	}
 
 	return meta

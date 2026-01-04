@@ -265,8 +265,8 @@ export class TinkerdownClient {
     block.initialize();
 
     // Register with router (for message handling)
-    this.router.register(metadata.id, (action, data, execMeta) => {
-      block.handleMessage(action, data, execMeta);
+    this.router.register(metadata.id, (action, data, execMeta, cacheMeta) => {
+      block.handleMessage(action, data, execMeta, cacheMeta);
     });
 
     // Store block reference

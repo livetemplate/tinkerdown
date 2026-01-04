@@ -4,9 +4,10 @@
 
 import { LiveTemplateClient, checkLvtConfirm, extractLvtData } from "@livetemplate/client";
 import { BaseBlock } from "./base-block";
-import { BlockConfig, ExecMeta } from "../types";
+import { BlockConfig, ExecMeta, CacheMeta } from "../types";
 import { PersistenceManager } from "../core/persistence-manager";
 import "./exec-toolbar.css";
+import "./cache-indicator.css";
 
 export class InteractiveBlock extends BaseBlock {
   private client: LiveTemplateClient | null = null;
@@ -77,7 +78,7 @@ export class InteractiveBlock extends BaseBlock {
     }
   }
 
-  handleMessage(action: string, data: any, execMeta?: ExecMeta): void {
+  handleMessage(action: string, data: any, execMeta?: ExecMeta, cacheMeta?: CacheMeta): void {
     this.log("Received message:", action, data);
 
     switch (action) {
@@ -86,6 +87,11 @@ export class InteractiveBlock extends BaseBlock {
         if (data && this.containerElement && this.client) {
           this.client.updateDOM(this.containerElement, data);
           this.log("DOM updated with tree");
+
+          // Update cache indicator attributes
+          if (cacheMeta) {
+            this.updateCacheAttributes(cacheMeta);
+          }
 
           // Update exec toolbar if present and we have exec metadata
           if (this.execToolbar && execMeta) {
@@ -364,6 +370,42 @@ export class InteractiveBlock extends BaseBlock {
     }
 
     this.log("Exec toolbar updated:", status, execMeta.duration);
+  }
+
+  /**
+   * Update cache indicator data attributes on the block element
+   */
+  private updateCacheAttributes(cacheMeta: CacheMeta): void {
+    if (!this.element) return;
+
+    // Set data-cache-* attributes for CSS styling
+    if (cacheMeta.stale) {
+      this.element.dataset.cacheStale = "true";
+    } else {
+      delete this.element.dataset.cacheStale;
+    }
+
+    if (cacheMeta.refreshing) {
+      this.element.dataset.cacheRefreshing = "true";
+    } else {
+      delete this.element.dataset.cacheRefreshing;
+    }
+
+    if (cacheMeta.cached) {
+      this.element.dataset.cacheCached = "true";
+      if (cacheMeta.age) {
+        this.element.dataset.cacheAge = cacheMeta.age;
+      }
+      if (cacheMeta.expires_in) {
+        this.element.dataset.cacheExpiresIn = cacheMeta.expires_in;
+      }
+    } else {
+      delete this.element.dataset.cacheCached;
+      delete this.element.dataset.cacheAge;
+      delete this.element.dataset.cacheExpiresIn;
+    }
+
+    this.log("Cache attributes updated:", cacheMeta);
   }
 
   /**

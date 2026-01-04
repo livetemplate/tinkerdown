@@ -25,6 +25,15 @@ func (e *Entry) IsStale() bool {
 	return now.After(e.StaleAt) && now.Before(e.ExpiresAt)
 }
 
+// CacheInfo provides cache metadata for UI display
+type CacheInfo struct {
+	Cached     bool   `json:"cached"`      // Whether data came from cache
+	Age        string `json:"age"`         // How old the cached data is (e.g., "2m30s")
+	ExpiresIn  string `json:"expires_in"`  // Time until expiry (e.g., "4m15s")
+	Stale      bool   `json:"stale"`       // Whether data is stale (but still usable)
+	Refreshing bool   `json:"refreshing"`  // Whether background refresh is in progress
+}
+
 // Cache defines the interface for source caching
 type Cache interface {
 	// Get retrieves data from the cache

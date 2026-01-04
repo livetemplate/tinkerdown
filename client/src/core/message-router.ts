@@ -2,9 +2,9 @@
  * MessageRouter - Multiplexes WebSocket messages by blockID
  */
 
-import { MessageEnvelope, ExecMeta } from "../types";
+import { MessageEnvelope, ExecMeta, CacheMeta } from "../types";
 
-export type MessageHandler = (action: string, data: any, execMeta?: ExecMeta) => void;
+export type MessageHandler = (action: string, data: any, execMeta?: ExecMeta, cacheMeta?: CacheMeta) => void;
 
 export class MessageRouter {
   private handlers: Map<string, MessageHandler> = new Map();
@@ -45,7 +45,7 @@ export class MessageRouter {
       const envelope: MessageEnvelope =
         typeof message === "string" ? JSON.parse(message) : message;
 
-      const { blockID, action, data, execMeta } = envelope;
+      const { blockID, action, data, execMeta, cacheMeta } = envelope;
 
       // Handle reload action (special case - no blockID)
       if (action === "reload") {
@@ -68,7 +68,7 @@ export class MessageRouter {
         console.log(`[MessageRouter] Routing to ${blockID}:`, { action, data });
       }
 
-      handler(action, data, execMeta);
+      handler(action, data, execMeta, cacheMeta);
     } catch (error) {
       console.error("[MessageRouter] Error routing message:", error);
     }
