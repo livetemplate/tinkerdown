@@ -1,0 +1,143 @@
+/**
+ * Tinkerdown Tabs Styles
+ *
+ * Styles for tabbed headings with filtering support.
+ * Syntax: ## [All] | [Active] not done | [Done] done
+ */
+
+/* Container for the entire tabs component */
+.tinkerdown-tabs {
+  margin: 1.5rem 0 1rem;
+}
+
+/* The heading that contains the tab bar */
+.tinkerdown-tabs-heading {
+  display: flex;
+  align-items: center;
+  margin-bottom: 0;
+  border-bottom: 2px solid var(--border-color, #e0e0e0);
+  padding-bottom: 0;
+}
+
+/* Tab bar container */
+.tinkerdown-tabs-bar {
+  display: flex;
+  gap: 0;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.tinkerdown-tabs-bar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Individual tab buttons */
+.tinkerdown-tab {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.5rem 1rem;
+  font-size: inherit;
+  font-weight: 500;
+  font-family: inherit;
+  color: var(--text-secondary, #666);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.15s ease, border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.tinkerdown-tab:hover {
+  color: var(--text-primary, #333);
+  background-color: var(--hover-bg, rgba(0, 0, 0, 0.03));
+}
+
+.tinkerdown-tab:focus-visible {
+  outline: 2px solid var(--accent, #0066cc);
+  outline-offset: -2px;
+}
+
+.tinkerdown-tab.active {
+  color: var(--accent, #0066cc);
+  border-bottom-color: var(--accent, #0066cc);
+}
+
+/* Content panel below the tabs */
+.tinkerdown-tabs-content {
+  padding-top: 1rem;
+}
+
+/* Animation for content transitions */
+.tinkerdown-tabs-content > * {
+  animation: tabContentFadeIn 0.2s ease-out;
+}
+
+@keyframes tabContentFadeIn {
+  from {
+    opacity: 0.8;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Dark theme support */
+[data-theme="dark"] .tinkerdown-tabs-heading {
+  border-bottom-color: var(--border-color, #444);
+}
+
+[data-theme="dark"] .tinkerdown-tab {
+  color: var(--text-secondary, #aaa);
+}
+
+[data-theme="dark"] .tinkerdown-tab:hover {
+  color: var(--text-primary, #eee);
+  background-color: var(--hover-bg, rgba(255, 255, 255, 0.05));
+}
+
+[data-theme="dark"] .tinkerdown-tab.active {
+  color: var(--accent, #4da6ff);
+  border-bottom-color: var(--accent, #4da6ff);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .tinkerdown-tabs-bar {
+    gap: 0;
+  }
+
+  .tinkerdown-tab {
+    padding: 0.4rem 0.75rem;
+    font-size: 0.9em;
+  }
+}
+
+/* Badge support for tab counts (optional future feature) */
+.tinkerdown-tab-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.25rem;
+  height: 1.25rem;
+  padding: 0 0.35rem;
+  margin-left: 0.5rem;
+  font-size: 0.75em;
+  font-weight: 600;
+  color: var(--text-secondary, #666);
+  background: var(--badge-bg, rgba(0, 0, 0, 0.08));
+  border-radius: 9999px;
+}
+
+.tinkerdown-tab.active .tinkerdown-tab-badge {
+  color: white;
+  background: var(--accent, #0066cc);
+}
+
+[data-theme="dark"] .tinkerdown-tab-badge {
+  background: var(--badge-bg, rgba(255, 255, 255, 0.1));
+}

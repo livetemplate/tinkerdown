@@ -6,6 +6,7 @@ import { setupReactiveAttributeListeners } from "@livetemplate/client";
 import { TinkerdownClientOptions, BlockConfig, BlockMetadata, MessageEnvelope } from "./types";
 import { MessageRouter } from "./core/message-router";
 import { PersistenceManager } from "./core/persistence-manager";
+import { TabsController } from "./core/tabs";
 import { BaseBlock } from "./blocks/base-block";
 import { ServerBlock } from "./blocks/server-block";
 import { InteractiveBlock } from "./blocks/interactive-block";
@@ -15,6 +16,7 @@ export class TinkerdownClient {
   private options: TinkerdownClientOptions;
   private router: MessageRouter;
   private persistence: PersistenceManager;
+  private tabs: TabsController | null = null;
   private blocks: Map<string, BaseBlock> = new Map();
   private ws: WebSocket | null = null;
   private reconnectTimer: number | null = null;
@@ -156,6 +158,12 @@ export class TinkerdownClient {
     // Set up reactive attribute listeners from @livetemplate/client
     // This handles lvt-{action}-on:{event} attributes (e.g., lvt-reset-on:success)
     setupReactiveAttributeListeners();
+
+    // Initialize tabs controller for tabbed headings with filtering
+    this.tabs = new TabsController(this.options.debug);
+    this.tabs.setMessageSender((blockID, action, data) => {
+      this.send(blockID, action, data);
+    });
 
     // Find all code blocks with tinkerdown metadata
     const codeBlocks = document.querySelectorAll<HTMLElement>(

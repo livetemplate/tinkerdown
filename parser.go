@@ -33,11 +33,11 @@ type SourceConfig struct {
 	ResultPath  string            `yaml:"result_path,omitempty"`  // For rest: dot-path to extract array (e.g., "data.items")
 	Readonly    *bool             `yaml:"readonly,omitempty"`     // For markdown/sqlite: read-only mode (default: true)
 	Options     map[string]string `yaml:"options,omitempty"`
-	Manual      bool              `yaml:"manual,omitempty"`      // For exec: require Run button click
-	Format      string            `yaml:"format,omitempty"`      // For exec: output format (json, lines, csv)
-	Delimiter   string            `yaml:"delimiter,omitempty"`   // For exec CSV: field delimiter (default ",")
-	Env         map[string]string `yaml:"env,omitempty"`         // For exec: environment variables (env vars expanded)
-	Timeout     string            `yaml:"timeout,omitempty"`     // For exec/rest: timeout (e.g., "30s", "1m")
+	Manual      bool              `yaml:"manual,omitempty"`    // For exec: require Run button click
+	Format      string            `yaml:"format,omitempty"`    // For exec: output format (json, lines, csv)
+	Delimiter   string            `yaml:"delimiter,omitempty"` // For exec CSV: field delimiter (default ",")
+	Env         map[string]string `yaml:"env,omitempty"`       // For exec: environment variables (env vars expanded)
+	Timeout     string            `yaml:"timeout,omitempty"`   // For exec/rest: timeout (e.g., "30s", "1m")
 }
 
 // StylingConfig represents styling/theme configuration.
@@ -177,6 +177,9 @@ func ParseMarkdown(content []byte) (*Frontmatter, []*CodeBlock, string, error) {
 	if len(expressions) > 0 {
 		frontmatter.Expressions = expressions
 	}
+
+	// Process tabbed headings (## [Tab1] | [Tab2] filter)
+	html = processTabbedHeadings(html)
 
 	return frontmatter, codeBlocks, html, nil
 }
@@ -414,6 +417,143 @@ func processExpressions(htmlStr string) (string, map[string]string) {
 	return htmlStr, expressions
 }
 
+// Tab represents a single tab definition parsed from a heading.
+type Tab struct {
+	Name   string // Display name of the tab
+	Filter string // Filter expression (empty for "All" tab)
+}
+
+// tabbedHeadingPattern matches headings with tab syntax: ## [Tab1] | [Tab2] filter
+// Captures: 1=tag name, 2=id attribute, 3=heading content
+var tabbedHeadingPattern = regexp.MustCompile(`<(h[1-6])([^>]*)>([^<]*\[[^\]]+\][^<]*)</\1>`)
+
+// tabPattern matches individual tab definitions: [TabName] optional filter
+var tabPattern = regexp.MustCompile(`\[([^\]]+)\](\s+[^|]*)?`)
+
+// processTabbedHeadings transforms headings with tab syntax into interactive tab bars.
+// Syntax: ## [All] | [Active] not done | [Done] done
+// Each [Name] creates a tab button, and text after it becomes the filter expression.
+func processTabbedHeadings(htmlStr string) string {
+	tabsCounter := 0
+
+	return tabbedHeadingPattern.ReplaceAllStringFunc(htmlStr, func(match string) string {
+		submatch := tabbedHeadingPattern.FindStringSubmatch(match)
+		if len(submatch) < 4 {
+			return match
+		}
+
+		tagName := submatch[1]
+		attrs := submatch[2]
+		content := submatch[3]
+
+		// Check if the content contains tab syntax (at least one [Name])
+		if !strings.Contains(content, "[") || !strings.Contains(content, "]") {
+			return match
+		}
+
+		// Parse tabs from the content
+		tabs := parseTabsFromContent(content)
+		if len(tabs) == 0 {
+			return match // No valid tabs found
+		}
+
+		// Generate a unique ID for this tab group
+		tabsID := fmt.Sprintf("tabs-%d", tabsCounter)
+		tabsCounter++
+
+		// Extract existing id from heading if present
+		headingID := ""
+		if idMatch := regexp.MustCompile(`id="([^"]+)"`).FindStringSubmatch(attrs); len(idMatch) > 1 {
+			headingID = idMatch[1]
+			tabsID = headingID + "-tabs"
+		}
+
+		// Build the tab bar HTML
+		var builder strings.Builder
+		builder.WriteString(fmt.Sprintf(`<div class="tinkerdown-tabs" data-tabs-id="%s">`, escapeHTML(tabsID)))
+		builder.WriteString("\n")
+
+		// Generate the tab bar (styled like the original heading)
+		builder.WriteString(fmt.Sprintf(`<%s%s class="tinkerdown-tabs-heading">`, tagName, attrs))
+		builder.WriteString(`<span class="tinkerdown-tabs-bar" role="tablist">`)
+
+		for i, tab := range tabs {
+			activeClass := ""
+			ariaSelected := "false"
+			tabIndex := "-1"
+			if i == 0 {
+				activeClass = " active"
+				ariaSelected = "true"
+				tabIndex = "0"
+			}
+
+			filter := escapeHTML(tab.Filter)
+			tabID := fmt.Sprintf("%s-tab-%d", tabsID, i)
+			panelID := fmt.Sprintf("%s-panel", tabsID)
+
+			builder.WriteString(fmt.Sprintf(
+				`<button type="button" role="tab" class="tinkerdown-tab%s" data-tab-index="%d" data-filter="%s" id="%s" aria-selected="%s" aria-controls="%s" tabindex="%s">%s</button>`,
+				activeClass,
+				i,
+				filter,
+				tabID,
+				ariaSelected,
+				panelID,
+				tabIndex,
+				escapeHTML(tab.Name),
+			))
+		}
+
+		builder.WriteString(`</span>`)
+		builder.WriteString(fmt.Sprintf(`</%s>`, tagName))
+		builder.WriteString("\n")
+
+		// Add a marker for the content wrapper (client-side will handle the wrapping)
+		builder.WriteString(fmt.Sprintf(`<div class="tinkerdown-tabs-content" id="%s-panel" role="tabpanel" aria-labelledby="%s-tab-0" data-tabs-content>`,
+			tabsID, tabsID))
+		builder.WriteString("</div>")
+		builder.WriteString("</div>")
+
+		return builder.String()
+	})
+}
+
+// parseTabsFromContent extracts tab definitions from heading content.
+// Input: "[All] | [Active] not done | [Done] done"
+// Returns: [{Name: "All", Filter: ""}, {Name: "Active", Filter: "not done"}, ...]
+func parseTabsFromContent(content string) []Tab {
+	var tabs []Tab
+
+	// Split by pipe to get individual tab definitions
+	parts := strings.Split(content, "|")
+
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+
+		// Match [TabName] optional filter
+		matches := tabPattern.FindStringSubmatch(part)
+		if len(matches) < 2 {
+			continue
+		}
+
+		name := strings.TrimSpace(matches[1])
+		filter := ""
+		if len(matches) > 2 {
+			filter = strings.TrimSpace(matches[2])
+		}
+
+		tabs = append(tabs, Tab{
+			Name:   name,
+			Filter: filter,
+		})
+	}
+
+	return tabs
+}
+
 // parseCodeBlock parses a fenced code block and extracts livemdtools metadata.
 // Code block info string format: "go server readonly id=counter"
 func parseCodeBlock(fenced *ast.FencedCodeBlock, source []byte, lineOffset int) (*CodeBlock, error) {
@@ -637,6 +777,9 @@ func ParseMarkdownWithPartials(content []byte, baseDir string) (*Frontmatter, []
 	if len(expressions) > 0 {
 		frontmatter.Expressions = expressions
 	}
+
+	// Process tabbed headings (## [Tab1] | [Tab2] filter)
+	htmlStr = processTabbedHeadings(htmlStr)
 
 	return frontmatter, codeBlocks, htmlStr, nil
 }
