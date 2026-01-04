@@ -6,6 +6,7 @@
 export { TinkerdownClient } from "./tinkerdown-client";
 export { MessageRouter } from "./core/message-router";
 export { PersistenceManager } from "./core/persistence-manager";
+export { TabsController } from "./core/tabs";
 export { BaseBlock } from "./blocks/base-block";
 export { ServerBlock } from "./blocks/server-block";
 export { InteractiveBlock } from "./blocks/interactive-block";

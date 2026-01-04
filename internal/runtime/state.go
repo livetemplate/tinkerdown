@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 
@@ -40,13 +41,13 @@ type GenericState struct {
 	CacheInfo *cache.CacheInfo `json:"cache_info,omitempty"`
 
 	// Exec-specific fields
-	Output     string   `json:"output,omitempty"`
-	Stderr     string   `json:"stderr,omitempty"`
-	Duration   int64    `json:"duration,omitempty"`
-	Status     string   `json:"status,omitempty"`
-	Command    string   `json:"command,omitempty"`
-	Args       []Arg    `json:"args,omitempty"`
-	Executable string   `json:"executable,omitempty"`
+	Output     string `json:"output,omitempty"`
+	Stderr     string `json:"stderr,omitempty"`
+	Duration   int64  `json:"duration,omitempty"`
+	Status     string `json:"status,omitempty"`
+	Command    string `json:"command,omitempty"`
+	Args       []Arg  `json:"args,omitempty"`
+	Executable string `json:"executable,omitempty"`
 
 	// Private runtime fields (not serialized)
 	source       source.Source
@@ -56,6 +57,7 @@ type GenericState struct {
 	siteDir      string
 	elementType  string   // "table", "select", or "div"
 	tableColumns []string // columns for datatable rendering
+	activeFilter string   // current filter expression (empty = show all)
 	mu           sync.RWMutex
 
 	// Page-level configuration for custom actions.
@@ -197,6 +199,8 @@ func (s *GenericState) HandleAction(action string, data map[string]interface{}) 
 		return s.refresh()
 	case "run":
 		return s.runExec(data)
+	case "filter":
+		return s.handleFilter(data)
 	case "add", "toggle", "delete", "update":
 		return s.handleWriteAction(action, data)
 	default:
@@ -239,6 +243,12 @@ func (s *GenericState) GetStateAsInterface() (interface{}, error) {
 	var rawMap map[string]interface{}
 	if err := json.Unmarshal(stateBytes, &rawMap); err != nil {
 		return nil, err
+	}
+
+	// Apply active filter to data if present
+	if s.activeFilter != "" {
+		filteredData := s.GetFilteredData()
+		rawMap["data"] = filteredData
 	}
 
 	// Process state map to add titlecase keys for template access
@@ -374,6 +384,91 @@ func (s *GenericState) refresh() error {
 	}
 
 	return nil
+}
+
+// handleFilter applies a filter expression to the data.
+// Filter expressions use the same syntax as computed expressions:
+//   - "done" - filter rows where done is truthy
+//   - "not done" - filter rows where done is falsy
+//   - "status = active" - filter rows where status equals "active"
+//   - "" (empty) - show all data (no filter)
+func (s *GenericState) handleFilter(data map[string]interface{}) error {
+	// Extract filter expression from data
+	filter := ""
+	if f, ok := data["filter"].(string); ok {
+		filter = f
+	}
+
+	// Store the active filter
+	s.activeFilter = filter
+
+	// Re-render with filtered data
+	// Note: The actual filtering happens in GetFilteredData which is called during render
+	return nil
+}
+
+// GetFilteredData returns the data with the active filter applied.
+// This is used by the template renderer to show filtered results.
+// Note: This method must be called while holding at least a read lock,
+// or from within a method that already holds the lock.
+func (s *GenericState) GetFilteredData() []map[string]interface{} {
+	if s.activeFilter == "" {
+		return s.Data
+	}
+
+	// Parse the filter expression
+	where, err := parseFilterExpression(s.activeFilter)
+	if err != nil {
+		// Log parse error for debugging, return all data as fallback
+		fmt.Fprintf(os.Stderr, "Warning: failed to parse filter expression %q: %v\n", s.activeFilter, err)
+		return s.Data
+	}
+
+	// Apply filter
+	return filterDataByWhere(s.Data, where)
+}
+
+// parseFilterExpression parses a simple filter expression.
+// Supports:
+//   - "field" -> field is truthy
+//   - "not field" -> field is falsy
+//   - "field = value" -> field equals value
+//   - "field != value" -> field not equals value
+func parseFilterExpression(input string) (*WhereClause, error) {
+	input = strings.TrimSpace(input)
+	if input == "" {
+		return nil, nil
+	}
+
+	// Check for "not field" pattern (negated truthy check)
+	if strings.HasPrefix(strings.ToLower(input), "not ") {
+		field := strings.TrimSpace(input[4:])
+		return &WhereClause{
+			Field:    field,
+			Operator: "=",
+			Value:    false,
+		}, nil
+	}
+
+	// Use the existing parseWhereClause from expr.go
+	return parseWhereClause(input)
+}
+
+// filterDataByWhere filters data rows based on a where clause.
+// Uses getFieldValue from expr.go for consistent field lookup behavior.
+func filterDataByWhere(data []map[string]interface{}, where *WhereClause) []map[string]interface{} {
+	if where == nil {
+		return data
+	}
+
+	var result []map[string]interface{}
+	for _, row := range data {
+		val := getFieldValue(row, where.Field)
+		if matchesCondition(val, where.Operator, where.Value) {
+			result = append(result, row)
+		}
+	}
+	return result
 }
 
 // buildDataTable creates a datatable.DataTable from the current Data
