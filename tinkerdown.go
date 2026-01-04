@@ -14,6 +14,9 @@ type Page struct {
 	ServerBlocks      map[string]*ServerBlock
 	WasmBlocks        map[string]*WasmBlock
 	InteractiveBlocks map[string]*InteractiveBlock
+	// Expressions maps expression IDs to expression strings (e.g., "expr-0" -> "count(tasks where done)")
+	// These are computed expressions found in inline code spans like `=count(tasks where done)`
+	Expressions map[string]string
 }
 
 // PageConfig contains configuration for a page.

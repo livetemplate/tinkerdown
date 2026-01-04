@@ -743,3 +743,161 @@ func TestPageConfigMergeFromFrontmatter(t *testing.T) {
 		}
 	})
 }
+
+func TestProcessExpressions(t *testing.T) {
+	tests := []struct {
+		name          string
+		html          string
+		wantExprCount int
+		wantContains  string
+	}{
+		{
+			name:          "single expression",
+			html:          `<p>Count: <code>=count(tasks)</code></p>`,
+			wantExprCount: 1,
+			wantContains:  `data-expr="count(tasks)"`,
+		},
+		{
+			name:          "multiple expressions",
+			html:          `<p>Done: <code>=count(tasks where done)</code> / <code>=count(tasks)</code></p>`,
+			wantExprCount: 2,
+			wantContains:  `data-expr-id="expr-0"`,
+		},
+		{
+			name:          "non-expression code",
+			html:          `<p>Use <code>fmt.Println</code> to print.</p>`,
+			wantExprCount: 0,
+			wantContains:  `<code>fmt.Println</code>`,
+		},
+		{
+			name:          "escaped expression",
+			html:          `<p>Literal: <code>\=not an expression</code></p>`,
+			wantExprCount: 0,
+			wantContains:  `<code>=not an expression</code>`,
+		},
+		{
+			name:          "mixed content",
+			html:          `<p>Total: <code>=sum(items.price)</code> and code: <code>print(x)</code></p>`,
+			wantExprCount: 1,
+			wantContains:  `data-expr="sum(items.price)"`,
+		},
+		{
+			name:          "empty equals",
+			html:          `<p>Empty: <code>=</code></p>`,
+			wantExprCount: 0,
+			wantContains:  `<code>=</code>`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, expressions := processExpressions(tt.html)
+
+			if len(expressions) != tt.wantExprCount {
+				t.Errorf("got %d expressions, want %d", len(expressions), tt.wantExprCount)
+			}
+
+			if !strings.Contains(result, tt.wantContains) {
+				t.Errorf("result does not contain %q\ngot: %s", tt.wantContains, result)
+			}
+		})
+	}
+}
+
+func TestProcessExpressionsPreservesIDs(t *testing.T) {
+	html := `<p><code>=count(a)</code> and <code>=count(b)</code> and <code>=count(c)</code></p>`
+
+	_, expressions := processExpressions(html)
+
+	if len(expressions) != 3 {
+		t.Fatalf("got %d expressions, want 3", len(expressions))
+	}
+
+	// Check IDs are sequential
+	if _, ok := expressions["expr-0"]; !ok {
+		t.Error("missing expr-0")
+	}
+	if _, ok := expressions["expr-1"]; !ok {
+		t.Error("missing expr-1")
+	}
+	if _, ok := expressions["expr-2"]; !ok {
+		t.Error("missing expr-2")
+	}
+
+	// Check expression strings are correct
+	if expressions["expr-0"] != "count(a)" {
+		t.Errorf("expr-0 = %q, want %q", expressions["expr-0"], "count(a)")
+	}
+	if expressions["expr-1"] != "count(b)" {
+		t.Errorf("expr-1 = %q, want %q", expressions["expr-1"], "count(b)")
+	}
+	if expressions["expr-2"] != "count(c)" {
+		t.Errorf("expr-2 = %q, want %q", expressions["expr-2"], "count(c)")
+	}
+}
+
+func TestParseMarkdownWithExpressions(t *testing.T) {
+	content := `---
+title: "Expression Test"
+---
+
+# Dashboard
+
+**Tasks Done:** ` + "`=count(tasks where done)`" + ` / ` + "`=count(tasks)`" + `
+
+**Total Spent:** ` + "`=sum(expenses.amount)`" + `
+`
+
+	fm, _, html, err := ParseMarkdown([]byte(content))
+	if err != nil {
+		t.Fatalf("ParseMarkdown failed: %v", err)
+	}
+
+	// Check expressions were extracted
+	if len(fm.Expressions) != 3 {
+		t.Errorf("got %d expressions, want 3", len(fm.Expressions))
+	}
+
+	// Check HTML contains expression placeholders
+	if !strings.Contains(html, `class="tinkerdown-expr"`) {
+		t.Error("HTML does not contain expression class")
+	}
+	if !strings.Contains(html, `data-expr-id`) {
+		t.Error("HTML does not contain data-expr-id")
+	}
+}
+
+func TestParseMarkdownWithEscapedExpression(t *testing.T) {
+	// Test that escaped expressions (prefixed with backslash) render as literal text
+	// Markdown: `\=count(tasks)` should become <code>=count(tasks)</code> (literal, not evaluated)
+	content := `---
+title: "Escaped Expression Test"
+---
+
+# Documentation
+
+To show an expression literally, use: ` + "`\\=count(tasks)`" + `
+
+This is a real expression: ` + "`=count(items)`" + `
+`
+
+	fm, _, html, err := ParseMarkdown([]byte(content))
+	if err != nil {
+		t.Fatalf("ParseMarkdown failed: %v", err)
+	}
+
+	// Only one expression should be extracted (the real one, not the escaped one)
+	if len(fm.Expressions) != 1 {
+		t.Errorf("got %d expressions, want 1 (escaped should not be counted)", len(fm.Expressions))
+	}
+
+	// The escaped expression should appear as literal text with the = sign
+	if !strings.Contains(html, `<code>=count(tasks)</code>`) {
+		t.Errorf("escaped expression should render as literal <code>=count(tasks)</code>\ngot: %s", html)
+	}
+
+	// The real expression should be converted to a span placeholder
+	if !strings.Contains(html, `data-expr="count(items)"`) {
+		t.Error("real expression should be converted to placeholder span")
+	}
+}

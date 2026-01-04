@@ -67,6 +67,11 @@ func ParseFile(path string) (*Page, error) {
 	// Apply frontmatter config options (sources, styling, blocks, features)
 	page.Config.MergeFromFrontmatter(fm)
 
+	// Store computed expressions from parsing
+	if fm.Expressions != nil {
+		page.Expressions = fm.Expressions
+	}
+
 	// Build blocks (pass source file for error context)
 	if err := page.buildBlocks(codeBlocks, absPath); err != nil {
 		return nil, err // Already a ParseError from buildBlocks

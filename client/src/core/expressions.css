@@ -1,0 +1,66 @@
+/**
+ * Styles for computed expressions (`=expr` inline code spans)
+ */
+
+/* Base expression container */
+.tinkerdown-expr {
+  display: inline;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 0.9em;
+}
+
+/* Loading state */
+.tinkerdown-expr .expr-loading {
+  color: #6b7280;
+  animation: expr-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes expr-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+/* Computed value */
+.tinkerdown-expr .expr-value {
+  color: #059669;
+  font-weight: 500;
+  background-color: #ecfdf5;
+  padding: 0.1em 0.3em;
+  border-radius: 3px;
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  .tinkerdown-expr .expr-value {
+    color: #34d399;
+    background-color: rgba(52, 211, 153, 0.1);
+  }
+}
+
+/* Error state */
+.tinkerdown-expr .expr-error {
+  color: #dc2626;
+  cursor: help;
+}
+
+.tinkerdown-expr.has-error .expr-error {
+  background-color: #fef2f2;
+  padding: 0.1em 0.3em;
+  border-radius: 3px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .tinkerdown-expr .expr-error {
+    color: #f87171;
+  }
+
+  .tinkerdown-expr.has-error .expr-error {
+    background-color: rgba(248, 113, 113, 0.1);
+  }
+}
+
+/* Transition for smooth updates */
+.tinkerdown-expr .expr-value,
+.tinkerdown-expr .expr-error {
+  transition: background-color 0.2s ease;
+}

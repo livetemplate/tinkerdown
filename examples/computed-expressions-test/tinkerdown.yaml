@@ -1,0 +1,4 @@
+sources:
+  tasks:
+    type: json
+    file: tasks.json
