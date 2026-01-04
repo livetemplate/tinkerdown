@@ -430,6 +430,9 @@ var tabbedHeadingPattern = regexp.MustCompile(`<(h[1-6])([^>]*)>([^<]*\[[^\]]+\]
 // tabPattern matches individual tab definitions: [TabName] optional filter
 var tabPattern = regexp.MustCompile(`\[([^\]]+)\](\s+[^|]*)?`)
 
+// headingIDPattern extracts the id attribute from a heading element
+var headingIDPattern = regexp.MustCompile(`id="([^"]+)"`)
+
 // processTabbedHeadings transforms headings with tab syntax into interactive tab bars.
 // Syntax: ## [All] | [Active] not done | [Done] done
 // Each [Name] creates a tab button, and text after it becomes the filter expression.
@@ -463,7 +466,7 @@ func processTabbedHeadings(htmlStr string) string {
 
 		// Extract existing id from heading if present
 		headingID := ""
-		if idMatch := regexp.MustCompile(`id="([^"]+)"`).FindStringSubmatch(attrs); len(idMatch) > 1 {
+		if idMatch := headingIDPattern.FindStringSubmatch(attrs); len(idMatch) > 1 {
 			headingID = idMatch[1]
 			tabsID = headingID + "-tabs"
 		}

@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 
@@ -408,6 +409,8 @@ func (s *GenericState) handleFilter(data map[string]interface{}) error {
 
 // GetFilteredData returns the data with the active filter applied.
 // This is used by the template renderer to show filtered results.
+// Note: This method must be called while holding at least a read lock,
+// or from within a method that already holds the lock.
 func (s *GenericState) GetFilteredData() []map[string]interface{} {
 	if s.activeFilter == "" {
 		return s.Data
@@ -416,7 +419,8 @@ func (s *GenericState) GetFilteredData() []map[string]interface{} {
 	// Parse the filter expression
 	where, err := parseFilterExpression(s.activeFilter)
 	if err != nil {
-		// On parse error, return all data
+		// Log parse error for debugging, return all data as fallback
+		fmt.Fprintf(os.Stderr, "Warning: failed to parse filter expression %q: %v\n", s.activeFilter, err)
 		return s.Data
 	}
 
@@ -451,6 +455,7 @@ func parseFilterExpression(input string) (*WhereClause, error) {
 }
 
 // filterDataByWhere filters data rows based on a where clause.
+// Uses getFieldValue from expr.go for consistent field lookup behavior.
 func filterDataByWhere(data []map[string]interface{}, where *WhereClause) []map[string]interface{} {
 	if where == nil {
 		return data
@@ -458,34 +463,12 @@ func filterDataByWhere(data []map[string]interface{}, where *WhereClause) []map[
 
 	var result []map[string]interface{}
 	for _, row := range data {
-		val := getFieldValueFromRow(row, where.Field)
+		val := getFieldValue(row, where.Field)
 		if matchesCondition(val, where.Operator, where.Value) {
 			result = append(result, row)
 		}
 	}
 	return result
-}
-
-// getFieldValueFromRow gets a field value from a row, checking both lowercase and titlecase.
-func getFieldValueFromRow(row map[string]interface{}, field string) interface{} {
-	if val, ok := row[field]; ok {
-		return val
-	}
-	// Try titlecase
-	if len(field) > 0 {
-		titleField := strings.ToUpper(field[:1]) + field[1:]
-		if val, ok := row[titleField]; ok {
-			return val
-		}
-	}
-	// Try lowercase
-	if len(field) > 0 {
-		lowerField := strings.ToLower(field[:1]) + field[1:]
-		if val, ok := row[lowerField]; ok {
-			return val
-		}
-	}
-	return nil
 }
 
 // buildDataTable creates a datatable.DataTable from the current Data

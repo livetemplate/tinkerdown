@@ -166,7 +166,7 @@ export class TabsController {
     const group = this.tabGroups.get(groupId);
     if (!group) return;
 
-    let newIndex = currentIndex;
+    let newIndex: number;
 
     switch (e.key) {
       case "ArrowLeft":
