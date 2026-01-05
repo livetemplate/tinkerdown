@@ -23,6 +23,7 @@ type Config struct {
 	Ignore      []string                `yaml:"ignore"`
 	Sources     map[string]SourceConfig `yaml:"sources,omitempty"`
 	Actions     map[string]*Action      `yaml:"actions,omitempty"`
+	API         *APIConfig              `yaml:"api,omitempty"`
 }
 
 // SourceConfig defines a data source for lvt-source blocks
@@ -234,6 +235,53 @@ type BlocksConfig struct {
 type FeaturesConfig struct {
 	HotReload bool `yaml:"hot_reload"`
 	Sidebar   bool `yaml:"sidebar"` // Show navigation sidebar (default: false)
+}
+
+// APIConfig holds REST API configuration
+type APIConfig struct {
+	Enabled   bool            `yaml:"enabled"`    // Enable REST API endpoints (default: false)
+	CORS      *CORSConfig     `yaml:"cors,omitempty"`
+	RateLimit *RateLimitConfig `yaml:"rate_limit,omitempty"`
+}
+
+// CORSConfig holds CORS configuration for the API
+type CORSConfig struct {
+	Origins []string `yaml:"origins,omitempty"` // Allowed origins (e.g., ["http://localhost:3000", "*"])
+}
+
+// RateLimitConfig holds rate limiting configuration for the API
+type RateLimitConfig struct {
+	RequestsPerSecond float64 `yaml:"requests_per_second,omitempty"` // Rate limit in requests per second (default: 10)
+	Burst             int     `yaml:"burst,omitempty"`               // Burst size (default: 20)
+}
+
+// GetCORSOrigins returns the configured CORS origins, or nil if not configured
+func (c *APIConfig) GetCORSOrigins() []string {
+	if c == nil || c.CORS == nil {
+		return nil
+	}
+	return c.CORS.Origins
+}
+
+// GetRateLimitRPS returns the rate limit in requests per second (default: 10)
+func (c *APIConfig) GetRateLimitRPS() float64 {
+	if c == nil || c.RateLimit == nil || c.RateLimit.RequestsPerSecond <= 0 {
+		return 10
+	}
+	return c.RateLimit.RequestsPerSecond
+}
+
+// GetRateLimitBurst returns the burst size (default: 20)
+func (c *APIConfig) GetRateLimitBurst() int {
+	if c == nil || c.RateLimit == nil || c.RateLimit.Burst <= 0 {
+		return 20
+	}
+	return c.RateLimit.Burst
+}
+
+// IsAPIEnabled returns whether the API is enabled
+func (c *Config) IsAPIEnabled() bool {
+	return c.API != nil && c.API.Enabled
 }
 
 // DefaultConfig returns the default configuration

@@ -146,6 +146,9 @@ func ServeCommand(args []string) error {
 	if config.IsExecAllowed() {
 		fmt.Printf("⚠️  Exec sources enabled (--allow-exec)\n")
 	}
+	if cfg.IsAPIEnabled() {
+		fmt.Printf("🔌 REST API enabled at /api/sources/{name}\n")
+	}
 	if cfg.Features.HotReload {
 		fmt.Printf("📝 Edit .md files and see changes instantly\n")
 	}
