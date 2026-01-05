@@ -12,6 +12,12 @@ import (
 	"github.com/livetemplate/tinkerdown/internal/source"
 )
 
+// maxRequestBodySize limits the size of incoming request bodies (1MB)
+const maxRequestBodySize = 1 << 20
+
+// defaultPageLimit is the default pagination limit when none is specified
+const defaultPageLimit = 100
+
 // APIHandler handles REST API requests for sources.
 type APIHandler struct {
 	config  *config.Config
@@ -76,10 +82,8 @@ func (h *APIHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.handlePut(w, r, src, itemID)
 	case http.MethodDelete:
 		h.handleDelete(w, r, src, itemID)
-	case http.MethodOptions:
-		// Preflight handled by CORS middleware
-		w.WriteHeader(http.StatusOK)
 	default:
+		// Note: OPTIONS (preflight) is handled by CORS middleware before reaching here
 		writeError(w, http.StatusMethodNotAllowed, "method not allowed")
 	}
 }
@@ -157,14 +161,12 @@ func (h *APIHandler) handleGet(w http.ResponseWriter, r *http.Request, src sourc
 		data = applyFilter(data, filter)
 	}
 
-	// Apply pagination
-	limit := parseIntParam(r, "limit", 0)
+	// Apply pagination with default limit to prevent unbounded results
+	limit := parseIntParam(r, "limit", defaultPageLimit)
 	offset := parseIntParam(r, "offset", 0)
 
 	totalCount := len(data)
-	if offset > 0 || limit > 0 {
-		data = paginate(data, offset, limit)
-	}
+	data = paginate(data, offset, limit)
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"data":   data,
@@ -182,6 +184,9 @@ func (h *APIHandler) handlePost(w http.ResponseWriter, r *http.Request, src sour
 		writeError(w, http.StatusForbidden, "source is read-only")
 		return
 	}
+
+	// Limit request body size to prevent DoS
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodySize)
 
 	var data map[string]interface{}
 	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
@@ -212,6 +217,9 @@ func (h *APIHandler) handlePut(w http.ResponseWriter, r *http.Request, src sourc
 		writeError(w, http.StatusForbidden, "source is read-only")
 		return
 	}
+
+	// Limit request body size to prevent DoS
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodySize)
 
 	var data map[string]interface{}
 	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
