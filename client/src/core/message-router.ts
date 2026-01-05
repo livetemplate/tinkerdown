@@ -4,6 +4,7 @@
 
 import { MessageEnvelope, ExecMeta, CacheMeta } from "../types";
 import "./expressions.css";
+import "./status-banners.css";
 
 /** Special block ID for routing expression update messages from the server. */
 const EXPRESSIONS_BLOCK_ID = "__expressions__";

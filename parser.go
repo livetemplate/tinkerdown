@@ -172,6 +172,9 @@ func ParseMarkdown(content []byte) (*Frontmatter, []*CodeBlock, string, error) {
 	html := htmlBuf.String()
 	html = injectBlockAttributes(html, codeBlocks, frontmatter.Sources)
 
+	// Process status banners (> ✅ message) - must run before processExpressions
+	html = processStatusBanners(html)
+
 	// Process computed expressions (`=expr` code spans)
 	html, expressions := processExpressions(html)
 	if len(expressions) > 0 {
@@ -415,6 +418,77 @@ func processExpressions(htmlStr string) (string, map[string]string) {
 	}
 
 	return htmlStr, expressions
+}
+
+// StatusType represents the type of status banner
+type StatusType string
+
+const (
+	StatusSuccess StatusType = "success"
+	StatusWarning StatusType = "warning"
+	StatusError   StatusType = "error"
+	StatusInfo    StatusType = "info"
+)
+
+// statusEmojiEntry represents a mapping from emoji to status type
+type statusEmojiEntry struct {
+	emoji      string
+	statusType StatusType
+}
+
+// statusEmojiOrder defines emoji in deterministic order, with longer variants first
+var statusEmojiOrder = []statusEmojiEntry{
+	{"⚠️", StatusWarning},
+	{"ℹ️", StatusInfo},
+	{"✅", StatusSuccess},
+	{"❌", StatusError},
+	{"📊", StatusInfo},
+	{"🟢", StatusSuccess},
+	{"🟡", StatusWarning},
+	{"🔴", StatusError},
+	{"⚠", StatusWarning},
+	{"ℹ", StatusInfo},
+}
+
+// statusRoleMap maps status types to ARIA roles
+var statusRoleMap = map[StatusType]string{
+	StatusSuccess: "status",
+	StatusWarning: "alert",
+	StatusError:   "alert",
+	StatusInfo:    "status",
+}
+
+// blockquotePattern matches blockquotes in HTML
+var blockquotePattern = regexp.MustCompile(`(?s)<blockquote>\s*<p>([^<]*(?:<[^>]+>[^<]*)*)</p>\s*</blockquote>`)
+
+// processStatusBanners transforms blockquotes prefixed with status emoji into styled status banners.
+func processStatusBanners(htmlStr string) string {
+	return blockquotePattern.ReplaceAllStringFunc(htmlStr, func(match string) string {
+		submatch := blockquotePattern.FindStringSubmatch(match)
+		if len(submatch) < 2 {
+			return match
+		}
+
+		content := submatch[1]
+
+		for _, entry := range statusEmojiOrder {
+			if strings.HasPrefix(content, entry.emoji) {
+				messageContent := strings.TrimPrefix(content, entry.emoji)
+				messageContent = strings.TrimLeft(messageContent, " ")
+				role := statusRoleMap[entry.statusType]
+
+				return fmt.Sprintf(
+					`<div class="tinkerdown-status-banner tinkerdown-status-%s" role="%s"><span class="status-icon" aria-hidden="true">%s</span><span class="status-content">%s</span></div>`,
+					entry.statusType,
+					role,
+					entry.emoji,
+					messageContent,
+				)
+			}
+		}
+
+		return match
+	})
 }
 
 // Tab represents a single tab definition parsed from a heading.
@@ -772,6 +846,9 @@ func ParseMarkdownWithPartials(content []byte, baseDir string) (*Frontmatter, []
 	// Post-process HTML to add data attributes
 	htmlStr := htmlBuf.String()
 	htmlStr = injectBlockAttributes(htmlStr, codeBlocks, frontmatter.Sources)
+
+	// Process status banners (> ✅ message) - must run before processExpressions
+	htmlStr = processStatusBanners(htmlStr)
 
 	// Process computed expressions (`=expr` code spans)
 	htmlStr, expressions := processExpressions(htmlStr)
