@@ -901,3 +901,19 @@ This is a real expression: ` + "`=count(items)`" + `
 		t.Error("real expression should be converted to placeholder span")
 	}
 }
+
+func TestProcessStatusBanners(t *testing.T) {
+	// Success banner
+	html := "<blockquote><p>✅ Success message</p></blockquote>"
+	result := processStatusBanners(html)
+	if !strings.Contains(result, "tinkerdown-status-success") {
+		t.Errorf("expected success banner, got: %s", result)
+	}
+
+	// Regular blockquote should not be transformed
+	html2 := "<blockquote><p>Regular quote</p></blockquote>"
+	result2 := processStatusBanners(html2)
+	if !strings.Contains(result2, "<blockquote>") {
+		t.Errorf("expected blockquote to remain, got: %s", result2)
+	}
+}
