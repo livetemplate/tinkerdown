@@ -172,8 +172,8 @@ func ParseMarkdown(content []byte) (*Frontmatter, []*CodeBlock, string, error) {
 	html := htmlBuf.String()
 	html = injectBlockAttributes(html, codeBlocks, frontmatter.Sources)
 
-	// Process status banners (> ✅ message) - must run before processExpressions
-	html = processStatusBanners(html)
+	// Process status banners - disabled for testing
+	// html = processStatusBanners(html)
 
 	// Process computed expressions (`=expr` code spans)
 	html, expressions := processExpressions(html)
@@ -847,8 +847,8 @@ func ParseMarkdownWithPartials(content []byte, baseDir string) (*Frontmatter, []
 	htmlStr := htmlBuf.String()
 	htmlStr = injectBlockAttributes(htmlStr, codeBlocks, frontmatter.Sources)
 
-	// Process status banners (> ✅ message) - must run before processExpressions
-	htmlStr = processStatusBanners(htmlStr)
+	// Process status banners - disabled for testing
+	// htmlStr = processStatusBanners(htmlStr)
 
 	// Process computed expressions (`=expr` code spans)
 	htmlStr, expressions := processExpressions(htmlStr)
