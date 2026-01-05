@@ -330,6 +330,107 @@ func TestAPIHandler_Delete(t *testing.T) {
 	}
 }
 
+func TestAPIHandler_PostInvalidJSON(t *testing.T) {
+	cfg := &config.Config{
+		Sources: map[string]config.SourceConfig{
+			"tasks": {Type: "json"},
+		},
+	}
+
+	handler := NewAPIHandler(cfg, t.TempDir())
+	defer handler.Close()
+
+	// Inject a mock writable source
+	handler.mu.Lock()
+	handler.sources["tasks"] = &mockSource{
+		name:     "tasks",
+		data:     []map[string]interface{}{},
+		readonly: false,
+	}
+	handler.mu.Unlock()
+
+	tests := []struct {
+		name string
+		body string
+	}{
+		{"malformed JSON", `{"text": "missing closing brace"`},
+		{"non-JSON content", `this is not json`},
+		{"empty body", ``},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest("POST", "/api/sources/tasks", strings.NewReader(tt.body))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+
+			handler.ServeHTTP(w, req)
+
+			if w.Code != http.StatusBadRequest {
+				t.Errorf("Expected status 400 for %s, got %d: %s", tt.name, w.Code, w.Body.String())
+			}
+
+			var response map[string]string
+			if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+				t.Fatalf("Failed to parse error response: %v", err)
+			}
+			if response["error"] != "invalid JSON body" {
+				t.Errorf("Expected error 'invalid JSON body', got %s", response["error"])
+			}
+		})
+	}
+}
+
+func TestAPIHandler_PutInvalidJSON(t *testing.T) {
+	cfg := &config.Config{
+		Sources: map[string]config.SourceConfig{
+			"tasks": {Type: "json"},
+		},
+	}
+
+	handler := NewAPIHandler(cfg, t.TempDir())
+	defer handler.Close()
+
+	// Inject a mock writable source
+	handler.mu.Lock()
+	handler.sources["tasks"] = &mockSource{
+		name:     "tasks",
+		data:     []map[string]interface{}{{"id": "1"}},
+		readonly: false,
+	}
+	handler.mu.Unlock()
+
+	tests := []struct {
+		name string
+		body string
+	}{
+		{"malformed JSON", `{"done": true`},
+		{"non-JSON content", `not json at all`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest("PUT", "/api/sources/tasks/1", strings.NewReader(tt.body))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+
+			handler.ServeHTTP(w, req)
+
+			if w.Code != http.StatusBadRequest {
+				t.Errorf("Expected status 400 for %s, got %d: %s", tt.name, w.Code, w.Body.String())
+			}
+
+			var response map[string]string
+			if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+				t.Fatalf("Failed to parse error response: %v", err)
+			}
+			if response["error"] != "invalid JSON body" {
+				t.Errorf("Expected error 'invalid JSON body', got %s", response["error"])
+			}
+		})
+	}
+}
+
 func TestAPIHandler_ReadonlySource(t *testing.T) {
 	cfg := &config.Config{
 		Sources: map[string]config.SourceConfig{
@@ -386,18 +487,49 @@ func TestCORSMiddleware(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	// Test with allowed origins
-	wrapped := CORSMiddleware([]string{"http://localhost:3000", "*"})(handler)
+	t.Run("specific origin", func(t *testing.T) {
+		// Test with specific origin (not wildcard)
+		wrapped := CORSMiddleware([]string{"http://localhost:3000"})(handler)
 
-	req := httptest.NewRequest("GET", "/api/sources/test", nil)
-	req.Header.Set("Origin", "http://localhost:3000")
-	w := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", "/api/sources/test", nil)
+		req.Header.Set("Origin", "http://localhost:3000")
+		w := httptest.NewRecorder()
 
-	wrapped.ServeHTTP(w, req)
+		wrapped.ServeHTTP(w, req)
 
-	if w.Header().Get("Access-Control-Allow-Origin") != "http://localhost:3000" {
-		t.Errorf("Expected CORS origin header, got %s", w.Header().Get("Access-Control-Allow-Origin"))
-	}
+		if w.Header().Get("Access-Control-Allow-Origin") != "http://localhost:3000" {
+			t.Errorf("Expected specific origin header, got %s", w.Header().Get("Access-Control-Allow-Origin"))
+		}
+	})
+
+	t.Run("wildcard origin", func(t *testing.T) {
+		// Test with wildcard - should use "*" header
+		wrapped := CORSMiddleware([]string{"*"})(handler)
+
+		req := httptest.NewRequest("GET", "/api/sources/test", nil)
+		req.Header.Set("Origin", "http://example.com")
+		w := httptest.NewRecorder()
+
+		wrapped.ServeHTTP(w, req)
+
+		if w.Header().Get("Access-Control-Allow-Origin") != "*" {
+			t.Errorf("Expected wildcard '*' header, got %s", w.Header().Get("Access-Control-Allow-Origin"))
+		}
+	})
+
+	t.Run("disallowed origin", func(t *testing.T) {
+		wrapped := CORSMiddleware([]string{"http://localhost:3000"})(handler)
+
+		req := httptest.NewRequest("GET", "/api/sources/test", nil)
+		req.Header.Set("Origin", "http://evil.com")
+		w := httptest.NewRecorder()
+
+		wrapped.ServeHTTP(w, req)
+
+		if w.Header().Get("Access-Control-Allow-Origin") != "" {
+			t.Errorf("Expected no CORS header for disallowed origin, got %s", w.Header().Get("Access-Control-Allow-Origin"))
+		}
+	})
 }
 
 func TestCORSMiddleware_Preflight(t *testing.T) {
@@ -419,6 +551,10 @@ func TestCORSMiddleware_Preflight(t *testing.T) {
 	}
 	if w.Header().Get("Access-Control-Allow-Methods") == "" {
 		t.Error("Expected Access-Control-Allow-Methods header")
+	}
+	// Verify wildcard is used in preflight response
+	if w.Header().Get("Access-Control-Allow-Origin") != "*" {
+		t.Errorf("Expected wildcard '*' header in preflight, got %s", w.Header().Get("Access-Control-Allow-Origin"))
 	}
 }
 

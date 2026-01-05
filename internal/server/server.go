@@ -20,8 +20,8 @@ import (
 
 // Route represents a discovered page route.
 type Route struct {
-	Pattern  string         // URL pattern (e.g., "/counter")
-	FilePath string         // Relative file path (e.g., "counter.md")
+	Pattern  string           // URL pattern (e.g., "/counter")
+	FilePath string           // Relative file path (e.g., "counter.md")
 	Page     *tinkerdown.Page // Parsed page
 }
 
@@ -30,14 +30,14 @@ type Server struct {
 	rootDir     string
 	config      *config.Config
 	routes      []*Route
-	siteManager *site.Manager                           // For multi-page documentation sites
+	siteManager *site.Manager // For multi-page documentation sites
 	mu          sync.RWMutex
-	connections map[*websocket.Conn]*WebSocketHandler   // Track connected WebSocket clients with their handlers
-	connMu      sync.RWMutex                            // Separate mutex for connections
-	watcher     *Watcher                                // File watcher for live reload
-	playground  *PlaygroundHandler                      // Playground for testing AI-generated apps
-	apiHandler  *APIHandler                             // REST API handler for sources
-	apiRoutes   http.Handler                            // Wrapped API handler with middleware
+	connections map[*websocket.Conn]*WebSocketHandler // Track connected WebSocket clients with their handlers
+	connMu      sync.RWMutex                          // Separate mutex for connections
+	watcher     *Watcher                              // File watcher for live reload
+	playground  *PlaygroundHandler                    // Playground for testing AI-generated apps
+	apiHandler  *APIHandler                           // REST API handler for sources
+	apiRoutes   http.Handler                          // Wrapped API handler with middleware
 }
 
 // New creates a new server for the given root directory.
@@ -74,15 +74,17 @@ func NewWithConfig(rootDir string, cfg *config.Config) *Server {
 		srv.apiHandler = NewAPIHandler(cfg, rootDir)
 
 		// Wrap API handler with middleware
+		// Order matters: CORS must be outermost so preflight requests get proper headers
+		// and aren't counted against rate limits
 		var handler http.Handler = srv.apiHandler
 
-		// Apply rate limiting middleware
+		// Apply rate limiting middleware (inner)
 		handler = RateLimitMiddleware(
 			cfg.API.GetRateLimitRPS(),
 			cfg.API.GetRateLimitBurst(),
 		)(handler)
 
-		// Apply CORS middleware
+		// Apply CORS middleware (outer - must be first to handle preflight)
 		handler = CORSMiddleware(cfg.API.GetCORSOrigins())(handler)
 
 		srv.apiRoutes = handler

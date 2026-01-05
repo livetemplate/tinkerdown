@@ -19,15 +19,26 @@ func CORSMiddleware(origins []string) func(http.Handler) http.Handler {
 
 			// Check if origin is allowed
 			allowed := false
+			allowAll := false
 			for _, o := range origins {
-				if o == "*" || o == origin {
+				if o == "*" {
+					allowed = true
+					allowAll = true
+					break
+				}
+				if o == origin {
 					allowed = true
 					break
 				}
 			}
 
 			if allowed && origin != "" {
-				w.Header().Set("Access-Control-Allow-Origin", origin)
+				// When wildcard is configured, use "*" header; otherwise echo the specific origin
+				if allowAll {
+					w.Header().Set("Access-Control-Allow-Origin", "*")
+				} else {
+					w.Header().Set("Access-Control-Allow-Origin", origin)
+				}
 				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 				w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 				w.Header().Set("Access-Control-Max-Age", "86400") // 24 hours
@@ -46,6 +57,11 @@ func CORSMiddleware(origins []string) func(http.Handler) http.Handler {
 
 // RateLimitMiddleware limits requests using a token bucket algorithm.
 // rps is the rate limit in requests per second, burst is the maximum burst size.
+//
+// Note: This implementation uses a global rate limiter shared across all sources
+// and all clients. For production use cases requiring per-source or per-IP rate
+// limiting, consider extending this with a map of limiters keyed by source name
+// or client IP address.
 func RateLimitMiddleware(rps float64, burst int) func(http.Handler) http.Handler {
 	limiter := rate.NewLimiter(rate.Limit(rps), burst)
 
