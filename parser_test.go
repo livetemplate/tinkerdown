@@ -901,3 +901,45 @@ This is a real expression: ` + "`=count(items)`" + `
 		t.Error("real expression should be converted to placeholder span")
 	}
 }
+
+func TestProcessStatusBanners(t *testing.T) {
+	tests := []struct {
+		name   string
+		input  string
+		expect string
+	}{
+		{
+			name:   "success emoji transforms",
+			input:  "<blockquote><p>✅ Done</p></blockquote>",
+			expect: "tinkerdown-status-success",
+		},
+		{
+			name:   "warning emoji transforms",
+			input:  "<blockquote><p>⚠️ Caution</p></blockquote>",
+			expect: "tinkerdown-status-warning",
+		},
+		{
+			name:   "error emoji transforms",
+			input:  "<blockquote><p>❌ Failed</p></blockquote>",
+			expect: "tinkerdown-status-error",
+		},
+		{
+			name:   "info emoji transforms",
+			input:  "<blockquote><p>📊 Stats</p></blockquote>",
+			expect: "tinkerdown-status-info",
+		},
+		{
+			name:   "regular blockquote unchanged",
+			input:  "<blockquote><p>Quote</p></blockquote>",
+			expect: "<blockquote>",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := processStatusBanners(tt.input)
+			if !strings.Contains(result, tt.expect) {
+				t.Errorf("expected %q in result, got: %s", tt.expect, result)
+			}
+		})
+	}
+}
