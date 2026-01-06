@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -19,7 +20,10 @@ import (
 // updateGolden is a flag to update golden files
 var updateGolden = flag.Bool("update-golden", false, "update golden files")
 
-// wsTestClient is a helper for WebSocket protocol testing
+// wsTestClient is a helper for WebSocket protocol testing.
+// NOTE: This helper is defined for future integration tests that will test
+// actual WebSocket connections with a running server. Current tests focus on
+// protocol message serialization/deserialization which doesn't require a server.
 type wsTestClient struct {
 	conn    *websocket.Conn
 	t       *testing.T
@@ -97,7 +101,10 @@ func (c *wsTestClient) close() {
 	c.conn.Close()
 }
 
-// mockWSSource is a mock source for WebSocket testing
+// mockWSSource is a mock source for WebSocket integration testing.
+// NOTE: This mock is defined for future integration tests that will test
+// actual WebSocket message handling with state mutations. Current tests focus
+// on protocol message serialization/deserialization.
 type mockWSSource struct {
 	mu       sync.Mutex
 	name     string
@@ -228,11 +235,21 @@ func compareGolden(t *testing.T, name string, got interface{}) {
 
 	// Normalize JSON for comparison
 	var gotNorm, wantNorm interface{}
-	json.Unmarshal(gotJSON, &gotNorm)
-	json.Unmarshal(wantJSON, &wantNorm)
+	if err := json.Unmarshal(gotJSON, &gotNorm); err != nil {
+		t.Fatalf("Failed to unmarshal got JSON for normalization: %v", err)
+	}
+	if err := json.Unmarshal(wantJSON, &wantNorm); err != nil {
+		t.Fatalf("Failed to unmarshal want JSON for normalization: %v", err)
+	}
 
-	gotNormJSON, _ := json.MarshalIndent(gotNorm, "", "  ")
-	wantNormJSON, _ := json.MarshalIndent(wantNorm, "", "  ")
+	gotNormJSON, err := json.MarshalIndent(gotNorm, "", "  ")
+	if err != nil {
+		t.Fatalf("Failed to marshal normalized got JSON: %v", err)
+	}
+	wantNormJSON, err := json.MarshalIndent(wantNorm, "", "  ")
+	if err != nil {
+		t.Fatalf("Failed to marshal normalized want JSON: %v", err)
+	}
 
 	if string(gotNormJSON) != string(wantNormJSON) {
 		t.Errorf("Golden file mismatch for %s:\ngot:\n%s\n\nwant:\n%s", name, gotNormJSON, wantNormJSON)
@@ -413,6 +430,9 @@ func TestExpressionsBlockID(t *testing.T) {
 
 // Benchmark tests for protocol performance
 
+// benchResult is used to prevent compiler optimizations from eliminating benchmark code
+var benchResult []byte
+
 func BenchmarkMessageEnvelopeMarshal(b *testing.B) {
 	env := MessageEnvelope{
 		BlockID: "lvt-0",
@@ -420,26 +440,38 @@ func BenchmarkMessageEnvelopeMarshal(b *testing.B) {
 		Data:    json.RawMessage(`{"items":[{"id":"1","text":"Task 1","done":false},{"id":"2","text":"Task 2","done":true}]}`),
 	}
 
+	var result []byte
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		json.Marshal(env)
+		result, _ = json.Marshal(env)
 	}
+	benchResult = result
 }
+
+// benchEnvResult is used to prevent compiler optimizations from eliminating benchmark code
+var benchEnvResult MessageEnvelope
 
 func BenchmarkMessageEnvelopeUnmarshal(b *testing.B) {
 	data := []byte(`{"blockID":"lvt-0","action":"Toggle","data":{"id":"1"}}`)
 
+	var env MessageEnvelope
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		var env MessageEnvelope
-		json.Unmarshal(data, &env)
+		_ = json.Unmarshal(data, &env)
 	}
+	benchEnvResult = env
 }
 
 // TestProtocolPerformance verifies message processing is fast
 func TestProtocolPerformance(t *testing.T) {
 	// This test verifies that basic protocol operations complete quickly
-	// Target: < 50ms for 1000 message encode/decode cycles
+	// Target: < 50ms for 1000 message encode/decode cycles (< 200ms in short mode for CI)
+	threshold := 50 * time.Millisecond
+	if testing.Short() {
+		// Use relaxed threshold for CI environments which may be slower
+		threshold = 200 * time.Millisecond
+	}
+
 	start := time.Now()
 
 	iterations := 1000
@@ -463,8 +495,8 @@ func TestProtocolPerformance(t *testing.T) {
 	}
 
 	elapsed := time.Since(start)
-	if elapsed > 50*time.Millisecond {
-		t.Errorf("Protocol operations too slow: %v for %d iterations (target: <50ms)", elapsed, iterations)
+	if elapsed > threshold {
+		t.Errorf("Protocol operations too slow: %v for %d iterations (target: <%v)", elapsed, iterations, threshold)
 	}
 	t.Logf("Protocol performance: %d iterations in %v (%.2f µs/op)", iterations, elapsed, float64(elapsed.Microseconds())/float64(iterations))
 }
@@ -479,7 +511,7 @@ func TestConcurrentMessageParsing(t *testing.T) {
 	}
 
 	var wg sync.WaitGroup
-	errors := make(chan error, 100)
+	errCount := int32(0)
 
 	// Spawn multiple concurrent parsers
 	for i := 0; i < 10; i++ {
@@ -490,25 +522,22 @@ func TestConcurrentMessageParsing(t *testing.T) {
 				msg := messages[j%len(messages)]
 				var env MessageEnvelope
 				if err := json.Unmarshal([]byte(msg), &env); err != nil {
-					errors <- err
+					// Use atomic increment instead of channel to avoid nil error issue
+					atomic.AddInt32(&errCount, 1)
+					continue
 				}
 				// Verify parsed correctly
 				if env.BlockID == "" {
-					errors <- err
+					atomic.AddInt32(&errCount, 1)
 				}
 			}
 		}(i)
 	}
 
 	wg.Wait()
-	close(errors)
 
-	var errs []error
-	for err := range errors {
-		errs = append(errs, err)
-	}
-	if len(errs) > 0 {
-		t.Errorf("Got %d errors during concurrent parsing: %v", len(errs), errs[0])
+	if errCount > 0 {
+		t.Errorf("Got %d errors during concurrent parsing", errCount)
 	}
 }
 
@@ -722,7 +751,7 @@ func TestExecMetaSerialization(t *testing.T) {
 				t.Fatalf("Failed to unmarshal: %v", err)
 			}
 
-			// Compare
+			// Compare all fields
 			if restored.Status != tt.meta.Status {
 				t.Errorf("Status = %q, want %q", restored.Status, tt.meta.Status)
 			}
@@ -731,6 +760,12 @@ func TestExecMetaSerialization(t *testing.T) {
 			}
 			if restored.Output != tt.meta.Output {
 				t.Errorf("Output = %q, want %q", restored.Output, tt.meta.Output)
+			}
+			if restored.Stderr != tt.meta.Stderr {
+				t.Errorf("Stderr = %q, want %q", restored.Stderr, tt.meta.Stderr)
+			}
+			if restored.Command != tt.meta.Command {
+				t.Errorf("Command = %q, want %q", restored.Command, tt.meta.Command)
 			}
 		})
 	}
@@ -870,11 +905,21 @@ func TestExprUpdateResponse(t *testing.T) {
 		t.Fatalf("Failed to parse expression data: %v", err)
 	}
 
-	if exprValues["expr-0"].(float64) != 5 {
-		t.Errorf("expr-0 = %v, want 5", exprValues["expr-0"])
+	// Use two-value form for type assertions to avoid panics
+	expr0, ok := exprValues["expr-0"].(float64)
+	if !ok {
+		t.Fatalf("expr-0 is not a float64, got %T", exprValues["expr-0"])
 	}
-	if exprValues["expr-1"].(string) != "hello" {
-		t.Errorf("expr-1 = %v, want \"hello\"", exprValues["expr-1"])
+	if expr0 != 5 {
+		t.Errorf("expr-0 = %v, want 5", expr0)
+	}
+
+	expr1, ok := exprValues["expr-1"].(string)
+	if !ok {
+		t.Fatalf("expr-1 is not a string, got %T", exprValues["expr-1"])
+	}
+	if expr1 != "hello" {
+		t.Errorf("expr-1 = %q, want %q", expr1, "hello")
 	}
 }
 
