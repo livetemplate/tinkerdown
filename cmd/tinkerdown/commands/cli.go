@@ -6,15 +6,23 @@ import (
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/livetemplate/tinkerdown/internal/config"
 	"github.com/livetemplate/tinkerdown/internal/source"
 )
+
+// defaultTimeout is the default context timeout for CLI operations
+const defaultTimeout = 30 * time.Second
+
+// maxColumnWidth is the maximum width for table columns before truncation
+const maxColumnWidth = 50
 
 // CLICommand implements the cli command for CRUD operations on sources.
 // Usage: tinkerdown cli <file.md|directory> <action> <source> [flags]
@@ -92,9 +100,15 @@ func CLICommand(args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create source: %w", err)
 	}
-	defer src.Close()
+	defer func() {
+		if err := src.Close(); err != nil {
+			log.Printf("warning: failed to close source: %v", err)
+		}
+	}()
 
-	ctx := context.Background()
+	// Create context with timeout to prevent hanging operations
+	ctx, cancel := context.WithTimeout(context.Background(), defaultTimeout)
+	defer cancel()
 
 	switch action {
 	case "list":
@@ -150,7 +164,14 @@ func parseFlags(args []string) cliOptions {
 
 		switch key {
 		case "format":
-			opts.format = value
+			// Validate format value
+			switch value {
+			case "table", "json", "csv":
+				opts.format = value
+			default:
+				// Invalid format - keep default and log warning
+				log.Printf("warning: invalid format %q, using default 'table'", value)
+			}
 		case "filter":
 			opts.filter = value
 		case "id":
@@ -271,6 +292,9 @@ func applyFilter(data []map[string]interface{}, filter string) []map[string]inte
 		return data // Invalid filter (empty field name)
 	}
 
+	// Parse the filter value to enable type-aware comparison
+	parsedValue := parseValue(value)
+
 	result := make([]map[string]interface{}, 0)
 	for _, item := range data {
 		itemValue, exists := item[field]
@@ -281,8 +305,16 @@ func applyFilter(data []map[string]interface{}, filter string) []map[string]inte
 			continue
 		}
 
-		itemStr := fmt.Sprintf("%v", itemValue)
-		matches := itemStr == value
+		// Compare using both parsed value and string representation for flexibility
+		var matches bool
+		if itemValue == parsedValue {
+			matches = true
+		} else {
+			// Fallback to string comparison for mixed types
+			itemStr := fmt.Sprintf("%v", itemValue)
+			matches = itemStr == value
+		}
+
 		if negate {
 			matches = !matches
 		}
@@ -325,7 +357,6 @@ func outputCSV(data []map[string]interface{}) error {
 
 	// Write CSV
 	w := csv.NewWriter(os.Stdout)
-	defer w.Flush()
 
 	// Header
 	if err := w.Write(columns); err != nil {
@@ -345,7 +376,17 @@ func outputCSV(data []map[string]interface{}) error {
 		}
 	}
 
-	return nil
+	// Flush and check for errors
+	w.Flush()
+	return w.Error()
+}
+
+// truncateString truncates a string to maxColumnWidth with ellipsis if needed
+func truncateString(s string) string {
+	if len(s) > maxColumnWidth {
+		return s[:maxColumnWidth-3] + "..."
+	}
+	return s
 }
 
 // outputTable outputs data as a formatted table
@@ -385,11 +426,7 @@ func outputTable(data []map[string]interface{}) error {
 	}
 	for _, row := range data {
 		for col, val := range row {
-			str := fmt.Sprintf("%v", val)
-			// Truncate long values
-			if len(str) > 50 {
-				str = str[:47] + "..."
-			}
+			str := truncateString(fmt.Sprintf("%v", val))
 			if len(str) > widths[col] {
 				widths[col] = len(str)
 			}
@@ -419,10 +456,7 @@ func outputTable(data []map[string]interface{}) error {
 			}
 			val := ""
 			if v, ok := row[col]; ok {
-				val = fmt.Sprintf("%v", v)
-				if len(val) > 50 {
-					val = val[:47] + "..."
-				}
+				val = truncateString(fmt.Sprintf("%v", v))
 			}
 			line.WriteString(fmt.Sprintf("%-*s", widths[col], val))
 		}
@@ -475,12 +509,12 @@ func cliUpdate(ctx context.Context, src source.Source, opts cliOptions) error {
 		return fmt.Errorf("no fields to update. Use --field=value to specify fields")
 	}
 
-	// Add ID to fields
+	// Add ID to fields (parse ID to appropriate type for comparison)
 	data := make(map[string]interface{})
 	for k, v := range opts.fields {
 		data[k] = v
 	}
-	data["id"] = opts.id
+	data["id"] = parseValue(opts.id)
 
 	if err := writable.WriteItem(ctx, "update", data); err != nil {
 		return fmt.Errorf("failed to update item: %w", err)
@@ -511,7 +545,9 @@ func cliDelete(ctx context.Context, src source.Source, opts cliOptions) error {
 		reader := bufio.NewReader(os.Stdin)
 		response, err := reader.ReadString('\n')
 		if err != nil {
-			return fmt.Errorf("failed to read input: %w", err)
+			// Default to cancel on read error for safety
+			fmt.Println("\nDelete cancelled (failed to read input).")
+			return nil
 		}
 		response = strings.TrimSpace(strings.ToLower(response))
 		if response != "y" && response != "yes" {
@@ -521,7 +557,7 @@ func cliDelete(ctx context.Context, src source.Source, opts cliOptions) error {
 	}
 
 	if err := writable.WriteItem(ctx, "delete", map[string]interface{}{
-		"id": opts.id,
+		"id": parseValue(opts.id),
 	}); err != nil {
 		return fmt.Errorf("failed to delete item: %w", err)
 	}
