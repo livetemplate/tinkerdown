@@ -644,3 +644,154 @@ func TestPaginate(t *testing.T) {
 		})
 	}
 }
+
+func TestAuthMiddleware(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"success": true}`))
+	})
+
+	t.Run("no auth configured passes through", func(t *testing.T) {
+		wrapped := AuthMiddleware("", "X-API-Key")(handler)
+
+		req := httptest.NewRequest("GET", "/api/sources/test", nil)
+		w := httptest.NewRecorder()
+
+		wrapped.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected request to pass through without auth, got %d", w.Code)
+		}
+	})
+
+	t.Run("valid API key with X-API-Key header", func(t *testing.T) {
+		wrapped := AuthMiddleware("secret-key-123", "X-API-Key")(handler)
+
+		req := httptest.NewRequest("GET", "/api/sources/test", nil)
+		req.Header.Set("X-API-Key", "secret-key-123")
+		w := httptest.NewRecorder()
+
+		wrapped.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected valid API key to succeed, got %d", w.Code)
+		}
+	})
+
+	t.Run("invalid API key", func(t *testing.T) {
+		wrapped := AuthMiddleware("secret-key-123", "X-API-Key")(handler)
+
+		req := httptest.NewRequest("GET", "/api/sources/test", nil)
+		req.Header.Set("X-API-Key", "wrong-key")
+		w := httptest.NewRecorder()
+
+		wrapped.ServeHTTP(w, req)
+
+		if w.Code != http.StatusUnauthorized {
+			t.Errorf("Expected invalid API key to return 401, got %d", w.Code)
+		}
+
+		var response map[string]string
+		if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+			t.Fatalf("Failed to parse error response: %v", err)
+		}
+		if response["error"] != "invalid API key" {
+			t.Errorf("Expected 'invalid API key' error, got %s", response["error"])
+		}
+	})
+
+	t.Run("missing API key", func(t *testing.T) {
+		wrapped := AuthMiddleware("secret-key-123", "X-API-Key")(handler)
+
+		req := httptest.NewRequest("GET", "/api/sources/test", nil)
+		w := httptest.NewRecorder()
+
+		wrapped.ServeHTTP(w, req)
+
+		if w.Code != http.StatusUnauthorized {
+			t.Errorf("Expected missing API key to return 401, got %d", w.Code)
+		}
+
+		var response map[string]string
+		if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+			t.Fatalf("Failed to parse error response: %v", err)
+		}
+		if response["error"] != "authentication required" {
+			t.Errorf("Expected 'authentication required' error, got %s", response["error"])
+		}
+	})
+
+	t.Run("valid Bearer token", func(t *testing.T) {
+		wrapped := AuthMiddleware("secret-key-123", "Authorization")(handler)
+
+		req := httptest.NewRequest("GET", "/api/sources/test", nil)
+		req.Header.Set("Authorization", "Bearer secret-key-123")
+		w := httptest.NewRecorder()
+
+		wrapped.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected valid Bearer token to succeed, got %d", w.Code)
+		}
+	})
+
+	t.Run("invalid Bearer format", func(t *testing.T) {
+		wrapped := AuthMiddleware("secret-key-123", "Authorization")(handler)
+
+		req := httptest.NewRequest("GET", "/api/sources/test", nil)
+		req.Header.Set("Authorization", "Basic secret-key-123")
+		w := httptest.NewRecorder()
+
+		wrapped.ServeHTTP(w, req)
+
+		if w.Code != http.StatusUnauthorized {
+			t.Errorf("Expected invalid Bearer format to return 401, got %d", w.Code)
+		}
+
+		var response map[string]string
+		if err := json.Unmarshal(w.Body.Bytes(), &response); err != nil {
+			t.Fatalf("Failed to parse error response: %v", err)
+		}
+		if !strings.Contains(response["error"], "Bearer") {
+			t.Errorf("Expected error about Bearer format, got %s", response["error"])
+		}
+	})
+
+	t.Run("custom header name", func(t *testing.T) {
+		wrapped := AuthMiddleware("my-token", "X-Custom-Token")(handler)
+
+		req := httptest.NewRequest("GET", "/api/sources/test", nil)
+		req.Header.Set("X-Custom-Token", "my-token")
+		w := httptest.NewRecorder()
+
+		wrapped.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected custom header to work, got %d", w.Code)
+		}
+	})
+}
+
+func TestSecureCompare(t *testing.T) {
+	tests := []struct {
+		name     string
+		a        string
+		b        string
+		expected bool
+	}{
+		{"equal strings", "secret", "secret", true},
+		{"different strings", "secret", "wrong", false},
+		{"different lengths", "short", "longer", false},
+		{"empty strings", "", "", true},
+		{"one empty", "secret", "", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := secureCompare(tt.a, tt.b)
+			if result != tt.expected {
+				t.Errorf("secureCompare(%q, %q) = %v, want %v", tt.a, tt.b, result, tt.expected)
+			}
+		})
+	}
+}

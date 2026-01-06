@@ -239,9 +239,20 @@ type FeaturesConfig struct {
 
 // APIConfig holds REST API configuration
 type APIConfig struct {
-	Enabled   bool            `yaml:"enabled"`    // Enable REST API endpoints (default: false)
-	CORS      *CORSConfig     `yaml:"cors,omitempty"`
+	Enabled   bool             `yaml:"enabled"` // Enable REST API endpoints (default: false)
+	CORS      *CORSConfig      `yaml:"cors,omitempty"`
 	RateLimit *RateLimitConfig `yaml:"rate_limit,omitempty"`
+	Auth      *AuthConfig      `yaml:"auth,omitempty"`
+}
+
+// AuthConfig holds authentication configuration for the API
+type AuthConfig struct {
+	// APIKey is the required API key for authentication.
+	// Supports environment variable expansion (e.g., "${API_KEY}" or "$API_KEY")
+	APIKey string `yaml:"api_key,omitempty"`
+	// HeaderName is the HTTP header name for the API key (default: "X-API-Key")
+	// Also supports "Authorization: Bearer <token>" format when set to "Authorization"
+	HeaderName string `yaml:"header_name,omitempty"`
 }
 
 // CORSConfig holds CORS configuration for the API
@@ -277,6 +288,30 @@ func (c *APIConfig) GetRateLimitBurst() int {
 		return 20
 	}
 	return c.RateLimit.Burst
+}
+
+// IsAuthEnabled returns true if API authentication is configured
+func (c *APIConfig) IsAuthEnabled() bool {
+	if c == nil || c.Auth == nil {
+		return false
+	}
+	return c.Auth.GetAPIKey() != ""
+}
+
+// GetAPIKey returns the configured API key with environment variable expansion
+func (c *AuthConfig) GetAPIKey() string {
+	if c == nil || c.APIKey == "" {
+		return ""
+	}
+	return os.ExpandEnv(c.APIKey)
+}
+
+// GetHeaderName returns the header name for authentication (default: "X-API-Key")
+func (c *AuthConfig) GetHeaderName() string {
+	if c == nil || c.HeaderName == "" {
+		return "X-API-Key"
+	}
+	return c.HeaderName
 }
 
 // IsAPIEnabled returns whether the API is enabled

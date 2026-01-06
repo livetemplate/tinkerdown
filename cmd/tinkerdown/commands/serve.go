@@ -148,6 +148,9 @@ func ServeCommand(args []string) error {
 	}
 	if cfg.IsAPIEnabled() {
 		fmt.Printf("🔌 REST API enabled at /api/sources/{name}\n")
+		if cfg.API.IsAuthEnabled() {
+			fmt.Printf("🔐 API authentication enabled (header: %s)\n", cfg.API.Auth.GetHeaderName())
+		}
 	}
 	if cfg.Features.HotReload {
 		fmt.Printf("📝 Edit .md files and see changes instantly\n")

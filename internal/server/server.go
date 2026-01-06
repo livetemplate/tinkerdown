@@ -74,17 +74,28 @@ func NewWithConfig(rootDir string, cfg *config.Config) *Server {
 		srv.apiHandler = NewAPIHandler(cfg, rootDir)
 
 		// Wrap API handler with middleware
-		// Order matters: CORS must be outermost so preflight requests get proper headers
-		// and aren't counted against rate limits
+		// Order matters (execution is outer to inner):
+		// 1. CORS - handle preflight requests without auth/rate limiting
+		// 2. Rate Limit - protect against brute force attacks
+		// 3. Auth - validate API key
+		// 4. Handler - process the request
 		var handler http.Handler = srv.apiHandler
 
-		// Apply rate limiting middleware (inner)
+		// Apply auth middleware (innermost - after rate limiting protects against brute force)
+		if cfg.API.IsAuthEnabled() {
+			handler = AuthMiddleware(
+				cfg.API.Auth.GetAPIKey(),
+				cfg.API.Auth.GetHeaderName(),
+			)(handler)
+		}
+
+		// Apply rate limiting middleware
 		handler = RateLimitMiddleware(
 			cfg.API.GetRateLimitRPS(),
 			cfg.API.GetRateLimitBurst(),
 		)(handler)
 
-		// Apply CORS middleware (outer - must be first to handle preflight)
+		// Apply CORS middleware (outermost - must be first to handle preflight)
 		handler = CORSMiddleware(cfg.API.GetCORSOrigins())(handler)
 
 		srv.apiRoutes = handler

@@ -78,3 +78,62 @@ func RateLimitMiddleware(rps float64, burst int) func(http.Handler) http.Handler
 		})
 	}
 }
+
+// AuthMiddleware validates API key authentication.
+// If apiKey is empty, authentication is disabled and all requests are allowed.
+// The headerName specifies which HTTP header contains the API key (e.g., "X-API-Key").
+// When headerName is "Authorization", the middleware expects "Bearer <token>" format.
+func AuthMiddleware(apiKey, headerName string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		// If no API key configured, skip authentication
+		if apiKey == "" {
+			return next
+		}
+
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Extract token from header
+			token := r.Header.Get(headerName)
+			if token == "" {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusUnauthorized)
+				w.Write([]byte(`{"error": "authentication required"}`))
+				return
+			}
+
+			// Handle "Authorization: Bearer <token>" format
+			if headerName == "Authorization" {
+				const bearerPrefix = "Bearer "
+				if len(token) > len(bearerPrefix) && token[:len(bearerPrefix)] == bearerPrefix {
+					token = token[len(bearerPrefix):]
+				} else {
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusUnauthorized)
+					w.Write([]byte(`{"error": "invalid authorization format, expected Bearer token"}`))
+					return
+				}
+			}
+
+			// Validate token using constant-time comparison to prevent timing attacks
+			if !secureCompare(token, apiKey) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusUnauthorized)
+				w.Write([]byte(`{"error": "invalid API key"}`))
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// secureCompare performs a constant-time string comparison to prevent timing attacks
+func secureCompare(a, b string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	var result byte
+	for i := 0; i < len(a); i++ {
+		result |= a[i] ^ b[i]
+	}
+	return result == 0
+}
