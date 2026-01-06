@@ -1,0 +1,9 @@
+{
+  "blockID": "__expressions__",
+  "action": "expr-update",
+  "data": {
+    "total": 5,
+    "completed": 2,
+    "remaining": 3
+  }
+}

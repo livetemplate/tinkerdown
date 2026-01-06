@@ -1,0 +1,9 @@
+{
+  "blockID": "lvt-0",
+  "action": "Add",
+  "data": {
+    "id": "task-new",
+    "text": "New task",
+    "done": false
+  }
+}
