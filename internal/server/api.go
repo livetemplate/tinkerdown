@@ -152,7 +152,8 @@ func (h *APIHandler) handleGet(w http.ResponseWriter, r *http.Request, src sourc
 
 	data, err := src.Fetch(ctx)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		log.Printf("[API] Failed to fetch from source %s: %v", src.Name(), err)
+		writeError(w, http.StatusInternalServerError, "failed to fetch data")
 		return
 	}
 
@@ -195,7 +196,8 @@ func (h *APIHandler) handlePost(w http.ResponseWriter, r *http.Request, src sour
 	}
 
 	if err := writable.WriteItem(r.Context(), "add", data); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		log.Printf("[API] Failed to create item in source %s: %v", src.Name(), err)
+		writeError(w, http.StatusInternalServerError, "failed to create item")
 		return
 	}
 
@@ -231,7 +233,8 @@ func (h *APIHandler) handlePut(w http.ResponseWriter, r *http.Request, src sourc
 	data["id"] = itemID
 
 	if err := writable.WriteItem(r.Context(), "update", data); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		log.Printf("[API] Failed to update item %s in source %s: %v", itemID, src.Name(), err)
+		writeError(w, http.StatusInternalServerError, "failed to update item")
 		return
 	}
 
@@ -256,7 +259,8 @@ func (h *APIHandler) handleDelete(w http.ResponseWriter, r *http.Request, src so
 	if err := writable.WriteItem(r.Context(), "delete", map[string]interface{}{
 		"id": itemID,
 	}); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		log.Printf("[API] Failed to delete item %s from source %s: %v", itemID, src.Name(), err)
+		writeError(w, http.StatusInternalServerError, "failed to delete item")
 		return
 	}
 
@@ -297,24 +301,34 @@ func parseIntParam(r *http.Request, name string, defaultVal int) int {
 
 // applyFilter applies a simple filter to data.
 // Filter format: "field=value" or "field!=value"
+// Note: Values containing "=" are supported (e.g., "name=foo=bar" matches field "name" with value "foo=bar")
+// However, field names cannot contain "=" or "!="
 func applyFilter(data []map[string]interface{}, filter string) []map[string]interface{} {
 	if filter == "" {
 		return data
 	}
 
-	// Parse filter
+	// Parse filter - check for != first to avoid matching = within !=
 	var field, value string
 	var negate bool
 
-	if idx := strings.Index(filter, "!="); idx != -1 {
+	if idx := strings.Index(filter, "!="); idx > 0 {
 		field = filter[:idx]
 		value = filter[idx+2:]
 		negate = true
-	} else if idx := strings.Index(filter, "="); idx != -1 {
+	} else if idx := strings.Index(filter, "="); idx > 0 {
 		field = filter[:idx]
 		value = filter[idx+1:]
 	} else {
-		return data // Invalid filter format
+		// Invalid filter format (no operator or empty field name)
+		log.Printf("[API] Invalid filter format: %q", filter)
+		return data
+	}
+
+	// Validate field name
+	if field == "" {
+		log.Printf("[API] Invalid filter: empty field name")
+		return data
 	}
 
 	// Apply filter

@@ -619,20 +619,21 @@ func TestPaginate(t *testing.T) {
 	}
 
 	tests := []struct {
+		name     string
 		offset   int
 		limit    int
 		expected int
 		firstID  string
 	}{
-		{0, 0, 5, "1"},
-		{0, 3, 3, "1"},
-		{2, 2, 2, "3"},
-		{4, 10, 1, "5"},
-		{10, 10, 0, ""},
+		{"no pagination", 0, 0, 5, "1"},
+		{"limit only", 0, 3, 3, "1"},
+		{"offset and limit", 2, 2, 2, "3"},
+		{"offset near end", 4, 10, 1, "5"},
+		{"offset past end", 10, 10, 0, ""},
 	}
 
 	for _, tt := range tests {
-		t.Run("", func(t *testing.T) {
+		t.Run(tt.name, func(t *testing.T) {
 			result := paginate(data, tt.offset, tt.limit)
 			if len(result) != tt.expected {
 				t.Errorf("offset=%d, limit=%d: expected %d items, got %d", tt.offset, tt.limit, tt.expected, len(result))
