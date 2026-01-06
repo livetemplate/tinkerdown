@@ -1,5 +1,10 @@
 package commands
 
+// NOTE: Tests in this file manipulate os.Stdout directly for output capture,
+// which prevents safe parallel execution with t.Parallel(). These tests must
+// run sequentially. If parallel execution is needed in the future, refactor
+// the output functions to accept an io.Writer parameter instead of using os.Stdout.
+
 import (
 	"bytes"
 	"context"
@@ -262,8 +267,12 @@ func TestCLIListFilter(t *testing.T) {
 	defer cleanup()
 
 	// Add multiple tasks
-	CLICommand([]string{tmpDir, "add", "tasks", "--text=Task A", "--done=false"})
-	CLICommand([]string{tmpDir, "add", "tasks", "--text=Task B", "--done=true"})
+	if err := CLICommand([]string{tmpDir, "add", "tasks", "--text=Task A", "--done=false"}); err != nil {
+		t.Fatalf("Failed to add first task: %v", err)
+	}
+	if err := CLICommand([]string{tmpDir, "add", "tasks", "--text=Task B", "--done=true"}); err != nil {
+		t.Fatalf("Failed to add second task: %v", err)
+	}
 
 	// List with filter
 	old := os.Stdout
@@ -318,7 +327,9 @@ func TestCLIUpdate(t *testing.T) {
 	buf.ReadFrom(r)
 
 	var items []map[string]interface{}
-	json.Unmarshal(buf.Bytes(), &items)
+	if err := json.Unmarshal(buf.Bytes(), &items); err != nil {
+		t.Fatalf("Failed to parse JSON for item ID lookup: %v", err)
+	}
 
 	if len(items) == 0 {
 		t.Fatal("No items found")
@@ -345,7 +356,11 @@ func TestCLIUpdate(t *testing.T) {
 	r, w, _ = os.Pipe()
 	os.Stdout = w
 
-	CLICommand([]string{tmpDir, "list", "tasks", "--format=json"})
+	if err := CLICommand([]string{tmpDir, "list", "tasks", "--format=json"}); err != nil {
+		w.Close()
+		os.Stdout = old
+		t.Fatalf("Failed to list tasks after update: %v", err)
+	}
 
 	w.Close()
 	os.Stdout = old
@@ -353,7 +368,9 @@ func TestCLIUpdate(t *testing.T) {
 	buf.Reset()
 	buf.ReadFrom(r)
 
-	json.Unmarshal(buf.Bytes(), &items)
+	if err := json.Unmarshal(buf.Bytes(), &items); err != nil {
+		t.Fatalf("Failed to parse JSON after update: %v", err)
+	}
 
 	if items[0]["text"] != "Updated Text" {
 		t.Errorf("Expected 'Updated Text', got %v", items[0]["text"])
@@ -391,7 +408,9 @@ func TestCLIDeleteWithConfirmation(t *testing.T) {
 	defer cleanup()
 
 	// Add a task
-	CLICommand([]string{tmpDir, "add", "tasks", "--text=To Delete"})
+	if err := CLICommand([]string{tmpDir, "add", "tasks", "--text=To Delete"}); err != nil {
+		t.Fatalf("Failed to add task for deletion test: %v", err)
+	}
 
 	// Delete with -y flag (skip confirmation)
 	err := CLICommand([]string{tmpDir, "delete", "tasks", "--id=1", "-y"})
@@ -404,7 +423,11 @@ func TestCLIDeleteWithConfirmation(t *testing.T) {
 	r, w, _ := os.Pipe()
 	os.Stdout = w
 
-	CLICommand([]string{tmpDir, "list", "tasks", "--format=json"})
+	if err := CLICommand([]string{tmpDir, "list", "tasks", "--format=json"}); err != nil {
+		w.Close()
+		os.Stdout = old
+		t.Fatalf("Failed to list tasks after delete: %v", err)
+	}
 
 	w.Close()
 	os.Stdout = old
@@ -413,7 +436,9 @@ func TestCLIDeleteWithConfirmation(t *testing.T) {
 	buf.ReadFrom(r)
 
 	var items []map[string]interface{}
-	json.Unmarshal(buf.Bytes(), &items)
+	if err := json.Unmarshal(buf.Bytes(), &items); err != nil {
+		t.Fatalf("Failed to parse JSON after delete: %v", err)
+	}
 
 	if len(items) != 0 {
 		t.Errorf("Expected 0 items after delete, got %d", len(items))
@@ -489,6 +514,8 @@ func TestParseValue(t *testing.T) {
 		{"123", int64(123)},
 		{"-456", int64(-456)},
 		{"3.14", 3.14},
+		{"123.0", 123.0}, // Verify decimal values are parsed as float, not int
+		{"1e5", 100000.0}, // Scientific notation
 		{"hello", "hello"},
 		{"", ""},
 	}
@@ -566,6 +593,24 @@ func TestApplyFilter(t *testing.T) {
 	result = applyFilter(data, "")
 	if len(result) != 3 {
 		t.Errorf("Expected 3 items with empty filter, got %d", len(result))
+	}
+
+	// Test edge cases: empty field name should return all data
+	result = applyFilter(data, "=value")
+	if len(result) != 3 {
+		t.Errorf("Expected 3 items with empty field name filter, got %d", len(result))
+	}
+
+	// Test edge cases: empty value is valid (matches empty string)
+	result = applyFilter(data, "name=")
+	if len(result) != 0 {
+		t.Errorf("Expected 0 items with name= (empty value), got %d", len(result))
+	}
+
+	// Test invalid filter without operator
+	result = applyFilter(data, "invalid")
+	if len(result) != 3 {
+		t.Errorf("Expected 3 items with invalid filter (no operator), got %d", len(result))
 	}
 }
 
@@ -706,7 +751,8 @@ func TestCLIListWithContext(t *testing.T) {
 	}
 }
 
-// mockSource implements source.Source for testing
+// mockSource implements source.Source and source.WritableSource for testing.
+// It provides both read and write capabilities for comprehensive CLI testing.
 type mockSource struct {
 	data     []map[string]interface{}
 	readonly bool
@@ -719,3 +765,41 @@ func (m *mockSource) Fetch(ctx context.Context) ([]map[string]interface{}, error
 }
 
 func (m *mockSource) Close() error { return nil }
+
+// WritableSource interface implementation
+
+func (m *mockSource) IsReadonly() bool { return m.readonly }
+
+func (m *mockSource) WriteItem(ctx context.Context, action string, data map[string]interface{}) error {
+	switch action {
+	case "add":
+		// Generate a simple ID for new items
+		newItem := make(map[string]interface{})
+		for k, v := range data {
+			newItem[k] = v
+		}
+		if _, hasID := newItem["id"]; !hasID {
+			newItem["id"] = len(m.data) + 1
+		}
+		m.data = append(m.data, newItem)
+	case "update":
+		id := data["id"]
+		for i, item := range m.data {
+			if item["id"] == id {
+				for k, v := range data {
+					m.data[i][k] = v
+				}
+				break
+			}
+		}
+	case "delete":
+		id := data["id"]
+		for i, item := range m.data {
+			if item["id"] == id {
+				m.data = append(m.data[:i], m.data[i+1:]...)
+				break
+			}
+		}
+	}
+	return nil
+}

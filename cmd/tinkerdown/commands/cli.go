@@ -174,12 +174,20 @@ func parseValue(s string) interface{} {
 		return false
 	}
 
-	// Try integer
+	// Check if it contains a decimal point - if so, parse as float
+	// This prevents "123.0" from being parsed as int64
+	if strings.Contains(s, ".") {
+		if f, err := strconv.ParseFloat(s, 64); err == nil {
+			return f
+		}
+	}
+
+	// Try integer (only for values without decimal points)
 	if i, err := strconv.ParseInt(s, 10, 64); err == nil {
 		return i
 	}
 
-	// Try float
+	// Try float as fallback (handles scientific notation like "1e5")
 	if f, err := strconv.ParseFloat(s, 64); err == nil {
 		return f
 	}
@@ -247,15 +255,20 @@ func applyFilter(data []map[string]interface{}, filter string) []map[string]inte
 	var field, value string
 	var negate bool
 
-	if idx := strings.Index(filter, "!="); idx > 0 {
+	if idx := strings.Index(filter, "!="); idx >= 0 {
 		field = filter[:idx]
 		value = filter[idx+2:]
 		negate = true
-	} else if idx := strings.Index(filter, "="); idx > 0 {
+	} else if idx := strings.Index(filter, "="); idx >= 0 {
 		field = filter[:idx]
 		value = filter[idx+1:]
 	} else {
-		return data // Invalid filter
+		return data // Invalid filter (no operator found)
+	}
+
+	// Validate field name is not empty
+	if field == "" {
+		return data // Invalid filter (empty field name)
 	}
 
 	result := make([]map[string]interface{}, 0)
