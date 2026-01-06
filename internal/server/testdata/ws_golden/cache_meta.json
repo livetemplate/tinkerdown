@@ -1,0 +1,12 @@
+{
+  "blockID": "cached-0",
+  "action": "tree",
+  "data": {},
+  "cacheMeta": {
+    "cached": true,
+    "age": "30s",
+    "expires_in": "30s",
+    "stale": false,
+    "refreshing": false
+  }
+}

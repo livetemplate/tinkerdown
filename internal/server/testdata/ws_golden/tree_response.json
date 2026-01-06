@@ -1,0 +1,11 @@
+{
+  "blockID": "lvt-0",
+  "action": "tree",
+  "data": {
+    "s": ["<div>", "</div>"],
+    "d": [
+      {"v": "Task 1", "k": 0},
+      {"v": "Task 2", "k": 1}
+    ]
+  }
+}
