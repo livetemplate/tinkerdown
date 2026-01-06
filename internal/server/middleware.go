@@ -1,0 +1,139 @@
+package server
+
+import (
+	"net/http"
+
+	"golang.org/x/time/rate"
+)
+
+// CORSMiddleware adds CORS headers to responses.
+// If origins is empty or nil, CORS headers are not added.
+func CORSMiddleware(origins []string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		if len(origins) == 0 {
+			return next
+		}
+
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			origin := r.Header.Get("Origin")
+
+			// Check if origin is allowed
+			allowed := false
+			allowAll := false
+			for _, o := range origins {
+				if o == "*" {
+					allowed = true
+					allowAll = true
+					break
+				}
+				if o == origin {
+					allowed = true
+					break
+				}
+			}
+
+			if allowed && origin != "" {
+				// When wildcard is configured, use "*" header; otherwise echo the specific origin
+				if allowAll {
+					w.Header().Set("Access-Control-Allow-Origin", "*")
+				} else {
+					w.Header().Set("Access-Control-Allow-Origin", origin)
+				}
+				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+				w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+				w.Header().Set("Access-Control-Max-Age", "86400") // 24 hours
+			}
+
+			// Handle preflight request
+			if r.Method == http.MethodOptions {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// RateLimitMiddleware limits requests using a token bucket algorithm.
+// rps is the rate limit in requests per second, burst is the maximum burst size.
+//
+// Note: This implementation uses a global rate limiter shared across all sources
+// and all clients. For production use cases requiring per-source or per-IP rate
+// limiting, consider extending this with a map of limiters keyed by source name
+// or client IP address.
+func RateLimitMiddleware(rps float64, burst int) func(http.Handler) http.Handler {
+	limiter := rate.NewLimiter(rate.Limit(rps), burst)
+
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if !limiter.Allow() {
+				w.Header().Set("Content-Type", "application/json")
+				w.Header().Set("Retry-After", "1")
+				w.WriteHeader(http.StatusTooManyRequests)
+				w.Write([]byte(`{"error": "rate limit exceeded"}`))
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// AuthMiddleware validates API key authentication.
+// If apiKey is empty, authentication is disabled and all requests are allowed.
+// The headerName specifies which HTTP header contains the API key (e.g., "X-API-Key").
+// When headerName is "Authorization", the middleware expects "Bearer <token>" format.
+func AuthMiddleware(apiKey, headerName string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		// If no API key configured, skip authentication
+		if apiKey == "" {
+			return next
+		}
+
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Extract token from header
+			token := r.Header.Get(headerName)
+			if token == "" {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusUnauthorized)
+				w.Write([]byte(`{"error": "authentication required"}`))
+				return
+			}
+
+			// Handle "Authorization: Bearer <token>" format
+			if headerName == "Authorization" {
+				const bearerPrefix = "Bearer "
+				if len(token) > len(bearerPrefix) && token[:len(bearerPrefix)] == bearerPrefix {
+					token = token[len(bearerPrefix):]
+				} else {
+					w.Header().Set("Content-Type", "application/json")
+					w.WriteHeader(http.StatusUnauthorized)
+					w.Write([]byte(`{"error": "invalid authorization format, expected Bearer token"}`))
+					return
+				}
+			}
+
+			// Validate token using constant-time comparison to prevent timing attacks
+			if !secureCompare(token, apiKey) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusUnauthorized)
+				w.Write([]byte(`{"error": "invalid API key"}`))
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// secureCompare performs a constant-time string comparison to prevent timing attacks
+func secureCompare(a, b string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	var result byte
+	for i := 0; i < len(a); i++ {
+		result |= a[i] ^ b[i]
+	}
+	return result == 0
+}

@@ -20,8 +20,8 @@ import (
 
 // Route represents a discovered page route.
 type Route struct {
-	Pattern  string         // URL pattern (e.g., "/counter")
-	FilePath string         // Relative file path (e.g., "counter.md")
+	Pattern  string           // URL pattern (e.g., "/counter")
+	FilePath string           // Relative file path (e.g., "counter.md")
 	Page     *tinkerdown.Page // Parsed page
 }
 
@@ -30,12 +30,14 @@ type Server struct {
 	rootDir     string
 	config      *config.Config
 	routes      []*Route
-	siteManager *site.Manager                           // For multi-page documentation sites
+	siteManager *site.Manager // For multi-page documentation sites
 	mu          sync.RWMutex
-	connections map[*websocket.Conn]*WebSocketHandler   // Track connected WebSocket clients with their handlers
-	connMu      sync.RWMutex                            // Separate mutex for connections
-	watcher     *Watcher                                // File watcher for live reload
-	playground  *PlaygroundHandler                      // Playground for testing AI-generated apps
+	connections map[*websocket.Conn]*WebSocketHandler // Track connected WebSocket clients with their handlers
+	connMu      sync.RWMutex                          // Separate mutex for connections
+	watcher     *Watcher                              // File watcher for live reload
+	playground  *PlaygroundHandler                    // Playground for testing AI-generated apps
+	apiHandler  *APIHandler                           // REST API handler for sources
+	apiRoutes   http.Handler                          // Wrapped API handler with middleware
 }
 
 // New creates a new server for the given root directory.
@@ -66,6 +68,38 @@ func NewWithConfig(rootDir string, cfg *config.Config) *Server {
 
 	// Initialize playground handler
 	srv.playground = NewPlaygroundHandler(srv)
+
+	// Initialize API handler if enabled
+	if cfg.IsAPIEnabled() {
+		srv.apiHandler = NewAPIHandler(cfg, rootDir)
+
+		// Wrap API handler with middleware
+		// Order matters (execution is outer to inner):
+		// 1. CORS - handle preflight requests without auth/rate limiting
+		// 2. Rate Limit - protect against brute force attacks
+		// 3. Auth - validate API key
+		// 4. Handler - process the request
+		var handler http.Handler = srv.apiHandler
+
+		// Apply auth middleware (innermost - after rate limiting protects against brute force)
+		if cfg.API.IsAuthEnabled() {
+			handler = AuthMiddleware(
+				cfg.API.Auth.GetAPIKey(),
+				cfg.API.Auth.GetHeaderName(),
+			)(handler)
+		}
+
+		// Apply rate limiting middleware
+		handler = RateLimitMiddleware(
+			cfg.API.GetRateLimitRPS(),
+			cfg.API.GetRateLimitBurst(),
+		)(handler)
+
+		// Apply CORS middleware (outermost - must be first to handle preflight)
+		handler = CORSMiddleware(cfg.API.GetCORSOrigins())(handler)
+
+		srv.apiRoutes = handler
+	}
 
 	return srv
 }
@@ -172,6 +206,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Serve WebSocket endpoint
 	if r.URL.Path == "/ws" {
 		s.serveWebSocket(w, r)
+		return
+	}
+
+	// Serve REST API endpoints
+	if strings.HasPrefix(r.URL.Path, "/api/sources/") && s.apiRoutes != nil {
+		s.apiRoutes.ServeHTTP(w, r)
 		return
 	}
 
