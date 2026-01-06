@@ -55,6 +55,8 @@ func main() {
 		err = commands.NewCommand(filteredArgs, templateName)
 	case "blocks":
 		err = commands.BlocksCommand(args)
+	case "cli":
+		err = commands.CLICommand(args)
 	case "version":
 		fmt.Printf("tinkerdown version %s\n", version)
 	case "help", "-h", "--help":
@@ -80,6 +82,7 @@ func printUsage() {
 	fmt.Println("  tinkerdown fix [directory]       Auto-fix common issues")
 	fmt.Println("  tinkerdown blocks [directory]    Inspect code blocks")
 	fmt.Println("  tinkerdown new <name>            Create new app from template")
+	fmt.Println("  tinkerdown cli <path> <action> <source>  CLI mode for CRUD operations")
 	fmt.Println("  tinkerdown version               Show version")
 	fmt.Println("  tinkerdown help                  Show this help")
 	fmt.Println()
@@ -95,6 +98,8 @@ func printUsage() {
 	fmt.Println("  tinkerdown blocks . --verbose    # Show detailed block info")
 	fmt.Println("  tinkerdown new my-app            # Create new app (basic template)")
 	fmt.Println("  tinkerdown new my-app --template=todo  # Use todo template")
+	fmt.Println("  tinkerdown cli app.md list tasks # List items from source")
+	fmt.Println("  tinkerdown cli . add tasks --text=\"New task\"  # Add item")
 	fmt.Println()
 	fmt.Println("Documentation: https://github.com/livetemplate/tinkerdown")
 }
