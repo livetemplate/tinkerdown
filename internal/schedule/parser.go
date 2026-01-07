@@ -88,7 +88,6 @@ func (p *Parser) ParseText(text string) ([]*Token, error) {
 
 	lines := strings.Split(text, "\n")
 	inCodeBlock := false
-	inInlineCode := false
 
 	for lineNum, line := range lines {
 		// Check for code block boundaries
@@ -101,7 +100,9 @@ func (p *Parser) ParseText(text string) ([]*Token, error) {
 		}
 
 		// Parse tokens from this line, skipping inline code
-		lineTokens := p.parseLine(line, lineNum+1, &inInlineCode)
+		// Note: inline code (backticks) doesn't span lines in markdown,
+		// so we reset the state for each line
+		lineTokens := p.parseLine(line, lineNum+1)
 		tokens = append(tokens, lineTokens...)
 	}
 
@@ -109,21 +110,22 @@ func (p *Parser) ParseText(text string) ([]*Token, error) {
 }
 
 // parseLine extracts schedule tokens from a single line.
-func (p *Parser) parseLine(line string, lineNum int, inInlineCode *bool) []*Token {
+func (p *Parser) parseLine(line string, lineNum int) []*Token {
 	var tokens []*Token
 
-	// Track positions and inline code state
+	// Track positions and inline code state (resets each line per markdown spec)
+	inInlineCode := false
 	col := 0
 	for col < len(line) {
 		// Handle inline code boundaries
 		if line[col] == '`' {
-			*inInlineCode = !*inInlineCode
+			inInlineCode = !inInlineCode
 			col++
 			continue
 		}
 
 		// Skip if in inline code
-		if *inInlineCode {
+		if inInlineCode {
 			col++
 			continue
 		}
@@ -232,10 +234,9 @@ func (p *Parser) ParseToken(s string) (*Token, error) {
 		return token, nil
 	}
 
-	if t, ts, ok := p.parseDaily(s); ok {
+	if ts, ok := p.parseDaily(s); ok {
 		token.Type = TokenDaily
 		token.Recurring = &RecurSpec{Time: ts}
-		_ = t
 		return token, nil
 	}
 
@@ -307,9 +308,11 @@ func (p *Parser) parseWeekday(s string) (*time.Time, bool) {
 	currentDay := today.Weekday()
 
 	daysUntil := int(targetDay) - int(currentDay)
-	if daysUntil <= 0 {
+	if daysUntil < 0 {
+		// Target day is earlier in the week, move to next week
 		daysUntil += 7
 	}
+	// Note: daysUntil == 0 means today is the target day (returns today)
 
 	t := today.AddDate(0, 0, daysUntil)
 	return &t, true
@@ -404,18 +407,18 @@ func (p *Parser) parseOffset(s string) (*OffsetSpec, bool) {
 }
 
 // parseDaily handles @daily:9am.
-func (p *Parser) parseDaily(s string) (bool, *TimeSpec, bool) {
+func (p *Parser) parseDaily(s string) (*TimeSpec, bool) {
 	if !strings.HasPrefix(strings.ToLower(s), "daily:") {
-		return false, nil, false
+		return nil, false
 	}
 
 	timeStr := s[6:]
 	ts, ok := p.parseTimeOnly(timeStr)
 	if !ok {
-		return false, nil, false
+		return nil, false
 	}
 
-	return true, ts, true
+	return ts, true
 }
 
 // parseWeekly handles @weekly:mon,wed or @weekly:mon,wed:9am.
@@ -639,6 +642,10 @@ func (t *Token) NextOccurrence(now time.Time, loc *time.Location) time.Time {
 
 // nextWeeklyOccurrence finds the next occurrence for weekly schedule.
 func nextWeeklyOccurrence(now time.Time, days []time.Weekday, ts *TimeSpec, loc *time.Location) time.Time {
+	if len(days) == 0 {
+		return now // No days specified, return current time
+	}
+
 	hour, minute := 0, 0
 	if ts != nil {
 		hour, minute = ts.Hour, ts.Minute
@@ -647,7 +654,8 @@ func nextWeeklyOccurrence(now time.Time, days []time.Weekday, ts *TimeSpec, loc 
 	currentWeekday := now.Weekday()
 	currentTime := time.Date(now.Year(), now.Month(), now.Day(), hour, minute, 0, 0, loc)
 
-	var nearest time.Time
+	// Initialize nearest to a week from now (worst case)
+	nearest := currentTime.AddDate(0, 0, 7)
 	minDays := 8 // More than a week
 
 	for _, targetDay := range days {
@@ -680,27 +688,38 @@ func nextMonthlyOccurrence(now time.Time, dayOfMonth int, ts *TimeSpec, loc *tim
 		hour, minute = ts.Hour, ts.Minute
 	}
 
-	// Try this month
-	candidate := time.Date(now.Year(), now.Month(), dayOfMonth, hour, minute, 0, 0, loc)
-
-	// Handle months with fewer days
-	for candidate.Day() != dayOfMonth {
-		// Day doesn't exist in this month, use last day
-		candidate = time.Date(now.Year(), now.Month()+1, 0, hour, minute, 0, 0, loc)
-		break
+	// Clamp dayOfMonth to valid range
+	if dayOfMonth < 1 {
+		dayOfMonth = 1
+	}
+	if dayOfMonth > 31 {
+		dayOfMonth = 31
 	}
 
+	// Try this month first
+	candidate := createDateWithDayClamp(now.Year(), now.Month(), dayOfMonth, hour, minute, loc)
+
 	if candidate.Before(now) || candidate.Equal(now) {
-		// Move to next month
-		candidate = time.Date(now.Year(), now.Month()+1, dayOfMonth, hour, minute, 0, 0, loc)
-		// Handle months with fewer days
-		for candidate.Day() != dayOfMonth {
-			candidate = time.Date(now.Year(), now.Month()+2, 0, hour, minute, 0, 0, loc)
-			break
-		}
+		// Move to next month (AddDate handles year boundaries correctly)
+		nextMonth := now.AddDate(0, 1, 0)
+		candidate = createDateWithDayClamp(nextMonth.Year(), nextMonth.Month(), dayOfMonth, hour, minute, loc)
 	}
 
 	return adjustForDST(candidate, loc)
+}
+
+// createDateWithDayClamp creates a date, clamping to the last day of month if day doesn't exist.
+func createDateWithDayClamp(year int, month time.Month, day, hour, minute int, loc *time.Location) time.Time {
+	// Create the date - Go's time package normalizes overflow (e.g., Feb 31 becomes Mar 3)
+	candidate := time.Date(year, month, day, hour, minute, 0, 0, loc)
+
+	// If the month changed due to overflow, use the last day of the original month
+	if candidate.Month() != month {
+		// Get last day of the month by going to day 0 of next month
+		candidate = time.Date(year, month+1, 0, hour, minute, 0, 0, loc)
+	}
+
+	return candidate
 }
 
 // nextYearlyOccurrence finds the next occurrence for yearly schedule.

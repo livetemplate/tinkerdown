@@ -405,7 +405,7 @@ func (r *Runner) saveState() error {
 		return err
 	}
 
-	return os.WriteFile(stateFile, data, 0644)
+	return os.WriteFile(stateFile, data, 0600)
 }
 
 // loadState restores state from disk.
@@ -445,6 +445,14 @@ func (r *Runner) loadState() error {
 			Enabled: pj.Enabled,
 		}
 
+		// Restore handler by re-parsing the imperative line
+		if pj.Line != "" {
+			imp := r.parseImperativeFromLine(pj.Line)
+			if imp != nil {
+				job.Handler = r.createJobHandler(pj.PageID, imp)
+			}
+		}
+
 		// Recalculate next run if it's in the past
 		if job.Enabled && job.Token != nil {
 			now := time.Now().In(r.location)
@@ -456,6 +464,18 @@ func (r *Runner) loadState() error {
 		r.cron.AddJob(job)
 	}
 
+	return nil
+}
+
+// parseImperativeFromLine parses a single imperative line for handler restoration.
+func (r *Runner) parseImperativeFromLine(line string) *Imperative {
+	line = strings.TrimSpace(line)
+	if strings.HasPrefix(line, "Notify ") {
+		return r.parseNotifyLine(line, 0)
+	}
+	if strings.HasPrefix(line, "Run action:") {
+		return r.parseRunActionLine(line, 0)
+	}
 	return nil
 }
 

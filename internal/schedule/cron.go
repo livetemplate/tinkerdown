@@ -2,6 +2,8 @@ package schedule
 
 import (
 	"context"
+	"fmt"
+	"os"
 	"sync"
 	"time"
 )
@@ -21,6 +23,9 @@ type Job struct {
 // JobHandler is called when a job should execute.
 type JobHandler func(job *Job) error
 
+// ErrorHandler is called when a job execution fails.
+type ErrorHandler func(job *Job, err error)
+
 // Cron manages scheduled jobs and their execution timing.
 type Cron struct {
 	mu       sync.RWMutex
@@ -32,6 +37,9 @@ type Cron struct {
 
 	// For testing: allows injecting a custom time source
 	nowFunc func() time.Time
+
+	// Error handler for job execution failures
+	onError ErrorHandler
 }
 
 // NewCron creates a new cron scheduler with the specified timezone.
@@ -51,6 +59,14 @@ func (c *Cron) SetTimeFunc(fn func() time.Time) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.nowFunc = fn
+}
+
+// SetErrorHandler sets a callback for job execution errors.
+// If not set, errors are logged to stderr.
+func (c *Cron) SetErrorHandler(fn ErrorHandler) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.onError = fn
 }
 
 // now returns the current time using the configured time function.
@@ -191,13 +207,32 @@ func (c *Cron) checkAndExecute() {
 
 // executeJob runs a single job and updates its schedule.
 func (c *Cron) executeJob(job *Job, now time.Time) {
-	if job.Handler != nil {
-		if err := job.Handler(job); err != nil {
-			// Log error but continue (graceful degradation)
-			// In a real implementation, this would use a proper logger
+	// Copy handler and token info under lock to avoid race conditions
+	c.mu.RLock()
+	handler := job.Handler
+	var tokenType TokenType
+	var token *Token
+	if job.Token != nil {
+		tokenType = job.Token.Type
+		token = job.Token
+	}
+	onError := c.onError
+	location := c.location
+	c.mu.RUnlock()
+
+	// Execute handler outside of lock
+	if handler != nil {
+		if err := handler(job); err != nil {
+			// Log error using callback or default to stderr
+			if onError != nil {
+				onError(job, err)
+			} else {
+				fmt.Fprintf(os.Stderr, "schedule: job %s failed: %v\n", job.ID, err)
+			}
 		}
 	}
 
+	// Update job state under lock
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -205,13 +240,13 @@ func (c *Cron) executeJob(job *Job, now time.Time) {
 	job.LastRun = &now
 
 	// Calculate next occurrence for recurring schedules
-	if job.Token != nil {
-		switch job.Token.Type {
+	if token != nil {
+		switch tokenType {
 		case TokenDaily, TokenWeekly, TokenMonthly, TokenYearly:
 			// Recurring schedules - calculate next occurrence
 			// Use a time slightly after now to avoid re-triggering
 			nextCheckTime := now.Add(time.Minute)
-			job.NextRun = job.Token.NextOccurrence(nextCheckTime, c.location)
+			job.NextRun = token.NextOccurrence(nextCheckTime, location)
 		default:
 			// One-time schedules - disable the job
 			job.Enabled = false
