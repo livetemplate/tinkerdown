@@ -72,6 +72,17 @@ func ParseFile(path string) (*Page, error) {
 		page.Expressions = fm.Expressions
 	}
 
+	// Store schedule data from parsing
+	if fm.Schedules != nil {
+		page.Schedules = fm.Schedules
+	}
+	if fm.Imperatives != nil {
+		page.Imperatives = fm.Imperatives
+	}
+	if fm.ScheduleWarnings != nil {
+		page.ScheduleWarnings = fm.ScheduleWarnings
+	}
+
 	// Build blocks (pass source file for error context)
 	if err := page.buildBlocks(codeBlocks, absPath); err != nil {
 		return nil, err // Already a ParseError from buildBlocks

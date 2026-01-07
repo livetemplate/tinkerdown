@@ -2,6 +2,8 @@
 // with markdown files and embedded executable code blocks.
 package tinkerdown
 
+import "github.com/livetemplate/tinkerdown/internal/schedule"
+
 // Page represents a parsed tinkerdown tutorial/guide/playground.
 type Page struct {
 	ID                string
@@ -17,6 +19,15 @@ type Page struct {
 	// Expressions maps expression IDs to expression strings (e.g., "expr-0" -> "count(tasks where done)")
 	// These are computed expressions found in inline code spans like `=count(tasks where done)`
 	Expressions map[string]string
+
+	// Schedules contains parsed schedule tokens found in the markdown content
+	Schedules []*schedule.Token
+
+	// Imperatives contains parsed imperative commands (Notify, Run action) from the markdown
+	Imperatives []*schedule.Imperative
+
+	// ScheduleWarnings contains any warnings generated during schedule parsing
+	ScheduleWarnings []schedule.ParseWarning
 }
 
 // PageConfig contains configuration for a page.
