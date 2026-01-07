@@ -481,8 +481,13 @@ func (e *webhookActionExecutor) executeHTTPAction(action *config.Action, data ma
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
-		bodyBytes, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(bodyBytes[:min(len(bodyBytes), 200)]))
+		// Limit error response body to prevent memory exhaustion from malicious endpoints
+		limitedReader := io.LimitReader(resp.Body, 1024) // 1KB max for error messages
+		bodyBytes, _ := io.ReadAll(limitedReader)
+		if len(bodyBytes) > 200 {
+			bodyBytes = bodyBytes[:200]
+		}
+		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(bodyBytes))
 	}
 
 	return nil
@@ -548,6 +553,16 @@ func (e *webhookActionExecutor) expandTemplate(text string, data map[string]inte
 }
 
 // sanitizeExecCommand validates a command string for shell safety.
+// This function intentionally blocks shell metacharacters to prevent command injection:
+//   - & ; | : command chaining/background execution
+//   - $ : variable expansion (could leak environment variables)
+//   - > < : redirection (could overwrite files)
+//   - ` : command substitution
+//   - \ : escape sequences
+//   - \n \r : newlines (could inject additional commands)
+//
+// These restrictions mean some legitimate commands won't work via webhooks.
+// For complex commands, use an intermediate script that the webhook triggers.
 func (e *webhookActionExecutor) sanitizeExecCommand(cmd string) error {
 	cmd = strings.TrimSpace(cmd)
 	if cmd == "" {

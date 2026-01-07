@@ -1,6 +1,9 @@
 package server
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -634,4 +637,44 @@ func TestValidateHMACSignature(t *testing.T) {
 			t.Error("Expected false for wrong prefix")
 		}
 	})
+
+	t.Run("valid HMAC signature", func(t *testing.T) {
+		req := httptest.NewRequest("POST", "/webhook/test", nil)
+		// Compute correct HMAC-SHA256 signature for body with secret
+		// sha256 HMAC of '{"test": "data"}' with secret 'my-secret'
+		// = 7a0c8c2d9c2f8e8a8f5e9d6c7b3a2e1d0f8e7c6b5a4d3c2b1a0f9e8d7c6b5a4d (example)
+		// We compute it properly:
+		h := computeHMAC(body, secret)
+		req.Header.Set("X-Webhook-Signature", "sha256="+h)
+		result := handler.validateHMACSignature(req, body, secret)
+		if !result {
+			t.Error("Expected true for valid HMAC signature")
+		}
+	})
+
+	t.Run("invalid HMAC signature", func(t *testing.T) {
+		req := httptest.NewRequest("POST", "/webhook/test", nil)
+		req.Header.Set("X-Webhook-Signature", "sha256=invalidsignature")
+		result := handler.validateHMACSignature(req, body, secret)
+		if result {
+			t.Error("Expected false for invalid HMAC signature")
+		}
+	})
+
+	t.Run("wrong secret produces different signature", func(t *testing.T) {
+		req := httptest.NewRequest("POST", "/webhook/test", nil)
+		wrongSecretSig := computeHMAC(body, "wrong-secret")
+		req.Header.Set("X-Webhook-Signature", "sha256="+wrongSecretSig)
+		result := handler.validateHMACSignature(req, body, secret)
+		if result {
+			t.Error("Expected false when signature computed with wrong secret")
+		}
+	})
+}
+
+// computeHMAC computes HMAC-SHA256 signature for testing
+func computeHMAC(body []byte, secret string) string {
+	h := hmac.New(sha256.New, []byte(secret))
+	h.Write(body)
+	return hex.EncodeToString(h.Sum(nil))
 }
