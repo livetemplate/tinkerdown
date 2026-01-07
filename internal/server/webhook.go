@@ -188,9 +188,9 @@ func (h *WebhookHandler) parseRequestBody(r *http.Request) (map[string]interface
 	}
 
 	// Limit request body size to prevent DoS
-	r.Body = http.MaxBytesReader(nil, r.Body, maxRequestBodySize)
+	limitedReader := io.LimitReader(r.Body, maxRequestBodySize)
 
-	body, err := io.ReadAll(r.Body)
+	body, err := io.ReadAll(limitedReader)
 	if err != nil {
 		return nil, err
 	}
