@@ -27,17 +27,18 @@ type Route struct {
 
 // Server is the tinkerdown development server.
 type Server struct {
-	rootDir     string
-	config      *config.Config
-	routes      []*Route
-	siteManager *site.Manager // For multi-page documentation sites
-	mu          sync.RWMutex
-	connections map[*websocket.Conn]*WebSocketHandler // Track connected WebSocket clients with their handlers
-	connMu      sync.RWMutex                          // Separate mutex for connections
-	watcher     *Watcher                              // File watcher for live reload
-	playground  *PlaygroundHandler                    // Playground for testing AI-generated apps
-	apiHandler  *APIHandler                           // REST API handler for sources
-	apiRoutes   http.Handler                          // Wrapped API handler with middleware
+	rootDir        string
+	config         *config.Config
+	routes         []*Route
+	siteManager    *site.Manager // For multi-page documentation sites
+	mu             sync.RWMutex
+	connections    map[*websocket.Conn]*WebSocketHandler // Track connected WebSocket clients with their handlers
+	connMu         sync.RWMutex                          // Separate mutex for connections
+	watcher        *Watcher                              // File watcher for live reload
+	playground     *PlaygroundHandler                    // Playground for testing AI-generated apps
+	apiHandler     *APIHandler                           // REST API handler for sources
+	apiRoutes      http.Handler                          // Wrapped API handler with middleware
+	webhookHandler *WebhookHandler                       // Webhook handler for external triggers
 }
 
 // New creates a new server for the given root directory.
@@ -99,6 +100,11 @@ func NewWithConfig(rootDir string, cfg *config.Config) *Server {
 		handler = CORSMiddleware(cfg.API.GetCORSOrigins())(handler)
 
 		srv.apiRoutes = handler
+	}
+
+	// Initialize webhook handler if webhooks are configured
+	if cfg.Webhooks != nil && len(cfg.Webhooks) > 0 {
+		srv.webhookHandler = NewWebhookHandler(cfg, rootDir, srv.executeWebhookAction)
 	}
 
 	return srv
@@ -212,6 +218,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Serve REST API endpoints
 	if strings.HasPrefix(r.URL.Path, "/api/sources/") && s.apiRoutes != nil {
 		s.apiRoutes.ServeHTTP(w, r)
+		return
+	}
+
+	// Serve webhook endpoints
+	if strings.HasPrefix(r.URL.Path, "/webhook/") && s.webhookHandler != nil {
+		s.webhookHandler.ServeHTTP(w, r)
 		return
 	}
 
@@ -2348,4 +2360,21 @@ func (s *Server) renderPrevNext(currentPath string) string {
 
 	html.WriteString(`</nav>`)
 	return html.String()
+}
+
+// executeWebhookAction executes an action triggered by a webhook.
+// This creates a minimal runtime context to execute SQL, HTTP, or exec actions.
+func (s *Server) executeWebhookAction(actionName string, params map[string]interface{}) error {
+	if s.config == nil || s.config.Actions == nil {
+		return fmt.Errorf("no actions configured")
+	}
+
+	action, exists := s.config.Actions[actionName]
+	if !exists || action == nil {
+		return fmt.Errorf("action %q not found", actionName)
+	}
+
+	// Create a webhook action executor
+	executor := newWebhookActionExecutor(s.config, s.rootDir)
+	return executor.execute(action, params)
 }

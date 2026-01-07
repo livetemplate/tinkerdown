@@ -24,6 +24,7 @@ type Config struct {
 	Sources     map[string]SourceConfig `yaml:"sources,omitempty"`
 	Actions     map[string]*Action      `yaml:"actions,omitempty"`
 	API         *APIConfig              `yaml:"api,omitempty"`
+	Webhooks    map[string]*Webhook     `yaml:"webhooks,omitempty"`
 }
 
 // SourceConfig defines a data source for lvt-source blocks
@@ -187,6 +188,23 @@ type ParamDef struct {
 	Type     string `yaml:"type,omitempty"`     // Parameter type: "string", "number", "date", "bool"
 	Required bool   `yaml:"required,omitempty"` // Whether the parameter is required
 	Default  string `yaml:"default,omitempty"`  // Default value
+}
+
+// Webhook defines a webhook trigger that can receive HTTP POST requests
+type Webhook struct {
+	// Action is the name of the action to execute when this webhook is triggered
+	Action string `yaml:"action"`
+	// Secret is the shared secret for HMAC validation (supports env var expansion)
+	// The webhook validates against X-Webhook-Secret header or ?secret= query param
+	Secret string `yaml:"secret,omitempty"`
+}
+
+// GetSecret returns the webhook secret with environment variable expansion
+func (w *Webhook) GetSecret() string {
+	if w == nil || w.Secret == "" {
+		return ""
+	}
+	return os.ExpandEnv(w.Secret)
 }
 
 // SiteConfig holds site-level configuration
