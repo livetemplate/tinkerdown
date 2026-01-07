@@ -9,6 +9,14 @@ import (
 	"time"
 )
 
+// Pre-compiled regexes for performance (compiled once at package init)
+var (
+	isoDateRegex   = regexp.MustCompile(`^(\d{4})-(\d{2})-(\d{2})$`)
+	time12Regex    = regexp.MustCompile(`^(\d{1,2})(?::(\d{2}))?(am|pm)$`)
+	time24Regex    = regexp.MustCompile(`^(\d{1,2}):(\d{2})$`)
+	offsetRegex    = regexp.MustCompile(`^(\d+)(hours?|mins?|minutes?|days?|weeks?|h|m|d|w)$`)
+)
+
 // Token represents a parsed schedule token.
 type Token struct {
 	Raw       string        // Original token text (e.g., "@daily:9am")
@@ -321,8 +329,7 @@ func (p *Parser) parseWeekday(s string) (*time.Time, bool) {
 // parseISODate handles @2024-03-15.
 func (p *Parser) parseISODate(s string) (*time.Time, bool) {
 	// Match YYYY-MM-DD format
-	re := regexp.MustCompile(`^(\d{4})-(\d{2})-(\d{2})$`)
-	matches := re.FindStringSubmatch(s)
+	matches := isoDateRegex.FindStringSubmatch(s)
 	if matches == nil {
 		return nil, false
 	}
@@ -331,15 +338,25 @@ func (p *Parser) parseISODate(s string) (*time.Time, bool) {
 	month, _ := strconv.Atoi(matches[2])
 	day, _ := strconv.Atoi(matches[3])
 
+	// Validate month and day ranges
+	if month < 1 || month > 12 || day < 1 || day > 31 {
+		return nil, false
+	}
+
 	t := time.Date(year, time.Month(month), day, 0, 0, 0, 0, p.Location)
+
+	// Validate that the date is real (Go normalizes invalid dates like Feb 30)
+	if t.Year() != year || int(t.Month()) != month || t.Day() != day {
+		return nil, false
+	}
+
 	return &t, true
 }
 
 // parseTimeOnly handles @9am, @9:30pm, @14:00.
 func (p *Parser) parseTimeOnly(s string) (*TimeSpec, bool) {
 	// Try 12-hour format: 9am, 9:30pm
-	re12 := regexp.MustCompile(`^(\d{1,2})(?::(\d{2}))?(am|pm)$`)
-	if matches := re12.FindStringSubmatch(strings.ToLower(s)); matches != nil {
+	if matches := time12Regex.FindStringSubmatch(strings.ToLower(s)); matches != nil {
 		hour, _ := strconv.Atoi(matches[1])
 		minute := 0
 		if matches[2] != "" {
@@ -358,8 +375,7 @@ func (p *Parser) parseTimeOnly(s string) (*TimeSpec, bool) {
 	}
 
 	// Try 24-hour format: 14:00, 9:30
-	re24 := regexp.MustCompile(`^(\d{1,2}):(\d{2})$`)
-	if matches := re24.FindStringSubmatch(s); matches != nil {
+	if matches := time24Regex.FindStringSubmatch(s); matches != nil {
 		hour, _ := strconv.Atoi(matches[1])
 		minute, _ := strconv.Atoi(matches[2])
 
@@ -380,8 +396,7 @@ func (p *Parser) parseOffset(s string) (*OffsetSpec, bool) {
 	offsetStr := s[3:]
 
 	// Parse duration with units: 2hours, 30min, 1day, etc.
-	re := regexp.MustCompile(`^(\d+)(hours?|mins?|minutes?|days?|weeks?|h|m|d|w)$`)
-	matches := re.FindStringSubmatch(strings.ToLower(offsetStr))
+	matches := offsetRegex.FindStringSubmatch(strings.ToLower(offsetStr))
 	if matches == nil {
 		return nil, false
 	}

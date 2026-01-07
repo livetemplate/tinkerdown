@@ -193,6 +193,20 @@ func (r *Runner) parseNotifyLine(line string, lineNum int) *Imperative {
 
 		if len(parts) > 1 {
 			message = strings.TrimSpace(parts[1])
+
+			// Check for additional schedule tokens in the message
+			for _, word := range strings.Fields(message) {
+				if strings.HasPrefix(word, "@") {
+					// Check if it looks like a schedule token
+					if _, parseErr := r.parser.ParseToken(word); parseErr == nil {
+						r.parser.Warnings = append(r.parser.Warnings, ParseWarning{
+							Message: "multiple schedule tokens in imperative; only first will be used",
+							Line:    lineNum,
+							Token:   word,
+						})
+					}
+				}
+			}
 		}
 	} else {
 		// No schedule token, just a message
@@ -230,25 +244,38 @@ func (r *Runner) parseRunActionLine(line string, lineNum int) *Imperative {
 	actionName := parts[0]
 	var token *Token
 	var args []string
+	tokenCount := 0
 
 	for i := 1; i < len(parts); i++ {
 		part := parts[i]
-		if strings.HasPrefix(part, "@") && token == nil {
-			// This is the schedule token
-			var err error
-			token, err = r.parser.ParseToken(part)
-			if err != nil {
+		if strings.HasPrefix(part, "@") {
+			tokenCount++
+			if token == nil {
+				// This is the first schedule token - use it
+				var err error
+				token, err = r.parser.ParseToken(part)
+				if err != nil {
+					r.parser.Warnings = append(r.parser.Warnings, ParseWarning{
+						Message: err.Error(),
+						Line:    lineNum,
+						Token:   part,
+					})
+				}
+			} else {
+				// Multiple schedule tokens - warn and treat as argument
 				r.parser.Warnings = append(r.parser.Warnings, ParseWarning{
-					Message: err.Error(),
+					Message: "multiple schedule tokens in imperative; only first will be used",
 					Line:    lineNum,
 					Token:   part,
 				})
+				args = append(args, part)
 			}
 		} else {
 			// This is an argument
 			args = append(args, part)
 		}
 	}
+	_ = tokenCount // Used for warning above
 
 	return &Imperative{
 		Type:       ImperativeRunAction,
