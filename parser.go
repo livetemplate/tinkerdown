@@ -8,7 +8,9 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
+	"github.com/livetemplate/tinkerdown/internal/schedule"
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/extension"
@@ -101,6 +103,15 @@ type Frontmatter struct {
 	// Computed expressions found in the markdown content (populated during parsing)
 	// Map of expression ID to expression string (e.g., "expr-1" -> "count(tasks where done)")
 	Expressions map[string]string `yaml:"-"`
+
+	// Schedule tokens found in the markdown content (populated during parsing)
+	Schedules []*schedule.Token `yaml:"-"`
+
+	// Imperative commands (Notify, Run action) found in the markdown (populated during parsing)
+	Imperatives []*schedule.Imperative `yaml:"-"`
+
+	// Schedule parsing warnings (populated during parsing)
+	ScheduleWarnings []schedule.ParseWarning `yaml:"-"`
 }
 
 // CodeBlock represents a code block extracted from markdown.
@@ -183,6 +194,21 @@ func ParseMarkdown(content []byte) (*Frontmatter, []*CodeBlock, string, error) {
 
 	// Process tabbed headings (## [Tab1] | [Tab2] filter)
 	html = processTabbedHeadings(html)
+
+	// Parse schedule tokens and imperatives from markdown content
+	schedules, scheduleWarnings := parseScheduleTokens(remaining)
+	if len(schedules) > 0 {
+		frontmatter.Schedules = schedules
+	}
+	if len(scheduleWarnings) > 0 {
+		frontmatter.ScheduleWarnings = scheduleWarnings
+	}
+
+	// Extract imperative commands (Notify, Run action)
+	imperatives := parseImperatives(remaining)
+	if len(imperatives) > 0 {
+		frontmatter.Imperatives = imperatives
+	}
 
 	return frontmatter, codeBlocks, html, nil
 }
@@ -847,5 +873,33 @@ func ParseMarkdownWithPartials(content []byte, baseDir string) (*Frontmatter, []
 	// Process tabbed headings (## [Tab1] | [Tab2] filter)
 	htmlStr = processTabbedHeadings(htmlStr)
 
+	// Parse schedule tokens and imperatives from markdown content
+	schedules, scheduleWarnings := parseScheduleTokens(processed)
+	if len(schedules) > 0 {
+		frontmatter.Schedules = schedules
+	}
+	if len(scheduleWarnings) > 0 {
+		frontmatter.ScheduleWarnings = scheduleWarnings
+	}
+
+	// Extract imperative commands (Notify, Run action)
+	imperatives := parseImperatives(processed)
+	if len(imperatives) > 0 {
+		frontmatter.Imperatives = imperatives
+	}
+
 	return frontmatter, codeBlocks, htmlStr, nil
+}
+
+// parseScheduleTokens extracts schedule tokens from markdown content.
+// It uses the schedule package parser to find and parse tokens like @daily:9am, @weekly:mon, etc.
+func parseScheduleTokens(content []byte) ([]*schedule.Token, []schedule.ParseWarning) {
+	p := schedule.NewParser(time.Local)
+	tokens, _ := p.ParseText(string(content))
+	return tokens, p.Warnings
+}
+
+// parseImperatives extracts imperative commands (Notify, Run action) from markdown content.
+func parseImperatives(content []byte) []*schedule.Imperative {
+	return schedule.ExtractImperatives(string(content), time.Local)
 }
