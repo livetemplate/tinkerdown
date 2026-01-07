@@ -56,13 +56,15 @@ Changes made in one window appear instantly in others via WebSocket.
 
 ### Database
 
-Uses SQLite (`tasks.db`) with automatic table creation. The schema includes:
+Uses SQLite (`tasks.db`) with **automatic table creation** on first use. No manual schema setup is required - the table is created automatically when you add your first task.
+
+The inferred schema includes:
 
 | Column | Type | Description |
 |--------|------|-------------|
 | id | INTEGER | Auto-generated primary key |
-| title | TEXT | Task description |
-| assigned_to | TEXT | Username of assignee |
+| title | TEXT | Task description (max 200 chars) |
+| assigned_to | TEXT | Username of assignee (max 50 chars, alphanumeric) |
 | priority | TEXT | low, medium, or high |
 | status | TEXT | todo, in_progress, or done |
 
@@ -72,6 +74,17 @@ Defined in frontmatter:
 
 - `clear-done`: Deletes all tasks with status "done"
 - `mark-mine-done`: Marks all tasks assigned to current operator as done
+
+### Operator Parameter
+
+The `:operator` parameter in SQL actions is automatically populated from the `--operator` CLI flag. This enables user-specific filtering and actions:
+
+```bash
+# Start server with operator identity
+tinkerdown serve --operator alice
+
+# The "Mine" tab and "Mark My Tasks Done" action will filter by assigned_to = "alice"
+```
 
 ## Requirements
 

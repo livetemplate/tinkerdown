@@ -467,6 +467,262 @@ func TestTeamTasksComputedExpressions(t *testing.T) {
 	t.Log("Computed expressions test completed")
 }
 
+// TestTeamTasksMineTabWithOperator tests the Mine tab filtering with operator context.
+// The Mine tab should filter tasks where assigned_to matches the operator value.
+func TestTeamTasksMineTabWithOperator(t *testing.T) {
+	exampleDir := "examples/team-tasks"
+	dbPath := filepath.Join(exampleDir, "tasks.db")
+
+	// Setup test database with tasks for different users
+	setupTeamTasksTestDB(t, dbPath)
+	defer os.Remove(dbPath)
+
+	// Create test server with operator set to "alice"
+	srv := server.New(exampleDir)
+	srv.SetOperator("alice") // Set operator context
+	if err := srv.Discover(); err != nil {
+		t.Fatalf("Failed to discover pages: %v", err)
+	}
+
+	handler := server.WithCompression(srv)
+	ts := httptest.NewServer(handler)
+	defer ts.Close()
+
+	// Setup chromedp
+	allocCtx, cancel := chromedp.NewExecAllocator(context.Background(),
+		append(chromedp.DefaultExecAllocatorOptions[:],
+			chromedp.Flag("headless", true),
+		)...)
+	defer cancel()
+
+	ctx, cancel := chromedp.NewContext(allocCtx, chromedp.WithLogf(t.Logf))
+	defer cancel()
+
+	ctx, cancel = context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
+	// Navigate and wait for page load
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(ts.URL+"/app.html"),
+		chromedp.WaitVisible(`[lvt-source="tasks"]`, chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("Failed to navigate: %v", err)
+	}
+
+	// Wait for data to load
+	time.Sleep(500 * time.Millisecond)
+
+	// Verify All tab shows 5 tasks
+	var rowCount int
+	err = chromedp.Run(ctx,
+		chromedp.Evaluate(`document.querySelectorAll('[lvt-source="tasks"] tbody tr').length`, &rowCount),
+	)
+	if err != nil {
+		t.Fatalf("Failed to count rows: %v", err)
+	}
+	if rowCount != 5 {
+		t.Errorf("Expected 5 rows in All tab, got %d", rowCount)
+	}
+	t.Logf("All tab: %d tasks", rowCount)
+
+	// Click Mine tab - should filter to tasks assigned to "alice" (3 tasks)
+	err = chromedp.Run(ctx,
+		chromedp.Click(`.tinkerdown-tab[data-filter="assigned_to = operator"]`, chromedp.ByQuery),
+		chromedp.Sleep(500*time.Millisecond),
+	)
+	if err != nil {
+		t.Fatalf("Failed to click Mine tab: %v", err)
+	}
+
+	err = chromedp.Run(ctx,
+		chromedp.Evaluate(`document.querySelectorAll('[lvt-source="tasks"] tbody tr').length`, &rowCount),
+	)
+	if err != nil {
+		t.Fatalf("Failed to count rows after Mine filter: %v", err)
+	}
+	// Alice has 3 tasks: Task 1 (todo), Task 3 (in_progress), Task 5 (done)
+	if rowCount != 3 {
+		t.Errorf("Expected 3 rows in Mine tab for operator=alice, got %d", rowCount)
+	}
+	t.Logf("Mine tab (alice): %d tasks", rowCount)
+
+	t.Log("Mine tab with operator test completed")
+}
+
+// TestTeamTasksMarkMineDone tests the mark-mine-done action.
+func TestTeamTasksMarkMineDone(t *testing.T) {
+	exampleDir := "examples/team-tasks"
+	dbPath := filepath.Join(exampleDir, "tasks.db")
+
+	// Setup test database
+	setupTeamTasksTestDB(t, dbPath)
+	defer os.Remove(dbPath)
+
+	// Create test server with operator set to "alice"
+	srv := server.New(exampleDir)
+	srv.SetOperator("alice")
+	if err := srv.Discover(); err != nil {
+		t.Fatalf("Failed to discover pages: %v", err)
+	}
+
+	handler := server.WithCompression(srv)
+	ts := httptest.NewServer(handler)
+	defer ts.Close()
+
+	// Setup chromedp
+	allocCtx, cancel := chromedp.NewExecAllocator(context.Background(),
+		append(chromedp.DefaultExecAllocatorOptions[:],
+			chromedp.Flag("headless", true),
+		)...)
+	defer cancel()
+
+	ctx, cancel := chromedp.NewContext(allocCtx, chromedp.WithLogf(t.Logf))
+	defer cancel()
+
+	ctx, cancel = context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
+	// Navigate and wait for page load
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(ts.URL+"/app.html"),
+		chromedp.WaitVisible(`button[lvt-click="mark-mine-done"]`, chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("Failed to navigate: %v", err)
+	}
+
+	// Wait for data to load
+	time.Sleep(500 * time.Millisecond)
+
+	// Verify mark-mine-done button exists
+	var buttonExists bool
+	err = chromedp.Run(ctx,
+		chromedp.Evaluate(`document.querySelector('button[lvt-click="mark-mine-done"]') !== null`, &buttonExists),
+	)
+	if err != nil {
+		t.Fatalf("Failed to check mark-mine-done button: %v", err)
+	}
+	if !buttonExists {
+		t.Fatal("Expected 'Mark My Tasks Done' button to exist")
+	}
+	t.Log("Mark My Tasks Done button exists")
+
+	// Open database to check initial state
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatalf("Failed to open database: %v", err)
+	}
+	defer db.Close()
+
+	// Count alice's non-done tasks before action
+	var aliceNotDone int
+	err = db.QueryRow("SELECT COUNT(*) FROM tasks WHERE assigned_to = 'alice' AND status != 'done'").Scan(&aliceNotDone)
+	if err != nil {
+		t.Fatalf("Failed to count alice's tasks: %v", err)
+	}
+	t.Logf("Alice's non-done tasks before: %d", aliceNotDone)
+
+	// Click mark-mine-done button
+	err = chromedp.Run(ctx,
+		chromedp.Click(`button[lvt-click="mark-mine-done"]`, chromedp.ByQuery),
+		chromedp.Sleep(500*time.Millisecond),
+	)
+	if err != nil {
+		t.Fatalf("Failed to click Mark My Tasks Done: %v", err)
+	}
+
+	// Verify all alice's tasks are now done
+	var aliceDone int
+	err = db.QueryRow("SELECT COUNT(*) FROM tasks WHERE assigned_to = 'alice' AND status = 'done'").Scan(&aliceDone)
+	if err != nil {
+		t.Fatalf("Failed to count alice's done tasks: %v", err)
+	}
+	// Alice has 3 tasks total, all should now be done
+	if aliceDone != 3 {
+		t.Errorf("Expected 3 done tasks for alice after mark-mine-done, got %d", aliceDone)
+	}
+	t.Logf("Alice's done tasks after: %d", aliceDone)
+
+	// Verify bob's tasks are unchanged (should still have 0 done)
+	var bobDone int
+	err = db.QueryRow("SELECT COUNT(*) FROM tasks WHERE assigned_to = 'bob' AND status = 'done'").Scan(&bobDone)
+	if err != nil {
+		t.Fatalf("Failed to count bob's done tasks: %v", err)
+	}
+	if bobDone != 0 {
+		t.Errorf("Expected 0 done tasks for bob (unchanged), got %d", bobDone)
+	}
+	t.Log("Bob's tasks unchanged")
+
+	t.Log("Mark My Tasks Done action test completed")
+}
+
+// TestTeamTasksEmptyState tests the empty state display.
+func TestTeamTasksEmptyState(t *testing.T) {
+	exampleDir := "examples/team-tasks"
+	dbPath := filepath.Join(exampleDir, "tasks.db")
+
+	// Remove any existing database to start with empty state
+	os.Remove(dbPath)
+	defer os.Remove(dbPath)
+
+	// Create test server
+	srv := server.New(exampleDir)
+	if err := srv.Discover(); err != nil {
+		t.Fatalf("Failed to discover pages: %v", err)
+	}
+
+	handler := server.WithCompression(srv)
+	ts := httptest.NewServer(handler)
+	defer ts.Close()
+
+	// Setup chromedp
+	allocCtx, cancel := chromedp.NewExecAllocator(context.Background(),
+		append(chromedp.DefaultExecAllocatorOptions[:],
+			chromedp.Flag("headless", true),
+		)...)
+	defer cancel()
+
+	ctx, cancel := chromedp.NewContext(allocCtx, chromedp.WithLogf(t.Logf))
+	defer cancel()
+
+	ctx, cancel = context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
+	// Navigate and wait for page load
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(ts.URL+"/app.html"),
+		chromedp.WaitVisible(`form[lvt-submit="Add"]`, chromedp.ByQuery),
+	)
+	if err != nil {
+		t.Fatalf("Failed to navigate: %v", err)
+	}
+
+	// Wait for initial render
+	time.Sleep(500 * time.Millisecond)
+
+	// Verify empty state message is shown
+	var emptyMessage string
+	err = chromedp.Run(ctx,
+		chromedp.Evaluate(`
+			const cell = document.querySelector('[lvt-source="tasks"] tbody td[colspan="5"]');
+			return cell ? cell.textContent.trim() : '';
+		`, &emptyMessage),
+	)
+	if err != nil {
+		t.Fatalf("Failed to get empty state message: %v", err)
+	}
+
+	expectedMessage := "No tasks yet. Create one using the form above!"
+	if emptyMessage != expectedMessage {
+		t.Errorf("Expected empty message %q, got %q", expectedMessage, emptyMessage)
+	}
+	t.Logf("Empty state message: %s", emptyMessage)
+
+	t.Log("Empty state test completed")
+}
+
 // setupTeamTasksTestDB creates a test database with known data for Team Tasks.
 func setupTeamTasksTestDB(t *testing.T, dbPath string) {
 	t.Helper()

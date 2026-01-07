@@ -42,11 +42,14 @@ A collaborative task board for teams with real-time synchronization.
         <div style="flex: 2; min-width: 200px;">
             <label for="title" style="display: block; font-size: 12px; color: #666; margin-bottom: 4px;">Task Title</label>
             <input type="text" name="title" id="title" required placeholder="What needs to be done?"
+                   maxlength="200"
                    style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
         </div>
         <div style="flex: 1; min-width: 120px;">
             <label for="assigned_to" style="display: block; font-size: 12px; color: #666; margin-bottom: 4px;">Assigned To</label>
             <input type="text" name="assigned_to" id="assigned_to" required placeholder="Username"
+                   maxlength="50" pattern="[a-zA-Z0-9_-]+"
+                   title="Username can only contain letters, numbers, underscores, and hyphens"
                    style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
         </div>
         <div style="flex: 1; min-width: 100px;">
@@ -118,6 +121,7 @@ A collaborative task board for teams with real-time synchronization.
                 </td>
                 <td style="padding: 12px; text-align: center;">
                     <button lvt-click="Delete" lvt-data-id="{{.Id}}"
+                            aria-label="Delete task: {{.Title}}"
                             style="padding: 4px 8px; background: transparent; color: #dc3545; border: 1px solid #dc3545; border-radius: 4px; cursor: pointer; font-size: 12px;"
                             title="Delete task">
                         Delete
@@ -137,11 +141,18 @@ A collaborative task board for teams with real-time synchronization.
 
     <!-- Bulk Actions -->
     <div style="display: flex; gap: 8px; flex-wrap: wrap; padding-top: 16px; border-top: 1px solid #dee2e6;">
+        <button lvt-click="mark-mine-done"
+                aria-label="Mark all my tasks as done"
+                style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;">
+            Mark My Tasks Done
+        </button>
         <button lvt-click="clear-done"
+                aria-label="Delete all completed tasks"
                 style="padding: 8px 16px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer;">
             Clear Completed
         </button>
         <button lvt-click="Refresh"
+                aria-label="Refresh task list"
                 style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">
             Refresh
         </button>
@@ -172,6 +183,36 @@ tinkerdown serve --operator bob --port 8081
 - **Tabbed Filtering**: Switch between All, Mine, Todo, In Progress, and Done views
 - **Live Statistics**: Dashboard shows real-time task counts using computed expressions
 - **CRUD Operations**: Add, delete tasks with instant UI updates
-- **Custom SQL Actions**: Bulk "Clear Completed" with confirmation dialog
+- **Custom SQL Actions**: Bulk "Clear Completed" and "Mark My Tasks Done" with confirmation dialogs
 - **Real-time Sync**: WebSocket-based updates across browser instances
-- **Operator Identity**: "Mine" tab filters by `--operator` flag value
+- **Operator Identity**: "Mine" tab and "Mark My Tasks Done" filter by `--operator` flag value
+
+## Technical Notes
+
+### Field Name Conversion
+
+Form field names use `snake_case` (e.g., `assigned_to`) which SQLite stores as-is. In Go templates, these are accessed using `PascalCase` (e.g., `{{.AssignedTo}}`). This conversion is handled automatically by the runtime.
+
+### Operator Parameter
+
+The `:operator` parameter in SQL actions (like `mark-mine-done`) is automatically populated from the `--operator` CLI flag value. This enables user-specific operations without manual input:
+
+```yaml
+actions:
+  mark-mine-done:
+    kind: sql
+    source: tasks
+    statement: "UPDATE tasks SET status = 'done' WHERE assigned_to = :operator"
+```
+
+### Database Schema
+
+The SQLite database (`tasks.db`) is auto-created on first use. The schema is inferred from form submissions:
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | INTEGER | Auto-generated primary key |
+| title | TEXT | Task description (max 200 chars) |
+| assigned_to | TEXT | Username of assignee (max 50 chars) |
+| priority | TEXT | low, medium, or high |
+| status | TEXT | todo, in_progress, or done |
