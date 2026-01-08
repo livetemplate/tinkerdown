@@ -182,6 +182,7 @@ func ParseString(content string) (*Page, error) {
 
 // BuildPage creates a Page from raw content with a specified ID and source file.
 // This is useful for testing and programmatic page creation.
+// The content should be valid markdown with optional frontmatter.
 func BuildPage(id, sourceFile string, content []byte) (*Page, error) {
 	// Parse markdown (no partials support for programmatic input)
 	fm, codeBlocks, staticHTML, err := ParseMarkdownWithPartials(content, "")
