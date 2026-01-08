@@ -93,3 +93,154 @@ func TestSourceConfigIsStaleWhileRevalidate(t *testing.T) {
 		})
 	}
 }
+
+func TestWebhookValidate(t *testing.T) {
+	actions := map[string]*Action{
+		"test-action": {Kind: "http", URL: "http://example.com"},
+	}
+
+	tests := []struct {
+		name      string
+		webhook   *Webhook
+		wantError bool
+		errorMsg  string
+	}{
+		{
+			name:      "nil webhook",
+			webhook:   nil,
+			wantError: true,
+			errorMsg:  "is nil",
+		},
+		{
+			name:      "empty action",
+			webhook:   &Webhook{Action: ""},
+			wantError: true,
+			errorMsg:  "action is required",
+		},
+		{
+			name:      "non-existent action",
+			webhook:   &Webhook{Action: "missing-action"},
+			wantError: true,
+			errorMsg:  "non-existent action",
+		},
+		{
+			name:      "negative timestamp tolerance",
+			webhook:   &Webhook{Action: "test-action", ValidateTimestamp: true, TimestampTolerance: -1},
+			wantError: true,
+			errorMsg:  "cannot be negative",
+		},
+		{
+			name:      "valid webhook with secret",
+			webhook:   &Webhook{Action: "test-action", Secret: "mysecret"},
+			wantError: false,
+		},
+		{
+			name:      "valid webhook with signature secret",
+			webhook:   &Webhook{Action: "test-action", SignatureSecret: "mysignaturesecret"},
+			wantError: false,
+		},
+		{
+			name:      "valid webhook with timestamp validation",
+			webhook:   &Webhook{Action: "test-action", ValidateTimestamp: true, TimestampTolerance: 300},
+			wantError: false,
+		},
+		{
+			name:      "valid webhook with default timestamp tolerance",
+			webhook:   &Webhook{Action: "test-action", ValidateTimestamp: true},
+			wantError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.webhook.Validate("test-webhook", actions)
+			if tt.wantError {
+				if err == nil {
+					t.Errorf("Validate() expected error containing %q, got nil", tt.errorMsg)
+				} else if tt.errorMsg != "" && !contains(err.Error(), tt.errorMsg) {
+					t.Errorf("Validate() error = %v, want error containing %q", err, tt.errorMsg)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("Validate() unexpected error = %v", err)
+				}
+			}
+		})
+	}
+}
+
+func TestConfigValidateWebhooks(t *testing.T) {
+	tests := []struct {
+		name      string
+		config    *Config
+		wantError bool
+	}{
+		{
+			name:      "nil webhooks",
+			config:    &Config{},
+			wantError: false,
+		},
+		{
+			name: "valid webhooks",
+			config: &Config{
+				Actions: map[string]*Action{
+					"action1": {Kind: "http", URL: "http://example.com"},
+					"action2": {Kind: "sql", Statement: "SELECT 1"},
+				},
+				Webhooks: map[string]*Webhook{
+					"webhook1": {Action: "action1"},
+					"webhook2": {Action: "action2", Secret: "secret"},
+				},
+			},
+			wantError: false,
+		},
+		{
+			name: "invalid webhook - missing action reference",
+			config: &Config{
+				Actions: map[string]*Action{
+					"action1": {Kind: "http", URL: "http://example.com"},
+				},
+				Webhooks: map[string]*Webhook{
+					"webhook1": {Action: "nonexistent"},
+				},
+			},
+			wantError: true,
+		},
+		{
+			name: "invalid webhook - empty action",
+			config: &Config{
+				Webhooks: map[string]*Webhook{
+					"webhook1": {Action: ""},
+				},
+			},
+			wantError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.config.ValidateWebhooks()
+			if tt.wantError && err == nil {
+				t.Errorf("ValidateWebhooks() expected error, got nil")
+			}
+			if !tt.wantError && err != nil {
+				t.Errorf("ValidateWebhooks() unexpected error = %v", err)
+			}
+		})
+	}
+}
+
+// contains checks if s contains substr
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||
+		(len(s) > 0 && len(substr) > 0 && searchSubstring(s, substr)))
+}
+
+func searchSubstring(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
+}
