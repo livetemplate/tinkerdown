@@ -1,6 +1,7 @@
 package config
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -157,7 +158,7 @@ func TestWebhookValidate(t *testing.T) {
 			if tt.wantError {
 				if err == nil {
 					t.Errorf("Validate() expected error containing %q, got nil", tt.errorMsg)
-				} else if tt.errorMsg != "" && !contains(err.Error(), tt.errorMsg) {
+				} else if tt.errorMsg != "" && !strings.Contains(err.Error(), tt.errorMsg) {
 					t.Errorf("Validate() error = %v, want error containing %q", err, tt.errorMsg)
 				}
 			} else {
@@ -228,19 +229,4 @@ func TestConfigValidateWebhooks(t *testing.T) {
 			}
 		})
 	}
-}
-
-// contains checks if s contains substr
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||
-		(len(s) > 0 && len(substr) > 0 && searchSubstring(s, substr)))
-}
-
-func searchSubstring(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }
