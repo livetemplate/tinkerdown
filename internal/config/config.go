@@ -194,9 +194,18 @@ type ParamDef struct {
 type Webhook struct {
 	// Action is the name of the action to execute when this webhook is triggered
 	Action string `yaml:"action"`
-	// Secret is the shared secret for HMAC validation (supports env var expansion)
-	// The webhook validates against X-Webhook-Secret header or ?secret= query param
+	// Secret is the shared secret for validation (supports env var expansion)
+	// Used for X-Webhook-Secret header or ?secret= query param validation
 	Secret string `yaml:"secret,omitempty"`
+	// SignatureSecret is the secret used for HMAC signature validation (supports env var expansion)
+	// When set, validates X-Webhook-Signature header in format "sha256=<hex>"
+	// This provides stronger security than plain secret validation
+	SignatureSecret string `yaml:"signature_secret,omitempty"`
+	// ValidateTimestamp enables replay attack prevention by validating X-Webhook-Timestamp
+	// Requests older than TimestampTolerance seconds are rejected
+	ValidateTimestamp bool `yaml:"validate_timestamp,omitempty"`
+	// TimestampTolerance is the maximum age in seconds for timestamp validation (default: 300 = 5 minutes)
+	TimestampTolerance int `yaml:"timestamp_tolerance,omitempty"`
 }
 
 // GetSecret returns the webhook secret with environment variable expansion
@@ -205,6 +214,22 @@ func (w *Webhook) GetSecret() string {
 		return ""
 	}
 	return os.ExpandEnv(w.Secret)
+}
+
+// GetSignatureSecret returns the HMAC signature secret with environment variable expansion
+func (w *Webhook) GetSignatureSecret() string {
+	if w == nil || w.SignatureSecret == "" {
+		return ""
+	}
+	return os.ExpandEnv(w.SignatureSecret)
+}
+
+// GetTimestampTolerance returns the timestamp tolerance in seconds (default 300)
+func (w *Webhook) GetTimestampTolerance() int {
+	if w == nil || w.TimestampTolerance <= 0 {
+		return 300 // 5 minutes default
+	}
+	return w.TimestampTolerance
 }
 
 // SiteConfig holds site-level configuration
