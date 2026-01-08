@@ -101,7 +101,6 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
-	"sync"
 	"text/template"
 	"time"
 
@@ -136,7 +135,6 @@ type WebhookHandler struct {
 
 	// Concurrency control for action execution
 	actionSem chan struct{}
-	semOnce   sync.Once
 }
 
 // WebhookRequest represents the parsed webhook request body.
