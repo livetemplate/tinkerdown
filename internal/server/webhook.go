@@ -1,3 +1,89 @@
+// Package server provides HTTP handlers for the tinkerdown server.
+//
+// # Webhooks
+//
+// Webhooks allow external services to trigger actions via HTTP POST requests.
+// They are useful for integrating with CI/CD systems, monitoring tools, and
+// other external services.
+//
+// ## Endpoint Format
+//
+//	POST /webhook/{name}
+//
+// ## Request Format
+//
+// The request body should be JSON with parameters for the action:
+//
+//	{
+//	  "params": {
+//	    "key": "value"
+//	  }
+//	}
+//
+// Or directly as a JSON object:
+//
+//	{
+//	  "key": "value"
+//	}
+//
+// ## Authentication
+//
+// Webhooks support three authentication methods:
+//
+// 1. Simple Secret (via header):
+//
+//	X-Webhook-Secret: your-secret-here
+//
+// 2. Simple Secret (via query parameter):
+//
+//	POST /webhook/name?secret=your-secret-here
+//
+// 3. HMAC Signature (recommended for production):
+//
+//	X-Webhook-Signature: sha256=<hex-encoded-hmac>
+//
+// The signature is computed as HMAC-SHA256 of the request body using the
+// configured signature_secret.
+//
+// ## Replay Attack Prevention
+//
+// Enable timestamp validation to prevent replay attacks:
+//
+//	X-Webhook-Timestamp: <unix-timestamp>
+//
+// Requests older than timestamp_tolerance (default: 5 minutes) are rejected.
+//
+// ## Rate Limiting
+//
+// Webhooks are rate-limited to 10 requests/second with a burst of 20 by default.
+//
+// ## Concurrency Control
+//
+// A maximum of 10 actions can execute concurrently. Additional requests wait
+// up to 5 seconds for a slot before returning 503 Service Unavailable.
+//
+// ## Example: GitHub Webhook
+//
+//	# tinkerdown.yaml
+//	actions:
+//	  sync-repo:
+//	    kind: exec
+//	    cmd: git pull
+//
+//	webhooks:
+//	  github:
+//	    action: sync-repo
+//	    signature_secret: ${GITHUB_WEBHOOK_SECRET}
+//
+// ## Example: cURL Request with HMAC
+//
+//	BODY='{"params":{"branch":"main"}}'
+//	SIG=$(echo -n "$BODY" | openssl dgst -sha256 -hmac "$SECRET" | cut -d' ' -f2)
+//	curl -X POST http://localhost:8080/webhook/deploy \
+//	  -H "Content-Type: application/json" \
+//	  -H "X-Webhook-Signature: sha256=$SIG" \
+//	  -H "X-Webhook-Timestamp: $(date +%s)" \
+//	  -d "$BODY"
 package server
 
 import (
@@ -588,7 +674,10 @@ func (e *webhookActionExecutor) executeHTTPAction(action *config.Action, data ma
 	if resp.StatusCode >= 400 {
 		// Limit error response body to prevent memory exhaustion from malicious endpoints
 		limitedReader := io.LimitReader(resp.Body, 1024) // 1KB max for error messages
-		bodyBytes, _ := io.ReadAll(limitedReader)
+		bodyBytes, err := io.ReadAll(limitedReader)
+		if err != nil {
+			return fmt.Errorf("HTTP %d (failed to read response body: %v)", resp.StatusCode, err)
+		}
 		if len(bodyBytes) > 200 {
 			bodyBytes = bodyBytes[:200]
 		}
