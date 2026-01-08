@@ -12,12 +12,26 @@ import (
 	"log"
 	"net/http"
 	"os/exec"
+	"strconv"
 	"strings"
+	"sync"
 	"text/template"
 	"time"
 
 	"github.com/livetemplate/tinkerdown/internal/config"
 	"github.com/livetemplate/tinkerdown/internal/source"
+
+	"golang.org/x/time/rate"
+)
+
+// Webhook configuration constants
+const (
+	// defaultWebhookRateLimit is the default requests per second for webhooks
+	defaultWebhookRateLimit = 10.0
+	// defaultWebhookBurst is the default burst size for rate limiting
+	defaultWebhookBurst = 20
+	// defaultMaxConcurrentActions is the default max concurrent action executions
+	defaultMaxConcurrentActions = 10
 )
 
 // WebhookHandler handles incoming webhook HTTP requests.
@@ -27,6 +41,13 @@ type WebhookHandler struct {
 	config        *config.Config
 	rootDir       string
 	actionHandler func(actionName string, params map[string]interface{}) error
+
+	// Rate limiting
+	rateLimiter *rate.Limiter
+
+	// Concurrency control for action execution
+	actionSem chan struct{}
+	semOnce   sync.Once
 }
 
 // WebhookRequest represents the parsed webhook request body.
@@ -59,12 +80,32 @@ func NewWebhookHandler(cfg *config.Config, rootDir string, actionHandler func(st
 		config:        cfg,
 		rootDir:       rootDir,
 		actionHandler: actionHandler,
+		rateLimiter:   rate.NewLimiter(rate.Limit(defaultWebhookRateLimit), defaultWebhookBurst),
+		actionSem:     make(chan struct{}, defaultMaxConcurrentActions),
+	}
+}
+
+// acquireActionSlot acquires a slot for action execution, respecting concurrency limits.
+// Returns a release function that must be called when done.
+func (h *WebhookHandler) acquireActionSlot(ctx context.Context) (release func(), err error) {
+	select {
+	case h.actionSem <- struct{}{}:
+		return func() { <-h.actionSem }, nil
+	case <-ctx.Done():
+		return nil, fmt.Errorf("timeout waiting for action execution slot")
 	}
 }
 
 // ServeHTTP handles webhook requests.
 // Expected path format: /webhook/{name}
 func (h *WebhookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// Apply rate limiting
+	if !h.rateLimiter.Allow() {
+		w.Header().Set("Retry-After", "1")
+		h.writeError(w, http.StatusTooManyRequests, "rate limit exceeded")
+		return
+	}
+
 	// Extract webhook name from path
 	path := strings.TrimPrefix(r.URL.Path, "/webhook/")
 	if path == "" || path == r.URL.Path {
@@ -92,8 +133,32 @@ func (h *WebhookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate secret if configured
-	if secret := webhook.GetSecret(); secret != "" {
+	// Validate timestamp for replay attack prevention (if enabled)
+	if webhook.ValidateTimestamp {
+		if err := h.validateTimestamp(r, webhook.GetTimestampTolerance()); err != nil {
+			h.auditLog(webhookName, webhook.Action, r, false, "timestamp validation failed: "+err.Error(), nil)
+			h.writeError(w, http.StatusUnauthorized, "timestamp validation failed: "+err.Error())
+			return
+		}
+	}
+
+	// Read body for potential HMAC validation
+	body, err := h.readRequestBody(r)
+	if err != nil {
+		h.auditLog(webhookName, webhook.Action, r, false, "failed to read request body: "+err.Error(), nil)
+		h.writeError(w, http.StatusBadRequest, "failed to read request body: "+err.Error())
+		return
+	}
+
+	// Validate HMAC signature if signature_secret is configured (takes precedence over secret)
+	if sigSecret := webhook.GetSignatureSecret(); sigSecret != "" {
+		if !h.validateHMACSignature(r, body, sigSecret) {
+			h.auditLog(webhookName, webhook.Action, r, false, "invalid or missing HMAC signature", nil)
+			h.writeError(w, http.StatusUnauthorized, "invalid or missing HMAC signature")
+			return
+		}
+	} else if secret := webhook.GetSecret(); secret != "" {
+		// Fall back to simple secret validation
 		if !h.validateSecret(r, secret) {
 			h.auditLog(webhookName, webhook.Action, r, false, "invalid or missing secret", nil)
 			h.writeError(w, http.StatusUnauthorized, "invalid or missing secret")
@@ -102,7 +167,7 @@ func (h *WebhookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Parse request body
-	params, err := h.parseRequestBody(r)
+	params, err := h.parseBody(body)
 	if err != nil {
 		h.auditLog(webhookName, webhook.Action, r, false, "invalid request body: "+err.Error(), nil)
 		h.writeError(w, http.StatusBadRequest, "invalid request body: "+err.Error())
@@ -123,8 +188,20 @@ func (h *WebhookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Execute the action
+	// Execute the action with concurrency control
 	if h.actionHandler != nil {
+		// Create context with timeout for acquiring slot
+		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		defer cancel()
+
+		release, err := h.acquireActionSlot(ctx)
+		if err != nil {
+			h.auditLog(webhookName, webhook.Action, r, false, "server too busy: "+err.Error(), params)
+			h.writeError(w, http.StatusServiceUnavailable, "server too busy, try again later")
+			return
+		}
+		defer release()
+
 		if err := h.actionHandler(webhook.Action, params); err != nil {
 			h.auditLog(webhookName, webhook.Action, r, false, "action execution failed: "+err.Error(), params)
 			h.writeError(w, http.StatusInternalServerError, "action execution failed: "+err.Error())
@@ -135,6 +212,67 @@ func (h *WebhookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Success
 	h.auditLog(webhookName, webhook.Action, r, true, "", params)
 	h.writeSuccess(w, "webhook triggered successfully")
+}
+
+// validateTimestamp validates the X-Webhook-Timestamp header for replay attack prevention.
+// The timestamp should be a Unix timestamp (seconds since epoch).
+// Returns error if the timestamp is missing, invalid, or outside the tolerance window.
+func (h *WebhookHandler) validateTimestamp(r *http.Request, toleranceSeconds int) error {
+	timestampStr := r.Header.Get("X-Webhook-Timestamp")
+	if timestampStr == "" {
+		return fmt.Errorf("missing X-Webhook-Timestamp header")
+	}
+
+	timestamp, err := strconv.ParseInt(timestampStr, 10, 64)
+	if err != nil {
+		return fmt.Errorf("invalid timestamp format")
+	}
+
+	now := time.Now().Unix()
+	age := now - timestamp
+
+	// Check if timestamp is in the future (clock skew tolerance of 60 seconds)
+	if age < -60 {
+		return fmt.Errorf("timestamp is in the future")
+	}
+
+	// Check if timestamp is too old
+	if age > int64(toleranceSeconds) {
+		return fmt.Errorf("timestamp expired (age: %ds, max: %ds)", age, toleranceSeconds)
+	}
+
+	return nil
+}
+
+// readRequestBody reads the request body with size limits.
+func (h *WebhookHandler) readRequestBody(r *http.Request) ([]byte, error) {
+	if r.Body == nil {
+		return nil, nil
+	}
+
+	limitedReader := io.LimitReader(r.Body, maxRequestBodySize)
+	return io.ReadAll(limitedReader)
+}
+
+// parseBody parses a JSON body into parameters.
+func (h *WebhookHandler) parseBody(body []byte) (map[string]interface{}, error) {
+	if len(body) == 0 {
+		return make(map[string]interface{}), nil
+	}
+
+	// Try to parse as WebhookRequest first (with params wrapper)
+	var webhookReq WebhookRequest
+	if err := json.Unmarshal(body, &webhookReq); err == nil && webhookReq.Params != nil {
+		return webhookReq.Params, nil
+	}
+
+	// Fall back to parsing as direct params object
+	var params map[string]interface{}
+	if err := json.Unmarshal(body, &params); err != nil {
+		return nil, err
+	}
+
+	return params, nil
 }
 
 // validateSecret validates the webhook secret.
@@ -179,39 +317,6 @@ func (h *WebhookHandler) validateHMACSignature(r *http.Request, body []byte, sec
 
 	// Use constant-time comparison
 	return hmac.Equal([]byte(expectedSig), []byte(computedSig))
-}
-
-// parseRequestBody parses the JSON request body and extracts parameters.
-func (h *WebhookHandler) parseRequestBody(r *http.Request) (map[string]interface{}, error) {
-	if r.Body == nil {
-		return make(map[string]interface{}), nil
-	}
-
-	// Limit request body size to prevent DoS
-	limitedReader := io.LimitReader(r.Body, maxRequestBodySize)
-
-	body, err := io.ReadAll(limitedReader)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(body) == 0 {
-		return make(map[string]interface{}), nil
-	}
-
-	// Try to parse as WebhookRequest first (with params wrapper)
-	var webhookReq WebhookRequest
-	if err := json.Unmarshal(body, &webhookReq); err == nil && webhookReq.Params != nil {
-		return webhookReq.Params, nil
-	}
-
-	// Fall back to parsing as direct params object
-	var params map[string]interface{}
-	if err := json.Unmarshal(body, &params); err != nil {
-		return nil, err
-	}
-
-	return params, nil
 }
 
 // auditLog logs webhook invocation for audit purposes.

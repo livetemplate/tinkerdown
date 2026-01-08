@@ -5,10 +5,13 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/livetemplate/tinkerdown/internal/config"
 )
@@ -677,4 +680,312 @@ func computeHMAC(body []byte, secret string) string {
 	h := hmac.New(sha256.New, []byte(secret))
 	h.Write(body)
 	return hex.EncodeToString(h.Sum(nil))
+}
+
+func TestWebhookHandler_RateLimiting(t *testing.T) {
+	cfg := &config.Config{
+		Actions: map[string]*config.Action{
+			"test-action": {Kind: "http"},
+		},
+		Webhooks: map[string]*config.Webhook{
+			"test": {Action: "test-action"},
+		},
+	}
+
+	mock := &mockActionHandler{}
+	handler := NewWebhookHandler(cfg, t.TempDir(), mock.handle)
+
+	// Exhaust the rate limiter burst
+	successCount := 0
+	rateLimitedCount := 0
+
+	for i := 0; i < 30; i++ {
+		req := httptest.NewRequest("POST", "/webhook/test", nil)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+
+		if w.Code == http.StatusOK {
+			successCount++
+		} else if w.Code == http.StatusTooManyRequests {
+			rateLimitedCount++
+			// Check Retry-After header
+			if w.Header().Get("Retry-After") == "" {
+				t.Error("Expected Retry-After header on rate limit response")
+			}
+		}
+	}
+
+	// Should have some successes and some rate limited
+	if successCount == 0 {
+		t.Error("Expected some requests to succeed")
+	}
+	if rateLimitedCount == 0 {
+		t.Error("Expected some requests to be rate limited")
+	}
+}
+
+func TestWebhookHandler_TimestampValidation(t *testing.T) {
+	cfg := &config.Config{
+		Actions: map[string]*config.Action{
+			"test-action": {Kind: "http"},
+		},
+		Webhooks: map[string]*config.Webhook{
+			"test": {
+				Action:             "test-action",
+				ValidateTimestamp:  true,
+				TimestampTolerance: 300, // 5 minutes
+			},
+		},
+	}
+
+	mock := &mockActionHandler{}
+	handler := NewWebhookHandler(cfg, t.TempDir(), mock.handle)
+
+	t.Run("valid timestamp", func(t *testing.T) {
+		mock.calls = nil
+		req := httptest.NewRequest("POST", "/webhook/test", nil)
+		req.Header.Set("X-Webhook-Timestamp", fmt.Sprintf("%d", time.Now().Unix()))
+		w := httptest.NewRecorder()
+
+		handler.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected status 200, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("missing timestamp", func(t *testing.T) {
+		mock.calls = nil
+		req := httptest.NewRequest("POST", "/webhook/test", nil)
+		w := httptest.NewRecorder()
+
+		handler.ServeHTTP(w, req)
+
+		if w.Code != http.StatusUnauthorized {
+			t.Errorf("Expected status 401, got %d", w.Code)
+		}
+	})
+
+	t.Run("expired timestamp", func(t *testing.T) {
+		mock.calls = nil
+		req := httptest.NewRequest("POST", "/webhook/test", nil)
+		// Set timestamp 10 minutes ago (beyond 5 minute tolerance)
+		req.Header.Set("X-Webhook-Timestamp", fmt.Sprintf("%d", time.Now().Add(-10*time.Minute).Unix()))
+		w := httptest.NewRecorder()
+
+		handler.ServeHTTP(w, req)
+
+		if w.Code != http.StatusUnauthorized {
+			t.Errorf("Expected status 401 for expired timestamp, got %d", w.Code)
+		}
+	})
+
+	t.Run("future timestamp beyond tolerance", func(t *testing.T) {
+		mock.calls = nil
+		req := httptest.NewRequest("POST", "/webhook/test", nil)
+		// Set timestamp 2 minutes in the future (within 60s clock skew tolerance)
+		req.Header.Set("X-Webhook-Timestamp", fmt.Sprintf("%d", time.Now().Add(2*time.Minute).Unix()))
+		w := httptest.NewRecorder()
+
+		handler.ServeHTTP(w, req)
+
+		if w.Code != http.StatusUnauthorized {
+			t.Errorf("Expected status 401 for future timestamp, got %d", w.Code)
+		}
+	})
+
+	t.Run("invalid timestamp format", func(t *testing.T) {
+		mock.calls = nil
+		req := httptest.NewRequest("POST", "/webhook/test", nil)
+		req.Header.Set("X-Webhook-Timestamp", "not-a-number")
+		w := httptest.NewRecorder()
+
+		handler.ServeHTTP(w, req)
+
+		if w.Code != http.StatusUnauthorized {
+			t.Errorf("Expected status 401 for invalid timestamp, got %d", w.Code)
+		}
+	})
+}
+
+func TestWebhookHandler_HMACSignatureIntegration(t *testing.T) {
+	sigSecret := "hmac-secret-key"
+	cfg := &config.Config{
+		Actions: map[string]*config.Action{
+			"test-action": {Kind: "http"},
+		},
+		Webhooks: map[string]*config.Webhook{
+			"test": {
+				Action:          "test-action",
+				SignatureSecret: sigSecret,
+			},
+		},
+	}
+
+	mock := &mockActionHandler{}
+	handler := NewWebhookHandler(cfg, t.TempDir(), mock.handle)
+
+	t.Run("valid HMAC signature triggers action", func(t *testing.T) {
+		mock.calls = nil
+		body := []byte(`{"message": "test"}`)
+		signature := computeHMAC(body, sigSecret)
+
+		req := httptest.NewRequest("POST", "/webhook/test", strings.NewReader(string(body)))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-Webhook-Signature", "sha256="+signature)
+		w := httptest.NewRecorder()
+
+		handler.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected status 200, got %d: %s", w.Code, w.Body.String())
+		}
+
+		if len(mock.calls) != 1 {
+			t.Errorf("Expected 1 action call, got %d", len(mock.calls))
+		}
+	})
+
+	t.Run("invalid HMAC signature rejected", func(t *testing.T) {
+		mock.calls = nil
+		body := []byte(`{"message": "test"}`)
+
+		req := httptest.NewRequest("POST", "/webhook/test", strings.NewReader(string(body)))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-Webhook-Signature", "sha256=invalidsignature")
+		w := httptest.NewRecorder()
+
+		handler.ServeHTTP(w, req)
+
+		if w.Code != http.StatusUnauthorized {
+			t.Errorf("Expected status 401, got %d", w.Code)
+		}
+
+		if len(mock.calls) != 0 {
+			t.Error("Expected no action calls for invalid signature")
+		}
+	})
+
+	t.Run("missing signature rejected", func(t *testing.T) {
+		mock.calls = nil
+		body := []byte(`{"message": "test"}`)
+
+		req := httptest.NewRequest("POST", "/webhook/test", strings.NewReader(string(body)))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+
+		handler.ServeHTTP(w, req)
+
+		if w.Code != http.StatusUnauthorized {
+			t.Errorf("Expected status 401, got %d", w.Code)
+		}
+	})
+}
+
+func TestWebhookHandler_ConcurrencyControl(t *testing.T) {
+	cfg := &config.Config{
+		Actions: map[string]*config.Action{
+			"slow-action": {Kind: "http"},
+		},
+		Webhooks: map[string]*config.Webhook{
+			"test": {Action: "slow-action"},
+		},
+	}
+
+	// Create a slow action handler
+	var activeCount int32
+	var maxActive int32
+	var mu sync.Mutex
+
+	slowHandler := func(actionName string, params map[string]interface{}) error {
+		mu.Lock()
+		activeCount++
+		if activeCount > maxActive {
+			maxActive = activeCount
+		}
+		mu.Unlock()
+
+		time.Sleep(100 * time.Millisecond)
+
+		mu.Lock()
+		activeCount--
+		mu.Unlock()
+
+		return nil
+	}
+
+	handler := NewWebhookHandler(cfg, t.TempDir(), slowHandler)
+
+	// Fire many concurrent requests
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			req := httptest.NewRequest("POST", "/webhook/test", nil)
+			w := httptest.NewRecorder()
+			handler.ServeHTTP(w, req)
+		}()
+	}
+
+	wg.Wait()
+
+	// Verify concurrency was limited
+	if maxActive > defaultMaxConcurrentActions {
+		t.Errorf("Expected max concurrent actions <= %d, got %d", defaultMaxConcurrentActions, maxActive)
+	}
+}
+
+func TestValidateTimestamp(t *testing.T) {
+	handler := NewWebhookHandler(nil, "", nil)
+
+	t.Run("valid current timestamp", func(t *testing.T) {
+		req := httptest.NewRequest("POST", "/test", nil)
+		req.Header.Set("X-Webhook-Timestamp", fmt.Sprintf("%d", time.Now().Unix()))
+
+		err := handler.validateTimestamp(req, 300)
+		if err != nil {
+			t.Errorf("Expected no error, got: %v", err)
+		}
+	})
+
+	t.Run("timestamp within tolerance", func(t *testing.T) {
+		req := httptest.NewRequest("POST", "/test", nil)
+		req.Header.Set("X-Webhook-Timestamp", fmt.Sprintf("%d", time.Now().Add(-2*time.Minute).Unix()))
+
+		err := handler.validateTimestamp(req, 300)
+		if err != nil {
+			t.Errorf("Expected no error for timestamp within tolerance, got: %v", err)
+		}
+	})
+
+	t.Run("timestamp expired", func(t *testing.T) {
+		req := httptest.NewRequest("POST", "/test", nil)
+		req.Header.Set("X-Webhook-Timestamp", fmt.Sprintf("%d", time.Now().Add(-10*time.Minute).Unix()))
+
+		err := handler.validateTimestamp(req, 300)
+		if err == nil {
+			t.Error("Expected error for expired timestamp")
+		}
+	})
+
+	t.Run("missing header", func(t *testing.T) {
+		req := httptest.NewRequest("POST", "/test", nil)
+
+		err := handler.validateTimestamp(req, 300)
+		if err == nil {
+			t.Error("Expected error for missing timestamp header")
+		}
+	})
+
+	t.Run("slight clock skew allowed", func(t *testing.T) {
+		req := httptest.NewRequest("POST", "/test", nil)
+		// 30 seconds in future (within 60s tolerance)
+		req.Header.Set("X-Webhook-Timestamp", fmt.Sprintf("%d", time.Now().Add(30*time.Second).Unix()))
+
+		err := handler.validateTimestamp(req, 300)
+		if err != nil {
+			t.Errorf("Expected no error for slight future timestamp, got: %v", err)
+		}
+	})
 }
