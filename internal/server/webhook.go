@@ -91,6 +91,7 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -118,6 +119,8 @@ const (
 	defaultWebhookBurst = 20
 	// defaultMaxConcurrentActions is the default max concurrent action executions
 	defaultMaxConcurrentActions = 10
+	// webhookMaxRequestBodySize limits the size of incoming webhook request bodies (1MB)
+	webhookMaxRequestBodySize = 1 << 20
 )
 
 // WebhookHandler handles incoming webhook HTTP requests.
@@ -336,7 +339,7 @@ func (h *WebhookHandler) readRequestBody(r *http.Request) ([]byte, error) {
 		return nil, nil
 	}
 
-	limitedReader := io.LimitReader(r.Body, maxRequestBodySize)
+	limitedReader := io.LimitReader(r.Body, webhookMaxRequestBodySize)
 	return io.ReadAll(limitedReader)
 }
 
@@ -377,7 +380,7 @@ func (h *WebhookHandler) validateSecret(r *http.Request, expectedSecret string) 
 	}
 
 	// Use constant-time comparison to prevent timing attacks
-	return secureCompare(providedSecret, expectedSecret)
+	return subtle.ConstantTimeCompare([]byte(providedSecret), []byte(expectedSecret)) == 1
 }
 
 // validateHMACSignature validates an HMAC signature.
