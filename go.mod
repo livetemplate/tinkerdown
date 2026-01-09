@@ -71,4 +71,4 @@ require (
 	modernc.org/memory v1.11.0 // indirect
 )
 
-replace github.com/livetemplate/livetemplate => ../livetemplate
+replace github.com/livetemplate/livetemplate => ../livetemplate/.worktrees/fix-conditional-statics

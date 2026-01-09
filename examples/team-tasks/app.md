@@ -38,7 +38,7 @@ A collaborative task board for teams with real-time synchronization.
 ```lvt
 <div lvt-source="tasks">
     <!-- Add Task Form -->
-    <form lvt-submit="Add" style="display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; padding: 16px; background: #f8f9fa; border-radius: 8px; margin-bottom: 24px;">
+    <form lvt-submit="Add" lvt-reset-on:success style="display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; padding: 16px; background: #f8f9fa; border-radius: 8px; margin-bottom: 24px;">
         <div style="flex: 2; min-width: 200px;">
             <label for="title" style="display: block; font-size: 12px; color: #666; margin-bottom: 4px;">Task Title</label>
             <input type="text" name="title" id="title" required placeholder="What needs to be done?"
