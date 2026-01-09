@@ -92,7 +92,7 @@ A collaborative task board for teams with real-time synchronization.
         </thead>
         <tbody>
             {{range .Data}}
-            <tr style="border-bottom: 1px solid #eee;">
+            <tr data-key="{{.Id}}" style="border-bottom: 1px solid #eee;">
                 <td style="padding: 12px; {{if eq .Status "done"}}text-decoration: line-through; opacity: 0.6;{{end}}">
                     {{.Title}}
                 </td>

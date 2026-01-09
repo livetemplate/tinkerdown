@@ -314,6 +314,15 @@ func (s *GenericState) executeSQLAction(action *config.Action, data map[string]i
 		return fmt.Errorf("source %q does not support SQL execution", action.Source)
 	}
 
+	// Inject operator into data for :operator parameter substitution
+	// This enables SQL actions like "WHERE assigned_to = :operator" to work
+	if data == nil {
+		data = make(map[string]interface{})
+	}
+	if _, exists := data["operator"]; !exists {
+		data["operator"] = s.getOperator()
+	}
+
 	// Substitute parameters in SQL statement
 	query, args, err := substituteParams(action.Statement, data)
 	if err != nil {

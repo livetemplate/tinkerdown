@@ -744,10 +744,16 @@ func (h *WebSocketHandler) buildEvalContext() *runtime.EvalContext {
 		// Extract Data array from state
 		if stateMap, ok := stateData.(map[string]interface{}); ok {
 			// Try lowercase "data" first, then titlecase "Data"
+			// Handle both []interface{} (from JSON unmarshal) and []map[string]interface{} (from GetFilteredData)
 			if data, ok := stateMap["data"].([]interface{}); ok {
 				ctx.Sources[sourceName] = convertToMapSlice(data)
 			} else if data, ok := stateMap["Data"].([]interface{}); ok {
 				ctx.Sources[sourceName] = convertToMapSlice(data)
+			} else if data, ok := stateMap["data"].([]map[string]interface{}); ok {
+				// Direct slice of maps (e.g., from GetFilteredData after Filter action)
+				ctx.Sources[sourceName] = data
+			} else if data, ok := stateMap["Data"].([]map[string]interface{}); ok {
+				ctx.Sources[sourceName] = data
 			}
 		}
 	}
