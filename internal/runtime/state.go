@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"unicode"
 
 	"github.com/livetemplate/components/datatable"
 
@@ -277,6 +278,13 @@ func processStateMap(m map[string]interface{}) map[string]interface{} {
 				}
 			}
 			processedValue = newSlice
+		case []map[string]interface{}:
+			// Handle slice of maps directly (e.g., from GetFilteredData)
+			newSlice := make([]interface{}, len(val))
+			for i, item := range val {
+				newSlice[i] = processMapValues(item)
+			}
+			processedValue = newSlice
 		case float64:
 			processedValue = convertNumber(val)
 		default:
@@ -326,15 +334,41 @@ func processMapValues(m map[string]interface{}) map[string]interface{} {
 		// Keep original key
 		result[k] = processedValue
 
-		// Also add titlecased key if different
+		// Also add PascalCase key if different (converts snake_case to PascalCase)
 		if len(k) > 0 {
-			titleKey := strings.ToUpper(k[:1]) + k[1:]
-			if titleKey != k {
-				result[titleKey] = processedValue
+			pascalKey := snakeToPascal(k)
+			if pascalKey != k {
+				result[pascalKey] = processedValue
 			}
 		}
 	}
 	return result
+}
+
+// snakeToPascal converts snake_case to PascalCase.
+// Examples: "assigned_to" -> "AssignedTo", "id" -> "Id", "my_field_name" -> "MyFieldName"
+func snakeToPascal(s string) string {
+	if s == "" {
+		return s
+	}
+
+	var result strings.Builder
+	capitalizeNext := true
+
+	for _, c := range s {
+		if c == '_' {
+			capitalizeNext = true
+			continue
+		}
+		if capitalizeNext {
+			result.WriteRune(unicode.ToUpper(c))
+			capitalizeNext = false
+		} else {
+			result.WriteRune(c)
+		}
+	}
+
+	return result.String()
 }
 
 // convertNumber converts float64 values that are whole numbers to int.
@@ -391,12 +425,20 @@ func (s *GenericState) refresh() error {
 //   - "done" - filter rows where done is truthy
 //   - "not done" - filter rows where done is falsy
 //   - "status = active" - filter rows where status equals "active"
+//   - "assigned_to = operator" - filter by operator identity (variable substitution)
 //   - "" (empty) - show all data (no filter)
 func (s *GenericState) handleFilter(data map[string]interface{}) error {
 	// Extract filter expression from data
 	filter := ""
 	if f, ok := data["filter"].(string); ok {
 		filter = f
+	}
+
+	// Substitute "operator" variable with actual operator value
+	// This enables filters like "assigned_to = operator" to work with the --operator flag
+	if strings.Contains(filter, "operator") {
+		operator := s.getOperator()
+		filter = strings.ReplaceAll(filter, "operator", operator)
 	}
 
 	// Store the active filter

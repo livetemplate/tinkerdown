@@ -14,6 +14,7 @@ import (
 
 	"github.com/chromedp/cdproto/runtime"
 	"github.com/chromedp/chromedp"
+	"github.com/livetemplate/tinkerdown/internal/config"
 	"github.com/livetemplate/tinkerdown/internal/server"
 	_ "modernc.org/sqlite"
 )
@@ -69,7 +70,7 @@ func TestTeamTasksExample(t *testing.T) {
 
 	// Navigate and wait for form to be visible
 	err := chromedp.Run(ctx,
-		chromedp.Navigate(ts.URL+"/app.html"),
+		chromedp.Navigate(ts.URL+"/app"),
 		chromedp.WaitVisible(`form[lvt-submit="Add"]`, chromedp.ByQuery),
 	)
 	if err != nil {
@@ -174,6 +175,75 @@ func TestTeamTasksExample(t *testing.T) {
 		t.Errorf("Expected 3 rows in All tab, got %d", rowCount)
 	}
 	t.Logf("Row count on All tab: %d", rowCount)
+
+	// CRITICAL: Verify all rendered cell values are correct
+	// This catches issues with snake_case -> PascalCase conversion
+	var tableHTML string
+	err = chromedp.Run(ctx,
+		chromedp.Evaluate(`document.querySelector('[lvt-source="tasks"] tbody').innerHTML`, &tableHTML),
+	)
+	if err != nil {
+		t.Fatalf("Failed to get table HTML: %v", err)
+	}
+	t.Logf("Table HTML:\n%s", tableHTML)
+
+	// Verify specific cell content for first task (most recently added = Write documentation)
+	var cellContents []string
+	err = chromedp.Run(ctx,
+		chromedp.Evaluate(`
+			const rows = document.querySelectorAll('[lvt-source="tasks"] tbody tr[data-key]');
+			const results = [];
+			rows.forEach(row => {
+				const cells = row.querySelectorAll('td');
+				const title = cells[0] ? cells[0].textContent.trim() : '';
+				const assignedTo = cells[1] ? cells[1].textContent.trim() : '';
+				const priority = cells[2] ? cells[2].textContent.trim() : '';
+				const status = cells[3] ? cells[3].textContent.trim() : '';
+				results.push(title + '|' + assignedTo + '|' + priority + '|' + status);
+			});
+			results;
+		`, &cellContents),
+	)
+	if err != nil {
+		t.Fatalf("Failed to extract cell contents: %v", err)
+	}
+
+	t.Logf("Cell contents by row:")
+	for i, content := range cellContents {
+		t.Logf("  Row %d: %s", i+1, content)
+	}
+
+	// Verify all expected tasks exist with correct data (order-agnostic since SQLite has no ORDER BY)
+	expectedTasks := map[string]string{
+		"Fix database connection":   "@bob|Medium|In Progress",
+		"Write documentation":       "@alice|Low|Done",
+		"Implement login feature":   "@alice|High|Todo",
+	}
+
+	foundTasks := make(map[string]bool)
+	for _, content := range cellContents {
+		parts := strings.Split(content, "|")
+		if len(parts) != 4 {
+			t.Errorf("Invalid cell count, got %d parts: %v", len(parts), parts)
+			continue
+		}
+		title := parts[0]
+		restOfRow := parts[1] + "|" + parts[2] + "|" + parts[3]
+
+		if expected, exists := expectedTasks[title]; exists {
+			if restOfRow != expected {
+				t.Errorf("Task %q: expected %q, got %q", title, expected, restOfRow)
+			}
+			foundTasks[title] = true
+		}
+	}
+
+	// Verify all expected tasks were found
+	for title := range expectedTasks {
+		if !foundTasks[title] {
+			t.Errorf("Task %q not found in table", title)
+		}
+	}
 
 	// Verify database has 3 tasks
 	db, err := sql.Open("sqlite", dbPath)
@@ -316,8 +386,11 @@ func TestTeamTasksExample(t *testing.T) {
 	t.Log("Database verified: 0 done tasks remain")
 
 	// Test Delete action: delete the first task
+	// Wait for button to be visible after clear-done DOM update, then use JavaScript click
+	// (chromedp.Click can fail silently after morphdom DOM updates)
 	err = chromedp.Run(ctx,
-		chromedp.Click(`[lvt-source="tasks"] tbody tr:first-child button[lvt-click="Delete"]`, chromedp.ByQuery),
+		chromedp.WaitVisible(`[lvt-source="tasks"] tbody tr[data-key] button[lvt-click="Delete"]`, chromedp.ByQuery),
+		chromedp.Evaluate(`document.querySelector('[lvt-source="tasks"] tbody tr[data-key] button[lvt-click="Delete"]').click()`, nil),
 		chromedp.Sleep(500*time.Millisecond),
 	)
 	if err != nil {
@@ -418,7 +491,7 @@ func TestTeamTasksComputedExpressions(t *testing.T) {
 
 	// Navigate and wait for expressions to load
 	err := chromedp.Run(ctx,
-		chromedp.Navigate(ts.URL+"/app.html"),
+		chromedp.Navigate(ts.URL+"/app"),
 		chromedp.WaitVisible(`.tinkerdown-expr`, chromedp.ByQuery),
 		chromedp.Sleep(2*time.Second), // Wait for WebSocket and expression evaluation
 	)
@@ -479,7 +552,7 @@ func TestTeamTasksMineTabWithOperator(t *testing.T) {
 
 	// Create test server with operator set to "alice"
 	srv := server.New(exampleDir)
-	srv.SetOperator("alice") // Set operator context
+	config.SetOperator("alice") // Set operator context
 	if err := srv.Discover(); err != nil {
 		t.Fatalf("Failed to discover pages: %v", err)
 	}
@@ -503,7 +576,7 @@ func TestTeamTasksMineTabWithOperator(t *testing.T) {
 
 	// Navigate and wait for page load
 	err := chromedp.Run(ctx,
-		chromedp.Navigate(ts.URL+"/app.html"),
+		chromedp.Navigate(ts.URL+"/app"),
 		chromedp.WaitVisible(`[lvt-source="tasks"]`, chromedp.ByQuery),
 	)
 	if err != nil {
@@ -561,7 +634,7 @@ func TestTeamTasksMarkMineDone(t *testing.T) {
 
 	// Create test server with operator set to "alice"
 	srv := server.New(exampleDir)
-	srv.SetOperator("alice")
+	config.SetOperator("alice")
 	if err := srv.Discover(); err != nil {
 		t.Fatalf("Failed to discover pages: %v", err)
 	}
@@ -585,7 +658,7 @@ func TestTeamTasksMarkMineDone(t *testing.T) {
 
 	// Navigate and wait for page load
 	err := chromedp.Run(ctx,
-		chromedp.Navigate(ts.URL+"/app.html"),
+		chromedp.Navigate(ts.URL+"/app"),
 		chromedp.WaitVisible(`button[lvt-click="mark-mine-done"]`, chromedp.ByQuery),
 	)
 	if err != nil {
@@ -692,7 +765,7 @@ func TestTeamTasksEmptyState(t *testing.T) {
 
 	// Navigate and wait for page load
 	err := chromedp.Run(ctx,
-		chromedp.Navigate(ts.URL+"/app.html"),
+		chromedp.Navigate(ts.URL+"/app"),
 		chromedp.WaitVisible(`form[lvt-submit="Add"]`, chromedp.ByQuery),
 	)
 	if err != nil {
@@ -706,8 +779,10 @@ func TestTeamTasksEmptyState(t *testing.T) {
 	var emptyMessage string
 	err = chromedp.Run(ctx,
 		chromedp.Evaluate(`
-			const cell = document.querySelector('[lvt-source="tasks"] tbody td[colspan="5"]');
-			return cell ? cell.textContent.trim() : '';
+			(() => {
+				const cell = document.querySelector('[lvt-source="tasks"] tbody td[colspan="5"]');
+				return cell ? cell.textContent.trim() : '';
+			})()
 		`, &emptyMessage),
 	)
 	if err != nil {
