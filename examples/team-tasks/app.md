@@ -26,139 +26,90 @@ actions:
 
 A collaborative task board for teams with real-time synchronization.
 
-## Dashboard
-
-- **Total Tasks:** `=count(tasks)`
-- **Todo:** `=count(tasks where status = todo)`
-- **In Progress:** `=count(tasks where status = in_progress)`
-- **Done:** `=count(tasks where status = done)`
+- **Total** `=count(tasks)`
+- **Todo** `=count(tasks where status = todo)`
+- **In Progress** `=count(tasks where status = in_progress)`
+- **Done** `=count(tasks where status = done)`
 
 ## [All] | [Mine] assigned_to = operator | [Todo] status = todo | [In Progress] status = in_progress | [Done] status = done
 
 ```lvt
-<div lvt-source="tasks">
-    <!-- Add Task Form -->
-    <form lvt-submit="Add" lvt-reset-on:success style="display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; padding: 16px; background: #f8f9fa; border-radius: 8px; margin-bottom: 24px;">
-        <div style="flex: 2; min-width: 200px;">
-            <label for="title" style="display: block; font-size: 12px; color: #666; margin-bottom: 4px;">Task Title</label>
-            <input type="text" name="title" id="title" required placeholder="What needs to be done?"
-                   maxlength="200"
-                   style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
+<article lvt-source="tasks">
+    <header>Add New Task</header>
+    <form lvt-submit="Add" lvt-reset-on:success>
+        <div class="grid">
+            <label>
+                Task Title
+                <input type="text" name="title" required placeholder="What needs to be done?" maxlength="200">
+            </label>
+            <label>
+                Assigned To
+                <input type="text" name="assigned_to" required placeholder="Username" maxlength="50" pattern="[a-zA-Z0-9_-]+">
+            </label>
         </div>
-        <div style="flex: 1; min-width: 120px;">
-            <label for="assigned_to" style="display: block; font-size: 12px; color: #666; margin-bottom: 4px;">Assigned To</label>
-            <input type="text" name="assigned_to" id="assigned_to" required placeholder="Username"
-                   maxlength="50" pattern="[a-zA-Z0-9_-]+"
-                   title="Username can only contain letters, numbers, underscores, and hyphens"
-                   style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
+        <div class="grid">
+            <label>
+                Priority
+                <select name="priority" required>
+                    <option value="low">Low</option>
+                    <option value="medium" selected>Medium</option>
+                    <option value="high">High</option>
+                </select>
+            </label>
+            <label>
+                Status
+                <select name="status" required>
+                    <option value="todo" selected>Todo</option>
+                    <option value="in_progress">In Progress</option>
+                    <option value="done">Done</option>
+                </select>
+            </label>
+            <button type="submit">Add Task</button>
         </div>
-        <div style="flex: 1; min-width: 100px;">
-            <label for="priority" style="display: block; font-size: 12px; color: #666; margin-bottom: 4px;">Priority</label>
-            <select name="priority" id="priority" required
-                    style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
-                <option value="low">Low</option>
-                <option value="medium" selected>Medium</option>
-                <option value="high">High</option>
-            </select>
-        </div>
-        <div style="flex: 1; min-width: 120px;">
-            <label for="status" style="display: block; font-size: 12px; color: #666; margin-bottom: 4px;">Status</label>
-            <select name="status" id="status" required
-                    style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px;">
-                <option value="todo" selected>Todo</option>
-                <option value="in_progress">In Progress</option>
-                <option value="done">Done</option>
-            </select>
-        </div>
-        <button type="submit"
-                style="padding: 10px 20px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500;">
-            + Add Task
-        </button>
     </form>
 
-    <!-- Tasks Table -->
     {{if .Error}}
-    <p style="color: #dc3545; padding: 12px; background: #f8d7da; border-radius: 4px;">Error: {{.Error}}</p>
+    <p><mark>Error: {{.Error}}</mark></p>
     {{else}}
-    <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
+    <table>
         <thead>
-            <tr style="background: #f8f9fa; border-bottom: 2px solid #dee2e6;">
-                <th style="padding: 12px; text-align: left;">Task</th>
-                <th style="padding: 12px; text-align: left;">Assigned To</th>
-                <th style="padding: 12px; text-align: center;">Priority</th>
-                <th style="padding: 12px; text-align: center;">Status</th>
-                <th style="padding: 12px; text-align: center; width: 100px;">Actions</th>
+            <tr>
+                <th scope="col">Task</th>
+                <th scope="col">Assigned To</th>
+                <th scope="col">Priority</th>
+                <th scope="col">Status</th>
+                <th scope="col">Actions</th>
             </tr>
         </thead>
         <tbody>
             {{range .Data}}
-            <tr data-key="{{.Id}}" style="border-bottom: 1px solid #eee;">
-                <td style="padding: 12px; {{if eq .Status "done"}}text-decoration: line-through; opacity: 0.6;{{end}}">
-                    {{.Title}}
-                </td>
-                <td style="padding: 12px;">
-                    <span style="padding: 2px 8px; background: #e9ecef; border-radius: 12px; font-size: 12px;">
-                        @{{.AssignedTo}}
-                    </span>
-                </td>
-                <td style="padding: 12px; text-align: center;">
-                    {{if eq .Priority "high"}}
-                    <span style="padding: 2px 8px; background: #f8d7da; color: #721c24; border-radius: 4px; font-size: 12px; font-weight: 500;">High</span>
-                    {{else if eq .Priority "medium"}}
-                    <span style="padding: 2px 8px; background: #fff3cd; color: #856404; border-radius: 4px; font-size: 12px; font-weight: 500;">Medium</span>
-                    {{else}}
-                    <span style="padding: 2px 8px; background: #d4edda; color: #155724; border-radius: 4px; font-size: 12px; font-weight: 500;">Low</span>
-                    {{end}}
-                </td>
-                <td style="padding: 12px; text-align: center;">
-                    {{if eq .Status "done"}}
-                    <span style="padding: 4px 10px; background: #28a745; color: white; border-radius: 12px; font-size: 12px;">Done</span>
-                    {{else if eq .Status "in_progress"}}
-                    <span style="padding: 4px 10px; background: #007bff; color: white; border-radius: 12px; font-size: 12px;">In Progress</span>
-                    {{else}}
-                    <span style="padding: 4px 10px; background: #6c757d; color: white; border-radius: 12px; font-size: 12px;">Todo</span>
-                    {{end}}
-                </td>
-                <td style="padding: 12px; text-align: center;">
-                    <button lvt-click="Delete" lvt-data-id="{{.Id}}"
-                            aria-label="Delete task: {{.Title}}"
-                            style="padding: 4px 8px; background: transparent; color: #dc3545; border: 1px solid #dc3545; border-radius: 4px; cursor: pointer; font-size: 12px;"
-                            title="Delete task">
-                        Delete
-                    </button>
-                </td>
+            <tr data-key="{{.Id}}">
+                <td>{{if eq .Status "done"}}<del>{{.Title}}</del>{{else}}{{.Title}}{{end}}</td>
+                <td><kbd>@{{.AssignedTo}}</kbd></td>
+                <td>{{if eq .Priority "high"}}<mark>High</mark>{{else if eq .Priority "medium"}}Medium{{else}}Low{{end}}</td>
+                <td>{{if eq .Status "done"}}<ins>Done</ins>{{else if eq .Status "in_progress"}}<em>In Progress</em>{{else}}Todo{{end}}</td>
+                <td><button lvt-click="Delete" lvt-data-id="{{.Id}}" class="outline secondary">Delete</button></td>
             </tr>
             {{else}}
             <tr>
-                <td colspan="5" style="padding: 40px; text-align: center; color: #6c757d;">
-                    No tasks yet. Create one using the form above!
-                </td>
+                <td colspan="5"><em>No tasks yet. Create one using the form above!</em></td>
             </tr>
             {{end}}
         </tbody>
     </table>
     {{end}}
 
-    <!-- Bulk Actions -->
-    <div style="display: flex; gap: 8px; flex-wrap: wrap; padding-top: 16px; border-top: 1px solid #dee2e6;">
-        <button lvt-click="mark-mine-done"
-                aria-label="Mark all my tasks as done"
-                style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;">
-            Mark My Tasks Done
-        </button>
-        <button lvt-click="clear-done"
-                aria-label="Delete all completed tasks"
-                style="padding: 8px 16px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer;">
-            Clear Completed
-        </button>
-        <button lvt-click="Refresh"
-                aria-label="Refresh task list"
-                style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">
-            Refresh
-        </button>
-    </div>
-</div>
+    <footer>
+        <div role="group">
+            <button lvt-click="mark-mine-done">Mark My Tasks Done</button>
+            <button lvt-click="clear-done" class="secondary">Clear Completed</button>
+            <button lvt-click="Refresh" class="contrast">Refresh</button>
+        </div>
+    </footer>
+</article>
 ```
+
+---
 
 ## Multi-User Testing
 
@@ -180,12 +131,14 @@ tinkerdown serve --operator bob --port 8081
 
 ## Features Demonstrated
 
-- **Tabbed Filtering**: Switch between All, Mine, Todo, In Progress, and Done views
-- **Live Statistics**: Dashboard shows real-time task counts using computed expressions
-- **CRUD Operations**: Add, delete tasks with instant UI updates
-- **Custom SQL Actions**: Bulk "Clear Completed" and "Mark My Tasks Done" with confirmation dialogs
-- **Real-time Sync**: WebSocket-based updates across browser instances
-- **Operator Identity**: "Mine" tab and "Mark My Tasks Done" filter by `--operator` flag value
+| Feature | Description |
+|---------|-------------|
+| **Tabbed Filtering** | Switch between All, Mine, Todo, In Progress, and Done views |
+| **Live Statistics** | Dashboard shows real-time task counts using computed expressions |
+| **CRUD Operations** | Add, delete tasks with instant UI updates |
+| **Custom SQL Actions** | Bulk "Clear Completed" and "Mark My Tasks Done" with confirmation |
+| **Real-time Sync** | WebSocket-based updates across browser instances |
+| **Operator Identity** | "Mine" tab and "Mark My Tasks Done" filter by `--operator` flag |
 
 ## Technical Notes
 
@@ -195,7 +148,7 @@ Form field names use `snake_case` (e.g., `assigned_to`) which SQLite stores as-i
 
 ### Operator Parameter
 
-The `:operator` parameter in SQL actions (like `mark-mine-done`) is automatically populated from the `--operator` CLI flag value. This enables user-specific operations without manual input:
+The `:operator` parameter in SQL actions is automatically populated from the `--operator` CLI flag value:
 
 ```yaml
 actions:
@@ -206,8 +159,6 @@ actions:
 ```
 
 ### Database Schema
-
-The SQLite database (`tasks.db`) is auto-created on first use. The schema is inferred from form submissions:
 
 | Column | Type | Description |
 |--------|------|-------------|
