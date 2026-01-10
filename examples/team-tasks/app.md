@@ -43,7 +43,7 @@ A collaborative task board for teams with real-time synchronization.
         </label>
         <label>
             Assigned To
-            <input type="text" name="assigned_to" required placeholder="Username" maxlength="50" pattern="[-a-zA-Z0-9_]+">
+            <input type="text" name="assigned_to" required placeholder="Username" maxlength="50" pattern="[a-zA-Z0-9_]+">
         </label>
         <label>
             Priority

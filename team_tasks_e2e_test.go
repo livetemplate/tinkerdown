@@ -58,12 +58,29 @@ func TestTeamTasksExample(t *testing.T) {
 	ctx, cancel = context.WithTimeout(ctx, 90*time.Second)
 	defer cancel()
 
-	// Store console logs for debugging
+	// Store console logs and errors for debugging
 	var consoleLogs []string
+	var consoleErrors []string
 	chromedp.ListenTarget(ctx, func(ev interface{}) {
-		if ev, ok := ev.(*runtime.EventConsoleAPICalled); ok {
+		switch ev := ev.(type) {
+		case *runtime.EventConsoleAPICalled:
 			for _, arg := range ev.Args {
-				consoleLogs = append(consoleLogs, fmt.Sprintf("[Console] %s", arg.Value))
+				msg := fmt.Sprintf("[Console] %s", arg.Value)
+				consoleLogs = append(consoleLogs, msg)
+				// Capture errors from console.error calls
+				if ev.Type == runtime.APITypeError || ev.Type == runtime.APITypeWarning {
+					consoleErrors = append(consoleErrors, msg)
+				}
+			}
+		case *runtime.EventExceptionThrown:
+			// Capture uncaught JavaScript exceptions
+			if ev.ExceptionDetails != nil {
+				errMsg := fmt.Sprintf("[Exception] %s", ev.ExceptionDetails.Text)
+				if ev.ExceptionDetails.Exception != nil && ev.ExceptionDetails.Exception.Description != "" {
+					errMsg = fmt.Sprintf("[Exception] %s", ev.ExceptionDetails.Exception.Description)
+				}
+				consoleErrors = append(consoleErrors, errMsg)
+				consoleLogs = append(consoleLogs, errMsg)
 			}
 		}
 	})
@@ -80,6 +97,11 @@ func TestTeamTasksExample(t *testing.T) {
 
 	// Wait for WebSocket connection
 	time.Sleep(500 * time.Millisecond)
+
+	// Check for JavaScript errors (e.g., invalid regex patterns)
+	if len(consoleErrors) > 0 {
+		t.Fatalf("JavaScript errors detected after page load:\n%s", strings.Join(consoleErrors, "\n"))
+	}
 
 	// Verify tab bar exists with all expected tabs
 	var tabCount int
