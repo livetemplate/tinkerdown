@@ -64,7 +64,7 @@ A collaborative task board for teams with real-time synchronization.
                     <option value="done">Done</option>
                 </select>
             </label>
-            <button type="submit">Add Task</button>
+            <label>&nbsp;<button type="submit">Add Task</button></label>
         </div>
     </form>
 
