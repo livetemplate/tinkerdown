@@ -24,6 +24,7 @@ type Config struct {
 	Sources     map[string]SourceConfig `yaml:"sources,omitempty"`
 	Actions     map[string]*Action      `yaml:"actions,omitempty"`
 	API         *APIConfig              `yaml:"api,omitempty"`
+	Webhooks    map[string]*Webhook     `yaml:"webhooks,omitempty"`
 }
 
 // SourceConfig defines a data source for lvt-source blocks
@@ -187,6 +188,130 @@ type ParamDef struct {
 	Type     string `yaml:"type,omitempty"`     // Parameter type: "string", "number", "date", "bool"
 	Required bool   `yaml:"required,omitempty"` // Whether the parameter is required
 	Default  string `yaml:"default,omitempty"`  // Default value
+}
+
+// Webhook defines a webhook trigger that can receive HTTP POST requests.
+//
+// Webhooks allow external services (CI/CD, monitoring, etc.) to trigger actions
+// by sending POST requests to /webhook/{name} endpoints.
+//
+// # Security Features
+//
+// Webhooks support multiple authentication methods:
+//   - Simple secret: X-Webhook-Secret header or ?secret= query parameter
+//   - HMAC signature: X-Webhook-Signature header with "sha256=<hex>" format
+//   - Timestamp validation: X-Webhook-Timestamp header for replay attack prevention
+//
+// # Exec Action Restrictions
+//
+// When a webhook triggers an "exec" action, the command is validated for safety.
+// The following shell metacharacters are blocked to prevent command injection:
+//   - & ; | : command chaining/background execution
+//   - $ : variable expansion (could leak environment variables)
+//   - > < : redirection (could overwrite files)
+//   - ` : command substitution
+//   - \ : escape sequences
+//   - \n \r : newlines (could inject additional commands)
+//
+// For complex commands, create an intermediate script and invoke it via the webhook.
+//
+// # Example Configuration
+//
+//	webhooks:
+//	  deploy:
+//	    action: deploy-app
+//	    signature_secret: ${WEBHOOK_SECRET}
+//	    validate_timestamp: true
+//	    timestamp_tolerance: 300
+//
+//	  github-push:
+//	    action: sync-repo
+//	    secret: ${GITHUB_WEBHOOK_SECRET}
+type Webhook struct {
+	// Action is the name of the action to execute when this webhook is triggered
+	Action string `yaml:"action"`
+	// Secret is the shared secret for validation (supports env var expansion)
+	// Used for X-Webhook-Secret header or ?secret= query param validation
+	Secret string `yaml:"secret,omitempty"`
+	// SignatureSecret is the secret used for HMAC signature validation (supports env var expansion)
+	// When set, validates X-Webhook-Signature header in format "sha256=<hex>"
+	// This provides stronger security than plain secret validation
+	SignatureSecret string `yaml:"signature_secret,omitempty"`
+	// ValidateTimestamp enables replay attack prevention by validating X-Webhook-Timestamp
+	// Requests older than TimestampTolerance seconds are rejected
+	ValidateTimestamp bool `yaml:"validate_timestamp,omitempty"`
+	// TimestampTolerance is the maximum age in seconds for timestamp validation (default: 300 = 5 minutes)
+	TimestampTolerance int `yaml:"timestamp_tolerance,omitempty"`
+}
+
+// GetSecret returns the webhook secret with environment variable expansion
+func (w *Webhook) GetSecret() string {
+	if w == nil || w.Secret == "" {
+		return ""
+	}
+	return os.ExpandEnv(w.Secret)
+}
+
+// GetSignatureSecret returns the HMAC signature secret with environment variable expansion
+func (w *Webhook) GetSignatureSecret() string {
+	if w == nil || w.SignatureSecret == "" {
+		return ""
+	}
+	return os.ExpandEnv(w.SignatureSecret)
+}
+
+// GetTimestampTolerance returns the timestamp tolerance in seconds (default 300)
+func (w *Webhook) GetTimestampTolerance() int {
+	if w == nil || w.TimestampTolerance <= 0 {
+		return 300 // 5 minutes default
+	}
+	return w.TimestampTolerance
+}
+
+// Validate checks that the webhook configuration is valid.
+// Returns an error if any validation fails.
+func (w *Webhook) Validate(name string, actions map[string]*Action) error {
+	if w == nil {
+		return fmt.Errorf("webhook %q is nil", name)
+	}
+
+	// Action is required
+	if w.Action == "" {
+		return fmt.Errorf("webhook %q: action is required", name)
+	}
+
+	// Validate that the referenced action exists
+	if actions != nil {
+		if _, exists := actions[w.Action]; !exists {
+			return fmt.Errorf("webhook %q: references non-existent action %q", name, w.Action)
+		}
+	}
+
+	// If both secret and signature_secret are set, warn (signature takes precedence)
+	// This is not an error, just a note for clarity
+
+	// Validate timestamp tolerance if timestamp validation is enabled
+	if w.ValidateTimestamp && w.TimestampTolerance < 0 {
+		return fmt.Errorf("webhook %q: timestamp_tolerance cannot be negative", name)
+	}
+
+	return nil
+}
+
+// ValidateWebhooks validates all webhook configurations in the config.
+// Returns an error if any webhook has invalid configuration.
+func (c *Config) ValidateWebhooks() error {
+	if c.Webhooks == nil {
+		return nil
+	}
+
+	for name, webhook := range c.Webhooks {
+		if err := webhook.Validate(name, c.Actions); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // SiteConfig holds site-level configuration
