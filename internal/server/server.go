@@ -256,8 +256,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// No route found - redirect to home page instead of 404
-	http.Redirect(w, r, "/", http.StatusSeeOther)
+	// No route found - redirect to first available route instead of 404
+	if len(s.routes) > 0 {
+		http.Redirect(w, r, s.routes[0].Pattern, http.StatusSeeOther)
+	} else {
+		http.Error(w, "No pages available", http.StatusNotFound)
+	}
 }
 
 // serveWebSocket handles WebSocket connections for interactive blocks.
