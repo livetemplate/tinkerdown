@@ -512,8 +512,8 @@ type Tab struct {
 }
 
 // tabbedHeadingPattern matches headings with tab syntax: ## [Tab1] | [Tab2] filter
-// Captures: 1=tag name, 2=id attribute, 3=heading content
-// Note: Go regexp doesn't support backreferences, so we match any closing h tag
+// Captures: 1=tag name, 2=attributes, 3=heading content
+// Note: Go's RE2 doesn't support backreferences, so we match any closing h1-h6 tag
 var tabbedHeadingPattern = regexp.MustCompile(`<(h[1-6])([^>]*)>([^<]*\[[^\]]+\][^<]*)</h[1-6]>`)
 
 // tabPattern matches individual tab definitions: [TabName] optional filter

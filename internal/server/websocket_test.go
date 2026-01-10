@@ -653,7 +653,7 @@ func TestMalformedMessageHandling(t *testing.T) {
 		{
 			name:    "wrong type for blockID",
 			input:   `{"blockID": 123, "action": "Toggle"}`,
-			wantErr: false, // JSON will coerce to string in some cases
+			wantErr: true, // Go's json.Unmarshal is strict - number won't coerce to string
 		},
 		{
 			name:    "null data",
