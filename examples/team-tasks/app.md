@@ -84,7 +84,7 @@ A collaborative task board for teams with real-time synchronization.
                 <td><kbd>@{{.AssignedTo}}</kbd></td>
                 <td>{{if eq .Priority "high"}}<mark>High</mark>{{else if eq .Priority "medium"}}Medium{{else}}Low{{end}}</td>
                 <td>{{if eq .Status "done"}}<ins>Done</ins>{{else if eq .Status "in_progress"}}<em>In Progress</em>{{else}}Todo{{end}}</td>
-                <td><button lvt-click="Delete" lvt-data-id="{{.Id}}" class="outline secondary">Delete</button></td>
+                <td><button lvt-click="Delete" lvt-data-id="{{.Id}}" class="outline secondary" aria-label="Delete task: {{.Title}}">Delete</button></td>
             </tr>
             {{else}}
             <tr>
