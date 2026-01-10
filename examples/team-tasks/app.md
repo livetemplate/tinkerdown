@@ -37,35 +37,31 @@ A collaborative task board for teams with real-time synchronization.
 <article lvt-source="tasks">
     <header>Add New Task</header>
     <form lvt-submit="Add" lvt-reset-on:success>
-        <div class="grid">
-            <label>
-                Task Title
-                <input type="text" name="title" required placeholder="What needs to be done?" maxlength="200">
-            </label>
-            <label>
-                Assigned To
-                <input type="text" name="assigned_to" required placeholder="Username" maxlength="50" pattern="[-a-zA-Z0-9_]+">
-            </label>
-        </div>
-        <div class="grid">
-            <label>
-                Priority
-                <select name="priority" required>
-                    <option value="low">Low</option>
-                    <option value="medium" selected>Medium</option>
-                    <option value="high">High</option>
-                </select>
-            </label>
-            <label>
-                Status
-                <select name="status" required>
-                    <option value="todo" selected>Todo</option>
-                    <option value="in_progress">In Progress</option>
-                    <option value="done">Done</option>
-                </select>
-            </label>
-            <label>&nbsp;<button type="submit">Add Task</button></label>
-        </div>
+        <label>
+            Task Title
+            <input type="text" name="title" required placeholder="What needs to be done?" maxlength="200">
+        </label>
+        <label>
+            Assigned To
+            <input type="text" name="assigned_to" required placeholder="Username" maxlength="50" pattern="[-a-zA-Z0-9_]+">
+        </label>
+        <label>
+            Priority
+            <select name="priority" required>
+                <option value="low">Low</option>
+                <option value="medium" selected>Medium</option>
+                <option value="high">High</option>
+            </select>
+        </label>
+        <label>
+            Status
+            <select name="status" required>
+                <option value="todo" selected>Todo</option>
+                <option value="in_progress">In Progress</option>
+                <option value="done">Done</option>
+            </select>
+        </label>
+        <button type="submit">Add Task</button>
     </form>
 
     {{if .Error}}
