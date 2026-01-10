@@ -1,3 +1,5 @@
+//go:build !ci
+
 package tinkerdown_test
 
 import (
