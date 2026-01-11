@@ -7,8 +7,21 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 )
+
+// slackWebhookURLPrefix is the required prefix for Slack webhook URLs.
+// This prevents data exfiltration to non-Slack endpoints.
+const slackWebhookURLPrefix = "https://hooks.slack.com/"
+
+// validateSlackWebhookURL ensures the webhook URL is a valid Slack webhook.
+func validateSlackWebhookURL(url string) error {
+	if !strings.HasPrefix(url, slackWebhookURLPrefix) {
+		return fmt.Errorf("invalid Slack webhook URL: must start with %s", slackWebhookURLPrefix)
+	}
+	return nil
+}
 
 // SlackOutput sends notifications to a Slack channel via webhook.
 type SlackOutput struct {
@@ -31,6 +44,9 @@ func NewSlackOutput(channel string) (*SlackOutput, error) {
 	if webhookURL == "" {
 		return nil, fmt.Errorf("SLACK_WEBHOOK_URL environment variable not set")
 	}
+	if err := validateSlackWebhookURL(webhookURL); err != nil {
+		return nil, err
+	}
 
 	if channel == "" {
 		return nil, fmt.Errorf("slack channel is required")
@@ -46,8 +62,33 @@ func NewSlackOutput(channel string) (*SlackOutput, error) {
 }
 
 // NewSlackOutputWithURL creates a Slack output with an explicit webhook URL.
-// This is primarily useful for testing.
+// The URL must be a valid Slack webhook URL (starting with https://hooks.slack.com/).
+// For testing, use NewSlackOutputForTesting instead.
 func NewSlackOutputWithURL(channel, webhookURL string) (*SlackOutput, error) {
+	if webhookURL == "" {
+		return nil, fmt.Errorf("webhook URL is required")
+	}
+	if err := validateSlackWebhookURL(webhookURL); err != nil {
+		return nil, err
+	}
+
+	if channel == "" {
+		return nil, fmt.Errorf("slack channel is required")
+	}
+
+	return &SlackOutput{
+		channel:    channel,
+		webhookURL: webhookURL,
+		client: &http.Client{
+			Timeout: 10 * time.Second,
+		},
+	}, nil
+}
+
+// NewSlackOutputForTesting creates a Slack output for testing purposes.
+// This bypasses webhook URL validation to allow mock servers.
+// Do not use in production code.
+func NewSlackOutputForTesting(channel, webhookURL string) (*SlackOutput, error) {
 	if webhookURL == "" {
 		return nil, fmt.Errorf("webhook URL is required")
 	}

@@ -3,10 +3,28 @@ package output
 import (
 	"context"
 	"fmt"
+	"net/mail"
 	"net/smtp"
 	"os"
 	"strings"
 )
+
+// sanitizeHeader removes CR and LF characters from header values to prevent
+// email header injection attacks.
+func sanitizeHeader(s string) string {
+	s = strings.ReplaceAll(s, "\r", "")
+	s = strings.ReplaceAll(s, "\n", "")
+	return s
+}
+
+// validateEmail checks if an email address is valid using net/mail.
+func validateEmail(email string) error {
+	_, err := mail.ParseAddress(email)
+	if err != nil {
+		return fmt.Errorf("invalid email address %q: %w", email, err)
+	}
+	return nil
+}
 
 // EmailOutput sends notifications via SMTP email.
 type EmailOutput struct {
@@ -30,6 +48,9 @@ func NewEmailOutput(to, subject string) (*EmailOutput, error) {
 	if to == "" {
 		return nil, fmt.Errorf("email recipient (to) is required")
 	}
+	if err := validateEmail(to); err != nil {
+		return nil, err
+	}
 
 	host := os.Getenv("SMTP_HOST")
 	if host == "" {
@@ -45,15 +66,18 @@ func NewEmailOutput(to, subject string) (*EmailOutput, error) {
 	if from == "" {
 		return nil, fmt.Errorf("SMTP_FROM environment variable not set")
 	}
+	if err := validateEmail(from); err != nil {
+		return nil, err
+	}
 
 	if subject == "" {
 		subject = "Notification from Tinkerdown"
 	}
 
 	return &EmailOutput{
-		to:       to,
-		from:     from,
-		subject:  subject,
+		to:       sanitizeHeader(to),
+		from:     sanitizeHeader(from),
+		subject:  sanitizeHeader(subject),
 		smtpHost: host,
 		smtpPort: port,
 		username: os.Getenv("SMTP_USER"),
@@ -67,8 +91,14 @@ func NewEmailOutputWithConfig(to, from, subject, smtpHost, smtpPort, username, p
 	if to == "" {
 		return nil, fmt.Errorf("email recipient (to) is required")
 	}
+	if err := validateEmail(to); err != nil {
+		return nil, err
+	}
 	if from == "" {
 		return nil, fmt.Errorf("sender email (from) is required")
+	}
+	if err := validateEmail(from); err != nil {
+		return nil, err
 	}
 	if smtpHost == "" {
 		return nil, fmt.Errorf("SMTP host is required")
@@ -81,9 +111,9 @@ func NewEmailOutputWithConfig(to, from, subject, smtpHost, smtpPort, username, p
 	}
 
 	return &EmailOutput{
-		to:       to,
-		from:     from,
-		subject:  subject,
+		to:       sanitizeHeader(to),
+		from:     sanitizeHeader(from),
+		subject:  sanitizeHeader(subject),
 		smtpHost: smtpHost,
 		smtpPort: smtpPort,
 		username: username,
@@ -116,15 +146,23 @@ func (e *EmailOutput) Send(ctx context.Context, message string) error {
 		auth = smtp.PlainAuth("", e.username, e.password, e.smtpHost)
 	}
 
-	// Send the email
-	// Note: smtp.SendMail doesn't support context cancellation directly,
-	// but the underlying connection has default timeouts
-	err := smtp.SendMail(addr, auth, e.from, []string{e.to}, []byte(msg.String()))
-	if err != nil {
-		return fmt.Errorf("failed to send email: %w", err)
-	}
+	// Send the email in a separate goroutine to respect context cancellation.
+	// smtp.SendMail doesn't support context natively, so we wrap it.
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- smtp.SendMail(addr, auth, e.from, []string{e.to}, []byte(msg.String()))
+	}()
 
-	return nil
+	select {
+	case <-ctx.Done():
+		// Context canceled or timed out; return its error.
+		return ctx.Err()
+	case err := <-errCh:
+		if err != nil {
+			return fmt.Errorf("failed to send email: %w", err)
+		}
+		return nil
+	}
 }
 
 // Close is a no-op for email output.

@@ -15,6 +15,13 @@ func TestSlackOutput_NewSlackOutput(t *testing.T) {
 		t.Fatal("expected error when SLACK_WEBHOOK_URL is not set")
 	}
 
+	// Test with invalid webhook URL (not a Slack URL)
+	t.Setenv("SLACK_WEBHOOK_URL", "https://evil.com/webhook")
+	_, err = NewSlackOutput("#test")
+	if err == nil {
+		t.Fatal("expected error when webhook URL is not a Slack URL")
+	}
+
 	// Test with empty channel
 	t.Setenv("SLACK_WEBHOOK_URL", "https://hooks.slack.com/test")
 	_, err = NewSlackOutput("")
@@ -39,14 +46,43 @@ func TestSlackOutput_NewSlackOutputWithURL(t *testing.T) {
 		t.Fatal("expected error when URL is empty")
 	}
 
+	// Test with invalid webhook URL (not a Slack URL)
+	_, err = NewSlackOutputWithURL("#test", "https://evil.com/webhook")
+	if err == nil {
+		t.Fatal("expected error when webhook URL is not a Slack URL")
+	}
+
 	// Test with empty channel
 	_, err = NewSlackOutputWithURL("", "https://hooks.slack.com/test")
 	if err == nil {
 		t.Fatal("expected error when channel is empty")
 	}
 
+	// Test successful creation with valid Slack URL
+	output, err := NewSlackOutputWithURL("#test-channel", "https://hooks.slack.com/services/T123/B456/abc123")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if output.Channel() != "#test-channel" {
+		t.Errorf("expected channel '#test-channel', got %q", output.Channel())
+	}
+}
+
+func TestSlackOutput_NewSlackOutputForTesting(t *testing.T) {
+	// Test with empty URL
+	_, err := NewSlackOutputForTesting("#test", "")
+	if err == nil {
+		t.Fatal("expected error when URL is empty")
+	}
+
+	// Test with empty channel
+	_, err = NewSlackOutputForTesting("", "https://hooks.slack.com/test")
+	if err == nil {
+		t.Fatal("expected error when channel is empty")
+	}
+
 	// Test successful creation
-	output, err := NewSlackOutputWithURL("#test-channel", "https://hooks.slack.com/test")
+	output, err := NewSlackOutputForTesting("#test-channel", "https://hooks.slack.com/test")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -56,7 +92,7 @@ func TestSlackOutput_NewSlackOutputWithURL(t *testing.T) {
 }
 
 func TestSlackOutput_Name(t *testing.T) {
-	output, err := NewSlackOutputWithURL("#test", "https://hooks.slack.com/test")
+	output, err := NewSlackOutputForTesting("#test", "https://hooks.slack.com/test")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -86,7 +122,7 @@ func TestSlackOutput_Send(t *testing.T) {
 	}))
 	defer server.Close()
 
-	output, err := NewSlackOutputWithURL("#test-channel", server.URL)
+	output, err := NewSlackOutputForTesting("#test-channel", server.URL)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -112,7 +148,7 @@ func TestSlackOutput_Send_Error(t *testing.T) {
 	}))
 	defer server.Close()
 
-	output, err := NewSlackOutputWithURL("#test", server.URL)
+	output, err := NewSlackOutputForTesting("#test", server.URL)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -131,7 +167,7 @@ func TestSlackOutput_Send_ContextCancellation(t *testing.T) {
 	}))
 	defer server.Close()
 
-	output, err := NewSlackOutputWithURL("#test", server.URL)
+	output, err := NewSlackOutputForTesting("#test", server.URL)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -146,7 +182,7 @@ func TestSlackOutput_Send_ContextCancellation(t *testing.T) {
 }
 
 func TestSlackOutput_Close(t *testing.T) {
-	output, err := NewSlackOutputWithURL("#test", "https://hooks.slack.com/test")
+	output, err := NewSlackOutputForTesting("#test", "https://hooks.slack.com/test")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

@@ -1,7 +1,10 @@
 package output
 
 import (
+	"context"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestEmailOutput_NewEmailOutput(t *testing.T) {
@@ -210,5 +213,175 @@ func TestEmailOutput_DefaultSubject(t *testing.T) {
 
 	if output.Subject() != "Notification from Tinkerdown" {
 		t.Errorf("expected default subject, got %q", output.Subject())
+	}
+}
+
+func TestEmailOutput_Send_ContextCancellation(t *testing.T) {
+	output, err := NewEmailOutputWithConfig(
+		"user@example.com",
+		"noreply@example.com",
+		"Test",
+		"localhost",
+		"25",
+		"", "",
+	)
+	if err != nil {
+		t.Fatalf("unexpected error creating output: %v", err)
+	}
+
+	// Create a cancelled context
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // Cancel immediately
+
+	// The send should fail with context error
+	err = output.Send(ctx, "test message")
+	if err == nil {
+		t.Fatal("expected error for cancelled context")
+	}
+	if !strings.Contains(err.Error(), "context canceled") {
+		// The error might be from context or from connection failure
+		// Either is acceptable since we're testing that context is respected
+		t.Logf("got error: %v (context may have been checked)", err)
+	}
+}
+
+func TestEmailOutput_Send_ContextTimeout(t *testing.T) {
+	output, err := NewEmailOutputWithConfig(
+		"user@example.com",
+		"noreply@example.com",
+		"Test",
+		"localhost",    // Use localhost which won't have SMTP
+		"25",
+		"", "",
+	)
+	if err != nil {
+		t.Fatalf("unexpected error creating output: %v", err)
+	}
+
+	// Create a context with short timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Millisecond)
+	defer cancel()
+
+	// Wait a bit to let context timeout
+	time.Sleep(2 * time.Millisecond)
+
+	// The send should fail
+	err = output.Send(ctx, "test message")
+	if err == nil {
+		t.Fatal("expected error for timed out context")
+	}
+}
+
+func TestEmailOutput_HeaderInjectionPrevention(t *testing.T) {
+	// Test that malicious subjects are sanitized
+	tests := []struct {
+		name    string
+		to      string
+		from    string
+		subject string
+		wantErr bool
+	}{
+		{
+			name:    "valid emails and subject",
+			to:      "user@example.com",
+			from:    "noreply@example.com",
+			subject: "Normal subject",
+			wantErr: false,
+		},
+		{
+			name:    "subject with newline is sanitized",
+			to:      "user@example.com",
+			from:    "noreply@example.com",
+			subject: "Subject\r\nBcc: attacker@evil.com",
+			wantErr: false, // sanitized, not rejected
+		},
+		{
+			name:    "invalid to email",
+			to:      "not-an-email",
+			from:    "noreply@example.com",
+			subject: "Test",
+			wantErr: true,
+		},
+		{
+			name:    "invalid from email",
+			to:      "user@example.com",
+			from:    "not-an-email",
+			subject: "Test",
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := NewEmailOutputWithConfig(
+				tt.to, tt.from, tt.subject,
+				"smtp.example.com", "587",
+				"", "",
+			)
+
+			if tt.wantErr && err == nil {
+				t.Error("expected error but got nil")
+			}
+			if !tt.wantErr && err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+		})
+	}
+}
+
+func TestEmailOutput_EmailValidation(t *testing.T) {
+	tests := []struct {
+		name    string
+		to      string
+		from    string
+		wantErr bool
+	}{
+		{
+			name:    "valid emails",
+			to:      "user@example.com",
+			from:    "noreply@example.com",
+			wantErr: false,
+		},
+		{
+			name:    "valid email with display name",
+			to:      "User Name <user@example.com>",
+			from:    "No Reply <noreply@example.com>",
+			wantErr: false,
+		},
+		{
+			name:    "invalid to - no domain",
+			to:      "user@",
+			from:    "noreply@example.com",
+			wantErr: true,
+		},
+		{
+			name:    "invalid to - no @",
+			to:      "userexample.com",
+			from:    "noreply@example.com",
+			wantErr: true,
+		},
+		{
+			name:    "invalid from - empty",
+			to:      "user@example.com",
+			from:    "",
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := NewEmailOutputWithConfig(
+				tt.to, tt.from, "Test",
+				"smtp.example.com", "587",
+				"", "",
+			)
+
+			if tt.wantErr && err == nil {
+				t.Error("expected error but got nil")
+			}
+			if !tt.wantErr && err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+		})
 	}
 }

@@ -5,6 +5,7 @@ package output
 import (
 	"context"
 	"fmt"
+	"sync"
 )
 
 // Output represents a notification destination.
@@ -38,7 +39,9 @@ type Config struct {
 }
 
 // Registry manages a collection of outputs.
+// It is safe for concurrent use.
 type Registry struct {
+	mu      sync.RWMutex
 	outputs map[string]Output
 }
 
@@ -51,19 +54,31 @@ func NewRegistry() *Registry {
 
 // Register adds an output to the registry.
 func (r *Registry) Register(name string, output Output) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.outputs[name] = output
 }
 
 // Get retrieves an output by name.
 func (r *Registry) Get(name string) (Output, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	output, ok := r.outputs[name]
 	return output, ok
 }
 
 // SendAll sends a message to all registered outputs.
 func (r *Registry) SendAll(ctx context.Context, message string) error {
-	var errs []error
+	r.mu.RLock()
+	// Make a copy of outputs to avoid holding the lock during Send calls
+	outputs := make(map[string]Output, len(r.outputs))
 	for name, output := range r.outputs {
+		outputs[name] = output
+	}
+	r.mu.RUnlock()
+
+	var errs []error
+	for name, output := range outputs {
 		if err := output.Send(ctx, message); err != nil {
 			errs = append(errs, fmt.Errorf("%s: %w", name, err))
 		}
@@ -76,6 +91,8 @@ func (r *Registry) SendAll(ctx context.Context, message string) error {
 
 // Close closes all registered outputs.
 func (r *Registry) Close() error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	var errs []error
 	for name, output := range r.outputs {
 		if err := output.Close(); err != nil {
