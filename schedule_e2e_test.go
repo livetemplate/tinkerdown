@@ -120,12 +120,24 @@ This @badtoken should generate a warning.
 
 	// Test that code blocks are skipped
 	t.Run("code blocks skipped", func(t *testing.T) {
+		// Count how many @daily:9am tokens we find - there should be exactly 2:
+		// 1. Line ~4: "This page has a daily reminder @daily:9am to check email."
+		// 2. Line ~17: "Notify @daily:9am Check your email inbox"
+		// The one inside the code block (line ~11) should NOT be parsed
+		dailyCount := 0
 		for _, tok := range fm.Schedules {
-			// The @daily:9am inside the code block should not be at line 17-19 area
-			// (that's where the code block is)
-			if tok.Raw == "@daily:9am" && tok.Line >= 17 && tok.Line <= 19 {
-				t.Error("Token from inside code block was incorrectly parsed")
+			if tok.Raw == "@daily:9am" {
+				dailyCount++
+				t.Logf("Found @daily:9am at line %d", tok.Line)
+				// The code block is around lines 10-13 (after frontmatter removed)
+				// If we find a token there, the code block wasn't skipped properly
+				if tok.Line >= 10 && tok.Line <= 13 {
+					t.Errorf("Token from inside code block was parsed at line %d", tok.Line)
+				}
 			}
+		}
+		if dailyCount != 2 {
+			t.Errorf("Expected exactly 2 @daily:9am tokens, got %d", dailyCount)
 		}
 	})
 
@@ -421,7 +433,7 @@ type: tutorial
 
 Notify @daily:9am Morning reminder
 
-` + "```go lvt id=\"example\"" + `
+` + "```go" + `
 // Some code
 ` + "```" + `
 
