@@ -230,3 +230,186 @@ func TestConfigValidateWebhooks(t *testing.T) {
 		})
 	}
 }
+
+func TestOutputConfigValidate(t *testing.T) {
+	tests := []struct {
+		name      string
+		output    *OutputConfig
+		wantError bool
+		errorMsg  string
+	}{
+		{
+			name:      "nil output",
+			output:    nil,
+			wantError: true,
+			errorMsg:  "is nil",
+		},
+		{
+			name:      "unsupported type",
+			output:    &OutputConfig{Type: "discord"},
+			wantError: true,
+			errorMsg:  "unsupported type",
+		},
+		{
+			name:      "slack without channel",
+			output:    &OutputConfig{Type: "slack", Channel: ""},
+			wantError: true,
+			errorMsg:  "channel is required",
+		},
+		{
+			name:      "email without to",
+			output:    &OutputConfig{Type: "email", To: ""},
+			wantError: true,
+			errorMsg:  "to is required",
+		},
+		{
+			name:      "valid slack",
+			output:    &OutputConfig{Type: "slack", Channel: "#test"},
+			wantError: false,
+		},
+		{
+			name:      "valid email",
+			output:    &OutputConfig{Type: "email", To: "user@example.com"},
+			wantError: false,
+		},
+		{
+			name:      "valid email with subject",
+			output:    &OutputConfig{Type: "email", To: "user@example.com", Subject: "Alert"},
+			wantError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.output.Validate("test-output")
+			if tt.wantError {
+				if err == nil {
+					t.Errorf("Validate() expected error containing %q, got nil", tt.errorMsg)
+				} else if tt.errorMsg != "" && !strings.Contains(err.Error(), tt.errorMsg) {
+					t.Errorf("Validate() error = %v, want error containing %q", err, tt.errorMsg)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("Validate() unexpected error = %v", err)
+				}
+			}
+		})
+	}
+}
+
+func TestOutputConfigGetChannel(t *testing.T) {
+	// Test with nil
+	var nilOutput *OutputConfig
+	if got := nilOutput.GetChannel(); got != "" {
+		t.Errorf("GetChannel() on nil = %q, want empty string", got)
+	}
+
+	// Test with empty
+	output := &OutputConfig{Channel: ""}
+	if got := output.GetChannel(); got != "" {
+		t.Errorf("GetChannel() on empty = %q, want empty string", got)
+	}
+
+	// Test with value
+	output = &OutputConfig{Channel: "#test-channel"}
+	if got := output.GetChannel(); got != "#test-channel" {
+		t.Errorf("GetChannel() = %q, want #test-channel", got)
+	}
+
+	// Test with env var expansion
+	t.Setenv("TEST_CHANNEL", "#from-env")
+	output = &OutputConfig{Channel: "${TEST_CHANNEL}"}
+	if got := output.GetChannel(); got != "#from-env" {
+		t.Errorf("GetChannel() with env var = %q, want #from-env", got)
+	}
+}
+
+func TestOutputConfigGetTo(t *testing.T) {
+	// Test with nil
+	var nilOutput *OutputConfig
+	if got := nilOutput.GetTo(); got != "" {
+		t.Errorf("GetTo() on nil = %q, want empty string", got)
+	}
+
+	// Test with empty
+	output := &OutputConfig{To: ""}
+	if got := output.GetTo(); got != "" {
+		t.Errorf("GetTo() on empty = %q, want empty string", got)
+	}
+
+	// Test with value
+	output = &OutputConfig{To: "user@example.com"}
+	if got := output.GetTo(); got != "user@example.com" {
+		t.Errorf("GetTo() = %q, want user@example.com", got)
+	}
+
+	// Test with env var expansion
+	t.Setenv("TEST_EMAIL", "env@example.com")
+	output = &OutputConfig{To: "${TEST_EMAIL}"}
+	if got := output.GetTo(); got != "env@example.com" {
+		t.Errorf("GetTo() with env var = %q, want env@example.com", got)
+	}
+}
+
+func TestConfigValidateOutputs(t *testing.T) {
+	tests := []struct {
+		name      string
+		config    *Config
+		wantError bool
+	}{
+		{
+			name:      "nil outputs",
+			config:    &Config{},
+			wantError: false,
+		},
+		{
+			name: "valid outputs",
+			config: &Config{
+				Outputs: map[string]*OutputConfig{
+					"slack": {Type: "slack", Channel: "#alerts"},
+					"email": {Type: "email", To: "alerts@example.com"},
+				},
+			},
+			wantError: false,
+		},
+		{
+			name: "invalid output - unsupported type",
+			config: &Config{
+				Outputs: map[string]*OutputConfig{
+					"invalid": {Type: "discord"},
+				},
+			},
+			wantError: true,
+		},
+		{
+			name: "invalid output - slack missing channel",
+			config: &Config{
+				Outputs: map[string]*OutputConfig{
+					"slack": {Type: "slack"},
+				},
+			},
+			wantError: true,
+		},
+		{
+			name: "invalid output - email missing to",
+			config: &Config{
+				Outputs: map[string]*OutputConfig{
+					"email": {Type: "email"},
+				},
+			},
+			wantError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.config.ValidateOutputs()
+			if tt.wantError && err == nil {
+				t.Errorf("ValidateOutputs() expected error, got nil")
+			}
+			if !tt.wantError && err != nil {
+				t.Errorf("ValidateOutputs() unexpected error = %v", err)
+			}
+		})
+	}
+}
