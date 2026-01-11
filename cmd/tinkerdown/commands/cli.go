@@ -252,7 +252,16 @@ func cliList(ctx context.Context, src source.Source, opts cliOptions) error {
 	}
 
 	if len(data) == 0 {
-		fmt.Println("No items found.")
+		// For JSON format, output empty array; for others, output message
+		switch opts.format {
+		case "json":
+			fmt.Println("[]")
+		case "csv":
+			// For CSV, just output headers (no data rows)
+			fmt.Println("No items found.")
+		default:
+			fmt.Println("No items found.")
+		}
 		return nil
 	}
 
@@ -310,9 +319,25 @@ func applyFilter(data []map[string]interface{}, filter string) []map[string]inte
 		if itemValue == parsedValue {
 			matches = true
 		} else {
-			// Fallback to string comparison for mixed types
-			itemStr := fmt.Sprintf("%v", itemValue)
-			matches = itemStr == value
+			// Handle boolean comparison (SQLite stores bools as 0/1)
+			if boolVal, isBool := parsedValue.(bool); isBool {
+				switch v := itemValue.(type) {
+				case int64:
+					matches = (boolVal && v == 1) || (!boolVal && v == 0)
+				case float64:
+					matches = (boolVal && v == 1) || (!boolVal && v == 0)
+				case int:
+					matches = (boolVal && v == 1) || (!boolVal && v == 0)
+				default:
+					// Fallback to string comparison
+					itemStr := fmt.Sprintf("%v", itemValue)
+					matches = itemStr == value
+				}
+			} else {
+				// Fallback to string comparison for mixed types
+				itemStr := fmt.Sprintf("%v", itemValue)
+				matches = itemStr == value
+			}
 		}
 
 		if negate {

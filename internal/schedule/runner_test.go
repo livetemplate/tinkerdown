@@ -441,6 +441,10 @@ func TestOneTimeJobDisabled(t *testing.T) {
 
 	cron.AddJob(job)
 
+	// Advance time to when the job is scheduled (now + 1 hour)
+	scheduledTime := fixedTime.Add(time.Hour)
+	cron.SetTimeFunc(func() time.Time { return scheduledTime })
+
 	// Execute
 	cron.Tick()
 

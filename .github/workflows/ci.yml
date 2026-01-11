@@ -26,7 +26,7 @@ jobs:
       - name: Run tests
         run: |
           set +e
-          go test -v -race -coverprofile=coverage.out -skip='E2E|e2e' ./... 2>&1 | tee test-output.txt
+          go test -v -race -coverprofile=coverage.out -tags=ci -skip='E2E|e2e' ./... 2>&1 | tee test-output.txt
           test_exit_code=$?
           set -e
           echo "Exit code: $test_exit_code"

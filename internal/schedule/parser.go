@@ -620,7 +620,7 @@ func (t *Token) NextOccurrence(now time.Time, loc *time.Location) time.Time {
 		if t.Time != nil {
 			next := time.Date(now.Year(), now.Month(), now.Day(),
 				t.Time.Hour, t.Time.Minute, 0, 0, loc)
-			if next.Before(now) || next.Equal(now) {
+			if next.Before(now) {
 				next = next.AddDate(0, 0, 1)
 			}
 			return next
@@ -633,7 +633,7 @@ func (t *Token) NextOccurrence(now time.Time, loc *time.Location) time.Time {
 		if t.Recurring != nil && t.Recurring.Time != nil {
 			next := time.Date(now.Year(), now.Month(), now.Day(),
 				t.Recurring.Time.Hour, t.Recurring.Time.Minute, 0, 0, loc)
-			if next.Before(now) || next.Equal(now) {
+			if next.Before(now) {
 				next = next.AddDate(0, 0, 1)
 			}
 			return adjustForDST(next, loc)

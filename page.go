@@ -180,6 +180,59 @@ func ParseString(content string) (*Page, error) {
 	return page, nil
 }
 
+// BuildPage creates a Page from raw content with a specified ID and source file.
+// This is useful for testing and programmatic page creation.
+// The content should be valid markdown with optional frontmatter.
+func BuildPage(id, sourceFile string, content []byte) (*Page, error) {
+	// Parse markdown (no partials support for programmatic input)
+	fm, codeBlocks, staticHTML, err := ParseMarkdownWithPartials(content, "")
+	if err != nil {
+		return nil, NewParseError(sourceFile, 1, fmt.Sprintf("Failed to parse markdown: %v", err))
+	}
+
+	// Create page
+	page := New(id)
+	page.Title = fm.Title
+	if page.Title == "" {
+		page.Title = id
+	}
+	page.Type = fm.Type
+	page.StaticHTML = staticHTML
+	page.SourceFile = sourceFile
+	page.Sidebar = fm.Sidebar
+	page.Config = PageConfig{
+		Persist:   fm.Persist,
+		MultiStep: fm.Steps > 0,
+		StepCount: fm.Steps,
+	}
+
+	// Apply frontmatter config options
+	page.Config.MergeFromFrontmatter(fm)
+
+	// Store computed expressions from parsing
+	if fm.Expressions != nil {
+		page.Expressions = fm.Expressions
+	}
+
+	// Store schedule data from parsing
+	if fm.Schedules != nil {
+		page.Schedules = fm.Schedules
+	}
+	if fm.Imperatives != nil {
+		page.Imperatives = fm.Imperatives
+	}
+	if fm.ScheduleWarnings != nil {
+		page.ScheduleWarnings = fm.ScheduleWarnings
+	}
+
+	// Build blocks
+	if err := page.buildBlocks(codeBlocks, sourceFile); err != nil {
+		return nil, err
+	}
+
+	return page, nil
+}
+
 // buildBlocks converts parsed code blocks into typed block structures.
 func (p *Page) buildBlocks(codeBlocks []*CodeBlock, sourceFile string) error {
 	// Track the most recent server block ID for auto-linking
