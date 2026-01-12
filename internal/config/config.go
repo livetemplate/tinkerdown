@@ -25,6 +25,91 @@ type Config struct {
 	Actions     map[string]*Action      `yaml:"actions,omitempty"`
 	API         *APIConfig              `yaml:"api,omitempty"`
 	Webhooks    map[string]*Webhook     `yaml:"webhooks,omitempty"`
+	Outputs     map[string]*OutputConfig `yaml:"outputs,omitempty"`
+}
+
+// OutputConfig defines an output destination for notifications.
+// Outputs receive messages from Notify imperatives in markdown content.
+//
+// # Example Configuration
+//
+//	outputs:
+//	  team-slack:
+//	    type: slack
+//	    channel: "#team-updates"
+//
+//	  alerts-email:
+//	    type: email
+//	    to: "alerts@company.com"
+//	    subject: "Tinkerdown Alert"
+type OutputConfig struct {
+	// Type is the output type: "slack" or "email"
+	Type string `yaml:"type"`
+
+	// Channel is the Slack channel (for slack type), e.g., "#team-updates"
+	// Environment variable expansion is supported (e.g., "${SLACK_CHANNEL}")
+	Channel string `yaml:"channel,omitempty"`
+
+	// To is the email recipient address (for email type)
+	// Environment variable expansion is supported (e.g., "${ALERT_EMAIL}")
+	To string `yaml:"to,omitempty"`
+
+	// Subject is the email subject line (for email type)
+	// Defaults to "Notification from Tinkerdown"
+	Subject string `yaml:"subject,omitempty"`
+}
+
+// GetChannel returns the channel with environment variable expansion
+func (o *OutputConfig) GetChannel() string {
+	if o == nil || o.Channel == "" {
+		return ""
+	}
+	return os.ExpandEnv(o.Channel)
+}
+
+// GetTo returns the recipient address with environment variable expansion
+func (o *OutputConfig) GetTo() string {
+	if o == nil || o.To == "" {
+		return ""
+	}
+	return os.ExpandEnv(o.To)
+}
+
+// Validate checks that the output configuration is valid.
+func (o *OutputConfig) Validate(name string) error {
+	if o == nil {
+		return fmt.Errorf("output %q is nil", name)
+	}
+
+	switch o.Type {
+	case "slack":
+		if o.GetChannel() == "" {
+			return fmt.Errorf("output %q: channel is required for slack type", name)
+		}
+	case "email":
+		if o.GetTo() == "" {
+			return fmt.Errorf("output %q: to is required for email type", name)
+		}
+	default:
+		return fmt.Errorf("output %q: unsupported type %q (must be 'slack' or 'email')", name, o.Type)
+	}
+
+	return nil
+}
+
+// ValidateOutputs validates all output configurations in the config.
+func (c *Config) ValidateOutputs() error {
+	if c.Outputs == nil {
+		return nil
+	}
+
+	for name, output := range c.Outputs {
+		if err := output.Validate(name); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // SourceConfig defines a data source for lvt-source blocks
