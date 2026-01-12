@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/fs"
@@ -15,6 +16,7 @@ import (
 	"github.com/livetemplate/tinkerdown"
 	"github.com/livetemplate/tinkerdown/internal/assets"
 	"github.com/livetemplate/tinkerdown/internal/config"
+	"github.com/livetemplate/tinkerdown/internal/schedule"
 	"github.com/livetemplate/tinkerdown/internal/site"
 )
 
@@ -39,6 +41,7 @@ type Server struct {
 	apiHandler     *APIHandler                           // REST API handler for sources
 	apiRoutes      http.Handler                          // Wrapped API handler with middleware
 	webhookHandler *WebhookHandler                       // Webhook handler for external triggers
+	scheduleRunner *schedule.Runner                      // Schedule runner for timed jobs
 }
 
 // New creates a new server for the given root directory.
@@ -103,11 +106,48 @@ func NewWithConfig(rootDir string, cfg *config.Config) *Server {
 	}
 
 	// Initialize webhook handler if webhooks are configured
-	if cfg.Webhooks != nil && len(cfg.Webhooks) > 0 {
+	if len(cfg.Webhooks) > 0 {
 		srv.webhookHandler = NewWebhookHandler(cfg, rootDir, srv.executeWebhookAction)
 	}
 
+	// Initialize schedule runner for timed jobs
+	srv.scheduleRunner = schedule.NewRunner(schedule.RunnerConfig{})
+	srv.scheduleRunner.SetActionHandler(srv.executeScheduledAction)
+	srv.scheduleRunner.SetNotificationHandler(srv.handleScheduledNotification)
+
 	return srv
+}
+
+// executeScheduledAction handles action execution triggered by schedules.
+func (s *Server) executeScheduledAction(pageID, actionName string, args []string) error {
+	if s.config == nil || s.config.Actions == nil {
+		return fmt.Errorf("no actions configured")
+	}
+
+	action, exists := s.config.Actions[actionName]
+	if !exists || action == nil {
+		return fmt.Errorf("action %q not found", actionName)
+	}
+
+	log.Printf("[Schedule] Executing action %q from page %s", actionName, pageID)
+
+	// Create an executor for the scheduled action
+	executor := newWebhookActionExecutor(s.config, s.rootDir)
+	params := make(map[string]interface{})
+	// Parse args into params if needed (args could be key=value pairs)
+	for _, arg := range args {
+		if idx := strings.Index(arg, "="); idx > 0 {
+			params[arg[:idx]] = arg[idx+1:]
+		}
+	}
+	return executor.execute(action, params)
+}
+
+// handleScheduledNotification handles notifications triggered by schedules.
+func (s *Server) handleScheduledNotification(pageID, message string) error {
+	log.Printf("[Schedule] Notification from page %s: %s", pageID, message)
+	// In headless mode, notifications are logged. In future, could send to webhook/API.
+	return nil
 }
 
 // Discover scans the directory for .md files and creates routes.
@@ -135,6 +175,9 @@ func (s *Server) Discover() error {
 
 		// Sort routes
 		sortRoutes(s.routes)
+
+		// Parse schedules from all discovered pages
+		s.parseSchedulesFromRoutes()
 		return nil
 	}
 
@@ -197,7 +240,65 @@ func (s *Server) Discover() error {
 	// Sort routes (index routes first)
 	sortRoutes(s.routes)
 
+	// Parse schedules from all discovered pages
+	s.parseSchedulesFromRoutes()
+
 	return nil
+}
+
+// parseSchedulesFromRoutes registers schedules from all discovered pages.
+// Pages already have their schedules parsed during page.go parsing phase.
+func (s *Server) parseSchedulesFromRoutes() {
+	if s.scheduleRunner == nil {
+		return
+	}
+
+	totalSchedules := 0
+	for _, route := range s.routes {
+		if route.Page != nil && len(route.Page.Imperatives) > 0 {
+			// Register each imperative with the schedule runner
+			for i, imp := range route.Page.Imperatives {
+				if imp.Token == nil {
+					continue // No schedule token, skip
+				}
+
+				jobID := fmt.Sprintf("%s:%d", route.Pattern, i)
+				job := &schedule.Job{
+					ID:      jobID,
+					PageID:  route.Pattern,
+					Line:    imp.Raw,
+					Token:   imp.Token,
+					Handler: s.createScheduleHandler(route.Pattern, imp),
+				}
+				s.scheduleRunner.AddJob(job)
+				totalSchedules++
+			}
+		}
+	}
+
+	if totalSchedules > 0 {
+		log.Printf("[Schedule] Registered %d scheduled jobs from pages", totalSchedules)
+	}
+}
+
+// createScheduleHandler creates a handler function for a scheduled job.
+func (s *Server) createScheduleHandler(pageID string, imp *schedule.Imperative) schedule.JobHandler {
+	return func(job *schedule.Job) error {
+		switch imp.Type {
+		case schedule.ImperativeNotify:
+			return s.handleScheduledNotification(pageID, imp.Message)
+		case schedule.ImperativeRunAction:
+			return s.executeScheduledAction(pageID, imp.ActionName, imp.Args)
+		}
+		return nil
+	}
+}
+
+// AddJob adds a job to the schedule runner (exposed for external registration).
+func (s *Server) AddJob(job *schedule.Job) {
+	if s.scheduleRunner != nil {
+		s.scheduleRunner.AddJob(job)
+	}
 }
 
 // Routes returns the discovered routes.
@@ -209,9 +310,9 @@ func (s *Server) Routes() []*Route {
 
 // ServeHTTP implements http.Handler.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// Serve WebSocket endpoint
-	if r.URL.Path == "/ws" {
-		s.serveWebSocket(w, r)
+	// Health endpoint (always available, especially important in headless mode)
+	if r.URL.Path == "/health" {
+		s.serveHealth(w, r)
 		return
 	}
 
@@ -224,6 +325,20 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Serve webhook endpoints
 	if strings.HasPrefix(r.URL.Path, "/webhook/") && s.webhookHandler != nil {
 		s.webhookHandler.ServeHTTP(w, r)
+		return
+	}
+
+	// In headless mode, only API, webhooks, and health are available
+	if s.config.Features.Headless {
+		http.Error(w, "Not found (headless mode - only /health, /api/*, and /webhook/* are available)", http.StatusNotFound)
+		return
+	}
+
+	// --- Web UI routes (not available in headless mode) ---
+
+	// Serve WebSocket endpoint
+	if r.URL.Path == "/ws" {
+		s.serveWebSocket(w, r)
 		return
 	}
 
@@ -274,6 +389,31 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	} else {
 		http.Error(w, "No pages available", http.StatusNotFound)
 	}
+}
+
+// serveHealth handles the /health endpoint.
+func (s *Server) serveHealth(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+
+	// Include basic health info
+	response := map[string]interface{}{
+		"status":   "healthy",
+		"headless": s.config.Features.Headless,
+	}
+
+	// Add schedule count if available
+	if s.scheduleRunner != nil {
+		jobs := s.scheduleRunner.GetAllJobs()
+		response["schedules"] = len(jobs)
+	}
+
+	// Add webhook count
+	if s.config.Webhooks != nil {
+		response["webhooks"] = len(s.config.Webhooks)
+	}
+
+	json.NewEncoder(w).Encode(response)
 }
 
 // serveWebSocket handles WebSocket connections for interactive blocks.
@@ -2261,6 +2401,31 @@ func (s *Server) StopWatch() error {
 		return s.watcher.Stop()
 	}
 	return nil
+}
+
+// StartSchedules starts the schedule runner for timed job execution.
+// This should be called after Discover() to ensure all page schedules are registered.
+func (s *Server) StartSchedules(ctx context.Context) error {
+	if s.scheduleRunner != nil {
+		return s.scheduleRunner.Start(ctx)
+	}
+	return nil
+}
+
+// StopSchedules stops the schedule runner.
+func (s *Server) StopSchedules() error {
+	if s.scheduleRunner != nil {
+		return s.scheduleRunner.Stop()
+	}
+	return nil
+}
+
+// GetScheduledJobCount returns the number of scheduled jobs.
+func (s *Server) GetScheduledJobCount() int {
+	if s.scheduleRunner == nil {
+		return 0
+	}
+	return len(s.scheduleRunner.GetAllJobs())
 }
 
 // renderSidebar renders the navigation sidebar for site mode

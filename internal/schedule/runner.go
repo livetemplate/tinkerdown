@@ -363,6 +363,12 @@ func (r *Runner) GetJobsForPage(pageID string) []*Job {
 	return r.cron.GetJobsByPage(pageID)
 }
 
+// AddJob adds a pre-configured job to the scheduler.
+// This is useful when jobs are created externally (e.g., from parsed Page imperatives).
+func (r *Runner) AddJob(job *Job) {
+	r.cron.AddJob(job)
+}
+
 // GetWarnings returns any parsing warnings.
 func (r *Runner) GetWarnings() []ParseWarning {
 	return r.parser.Warnings
