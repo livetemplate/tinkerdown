@@ -186,7 +186,7 @@ func TestRunnerHandlers(t *testing.T) {
 		return nil
 	})
 
-	r.SetActionHandler(func(pageID, actionName string, args []string) error {
+	r.SetActionHandler(func(pageID, actionName string, args []string, message string) error {
 		mu.Lock()
 		actions = append(actions, actionName)
 		mu.Unlock()

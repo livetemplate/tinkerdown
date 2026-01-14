@@ -22,20 +22,22 @@ const (
 
 // Imperative represents a parsed imperative line.
 type Imperative struct {
-	Type       ImperativeType
-	Token      *Token   // The schedule token
-	Message    string   // For Notify: the notification message
-	ActionName string   // For RunAction: the action name
-	Args       []string // For RunAction: optional arguments
-	Line       int      // Source line number
-	Raw        string   // Original line text
+	Type         ImperativeType
+	Token        *Token   // The primary schedule token (e.g., @daily:9am)
+	FilterTokens []*Token // Filter tokens (e.g., @weekdays, @weekends)
+	Message      string   // For Notify: inline message, or blockquote content
+	ActionName   string   // For RunAction: the action name
+	Args         []string // For RunAction: optional arguments
+	Line         int      // Source line number
+	Raw          string   // Original line text
 }
 
 // NotificationHandler is called when a notification should be sent.
 type NotificationHandler func(pageID, message string) error
 
 // ActionHandler is called when an action should be executed.
-type ActionHandler func(pageID, actionName string, args []string) error
+// The message parameter contains any blockquote content associated with the imperative.
+type ActionHandler func(pageID, actionName string, args []string, message string) error
 
 // Runner manages scheduled job execution.
 type Runner struct {
@@ -302,7 +304,7 @@ func (r *Runner) createJobHandler(pageID string, imp *Imperative) JobHandler {
 			}
 		case ImperativeRunAction:
 			if actionHandler != nil {
-				return actionHandler(pageID, imp.ActionName, imp.Args)
+				return actionHandler(pageID, imp.ActionName, imp.Args, imp.Message)
 			}
 		}
 		return nil
