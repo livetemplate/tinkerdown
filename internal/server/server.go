@@ -134,10 +134,12 @@ func (s *Server) executeScheduledAction(pageID, actionName string, args []string
 	// Create an executor for the scheduled action
 	executor := newWebhookActionExecutor(s.config, s.rootDir)
 	params := make(map[string]interface{})
-	// Parse args into params if needed (args could be key=value pairs)
+	// Parse args into params (key=value pairs)
 	for _, arg := range args {
 		if idx := strings.Index(arg, "="); idx > 0 {
 			params[arg[:idx]] = arg[idx+1:]
+		} else {
+			log.Printf("[Schedule] Warning: skipping invalid arg format %q (expected key=value)", arg)
 		}
 	}
 	return executor.execute(action, params)

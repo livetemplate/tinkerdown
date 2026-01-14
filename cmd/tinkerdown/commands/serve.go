@@ -160,12 +160,14 @@ func ServeCommand(args []string) error {
 	// Start schedule runner (always, for both headless and normal mode)
 	// NOTE: Discover() must be called before StartSchedules() to register page schedules
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	if err := srv.StartSchedules(ctx); err != nil {
-		cancel() // Cancel context before returning to clean up
+		cancel() // Cancel context before returning to clean up partial initialization
 		return fmt.Errorf("failed to start schedule runner: %w", err)
 	}
+	// NOTE: defer cancel() is placed after successful StartSchedules to avoid race with signal handler
+	// The signal handler also calls cancel(), but double-cancel is safe with context.CancelFunc
+	defer cancel()
 	// NOTE: StopSchedules() is called in the signal handler to ensure proper shutdown sequencing
 
 	// Start server
@@ -200,10 +202,16 @@ func ServeCommand(args []string) error {
 	}
 	fmt.Printf("Press Ctrl+C to stop\n\n")
 
+	// Set up HTTP handler - compression is skipped in headless mode as it primarily serves JSON
+	var handler http.Handler = srv
+	if !cfg.Features.Headless {
+		handler = server.WithCompression(srv)
+	}
+
 	// Set up graceful shutdown
 	httpServer := &http.Server{
 		Addr:    addr,
-		Handler: server.WithCompression(srv),
+		Handler: handler,
 	}
 
 	// Handle shutdown signals
