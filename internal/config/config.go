@@ -444,7 +444,8 @@ type BlocksConfig struct {
 // FeaturesConfig holds feature flags
 type FeaturesConfig struct {
 	HotReload bool `yaml:"hot_reload"`
-	Sidebar   bool `yaml:"sidebar"` // Show navigation sidebar (default: false)
+	Sidebar   bool `yaml:"sidebar"`  // Show navigation sidebar (default: false)
+	Headless  bool `yaml:"headless"` // Run without web UI, only API/webhooks/schedules
 }
 
 // APIConfig holds REST API configuration

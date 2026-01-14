@@ -1,13 +1,17 @@
 package commands
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/livetemplate/tinkerdown/internal/config"
 	"github.com/livetemplate/tinkerdown/internal/server"
@@ -23,6 +27,7 @@ func ServeCommand(args []string) error {
 	var watch *bool
 	var operator string
 	var allowExec bool
+	var headless bool
 
 	// Parse flags
 	for i := 0; i < len(args); i++ {
@@ -52,6 +57,8 @@ func ServeCommand(args []string) error {
 			}
 		} else if arg == "--allow-exec" {
 			allowExec = true
+		} else if arg == "--headless" {
+			headless = true
 		} else if !strings.HasPrefix(arg, "-") {
 			// Positional argument (directory)
 			dir = arg
@@ -105,37 +112,63 @@ func ServeCommand(args []string) error {
 	if watch != nil {
 		cfg.Features.HotReload = *watch
 	}
+	if headless {
+		cfg.Features.Headless = true
+	}
 
-	fmt.Printf("📚 Livemdtools Development Server\n\n")
-	fmt.Printf("Serving: %s\n", absDir)
-	if cfg.IsSiteMode() {
-		fmt.Printf("Mode: 📖 Multi-page documentation site\n")
+	if cfg.Features.Headless {
+		fmt.Printf("📚 Tinkerdown Headless Server\n\n")
+		fmt.Printf("Directory: %s\n", absDir)
+		fmt.Printf("Mode: 🤖 Headless (API, webhooks, schedules only)\n")
 	} else {
-		fmt.Printf("Mode: 📝 Single tutorial\n")
+		fmt.Printf("📚 Livemdtools Development Server\n\n")
+		fmt.Printf("Serving: %s\n", absDir)
+		if cfg.IsSiteMode() {
+			fmt.Printf("Mode: 📖 Multi-page documentation site\n")
+		} else {
+			fmt.Printf("Mode: 📝 Single tutorial\n")
+		}
 	}
 
 	// Create server
 	srv := server.NewWithConfig(absDir, cfg)
 
-	// Discover pages
+	// Discover pages (needed for schedules even in headless mode)
 	if err := srv.Discover(); err != nil {
 		return fmt.Errorf("failed to discover pages: %w", err)
 	}
 
-	// Print discovered pages
-	fmt.Printf("\nPages discovered:\n")
-	for _, route := range srv.Routes() {
-		fmt.Printf("  %-30s %s\n", route.Pattern, route.FilePath)
+	// Print discovered pages (only in non-headless mode)
+	if !cfg.Features.Headless {
+		fmt.Printf("\nPages discovered:\n")
+		for _, route := range srv.Routes() {
+			fmt.Printf("  %-30s %s\n", route.Pattern, route.FilePath)
+		}
 	}
 
-	// Enable watch mode if requested
-	if cfg.Features.HotReload {
+	// Enable watch mode if requested (and not in headless mode)
+	if cfg.Features.HotReload && !cfg.Features.Headless {
 		if err := srv.EnableWatch(true); err != nil {
 			return fmt.Errorf("failed to enable watch mode: %w", err)
 		}
 		defer srv.StopWatch()
 		fmt.Printf("\n👀 Watch mode enabled - files will auto-reload on changes\n")
+	} else if cfg.Features.HotReload && cfg.Features.Headless {
+		fmt.Printf("⚠️  Watch mode disabled (not supported in headless mode)\n")
 	}
+
+	// Start schedule runner (always, for both headless and normal mode)
+	// NOTE: Discover() must be called before StartSchedules() to register page schedules
+	ctx, cancel := context.WithCancel(context.Background())
+
+	if err := srv.StartSchedules(ctx); err != nil {
+		cancel() // Cancel context before returning to clean up partial initialization
+		return fmt.Errorf("failed to start schedule runner: %w", err)
+	}
+	// NOTE: defer cancel() is placed after successful StartSchedules to avoid race with signal handler
+	// The signal handler also calls cancel(), but double-cancel is safe with context.CancelFunc
+	defer cancel()
+	// NOTE: StopSchedules() is called in the signal handler to ensure proper shutdown sequencing
 
 	// Start server
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
@@ -146,22 +179,68 @@ func ServeCommand(args []string) error {
 	if config.IsExecAllowed() {
 		fmt.Printf("⚠️  Exec sources enabled (--allow-exec)\n")
 	}
+	if cfg.Features.Headless {
+		fmt.Printf("🏥 Health endpoint at /health\n")
+	}
 	if cfg.IsAPIEnabled() {
 		fmt.Printf("🔌 REST API enabled at /api/sources/{name}\n")
 		if cfg.API.IsAuthEnabled() {
 			fmt.Printf("🔐 API authentication enabled (header: %s)\n", cfg.API.Auth.GetHeaderName())
 		}
 	}
-	if cfg.Features.HotReload {
+	if len(cfg.Webhooks) > 0 {
+		fmt.Printf("🪝 Webhooks enabled at /webhook/{name}\n")
+	}
+	if scheduleCount := srv.GetScheduledJobCount(); scheduleCount > 0 {
+		fmt.Printf("⏰ %d scheduled job(s) running\n", scheduleCount)
+	}
+	if cfg.Features.HotReload && !cfg.Features.Headless {
 		fmt.Printf("📝 Edit .md files and see changes instantly\n")
 	}
-	fmt.Printf("⚡ Gzip compression enabled\n")
+	if !cfg.Features.Headless {
+		fmt.Printf("⚡ Gzip compression enabled\n")
+	}
 	fmt.Printf("Press Ctrl+C to stop\n\n")
 
-	// Wrap server with compression middleware
-	handler := server.WithCompression(srv)
+	// Set up HTTP handler - compression is skipped in headless mode as it primarily serves JSON
+	var handler http.Handler = srv
+	if !cfg.Features.Headless {
+		handler = server.WithCompression(srv)
+	}
 
-	if err := http.ListenAndServe(addr, handler); err != nil {
+	// Set up graceful shutdown
+	httpServer := &http.Server{
+		Addr:    addr,
+		Handler: handler,
+	}
+
+	// Handle shutdown signals
+	go func() {
+		sigChan := make(chan os.Signal, 1)
+		signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+		<-sigChan
+
+		fmt.Printf("\n🛑 Shutting down gracefully...\n")
+
+		// Create a timeout context for shutdown (10 seconds)
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer shutdownCancel()
+
+		// Stop HTTP server first with timeout
+		if err := httpServer.Shutdown(shutdownCtx); err != nil {
+			fmt.Printf("Warning: HTTP server shutdown error: %v\n", err)
+		}
+
+		// Cancel schedule runner context
+		cancel()
+
+		// Stop schedule runner and log any errors
+		if err := srv.StopSchedules(); err != nil {
+			fmt.Printf("Warning: Failed to stop schedules: %v\n", err)
+		}
+	}()
+
+	if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		return fmt.Errorf("server error: %w", err)
 	}
 
