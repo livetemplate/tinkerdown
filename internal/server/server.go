@@ -413,7 +413,9 @@ func (s *Server) serveHealth(w http.ResponseWriter, r *http.Request) {
 		response["webhooks"] = len(s.config.Webhooks)
 	}
 
-	json.NewEncoder(w).Encode(response)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		log.Printf("[Health] Error encoding health response: %v", err)
+	}
 }
 
 // serveWebSocket handles WebSocket connections for interactive blocks.

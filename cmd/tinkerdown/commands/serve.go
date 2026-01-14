@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/livetemplate/tinkerdown/internal/config"
 	"github.com/livetemplate/tinkerdown/internal/server"
@@ -152,16 +153,20 @@ func ServeCommand(args []string) error {
 		}
 		defer srv.StopWatch()
 		fmt.Printf("\n👀 Watch mode enabled - files will auto-reload on changes\n")
+	} else if cfg.Features.HotReload && cfg.Features.Headless {
+		fmt.Printf("⚠️  Watch mode disabled (not supported in headless mode)\n")
 	}
 
 	// Start schedule runner (always, for both headless and normal mode)
+	// NOTE: Discover() must be called before StartSchedules() to register page schedules
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	if err := srv.StartSchedules(ctx); err != nil {
+		cancel() // Cancel context before returning to clean up
 		return fmt.Errorf("failed to start schedule runner: %w", err)
 	}
-	defer srv.StopSchedules()
+	// NOTE: StopSchedules() is called in the signal handler to ensure proper shutdown sequencing
 
 	// Start server
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
@@ -208,8 +213,23 @@ func ServeCommand(args []string) error {
 		<-sigChan
 
 		fmt.Printf("\n🛑 Shutting down gracefully...\n")
-		cancel() // Stop schedule runner
-		httpServer.Shutdown(context.Background())
+
+		// Create a timeout context for shutdown (10 seconds)
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer shutdownCancel()
+
+		// Stop HTTP server first with timeout
+		if err := httpServer.Shutdown(shutdownCtx); err != nil {
+			fmt.Printf("Warning: HTTP server shutdown error: %v\n", err)
+		}
+
+		// Cancel schedule runner context
+		cancel()
+
+		// Stop schedule runner and log any errors
+		if err := srv.StopSchedules(); err != nil {
+			fmt.Printf("Warning: Failed to stop schedules: %v\n", err)
+		}
 	}()
 
 	if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
