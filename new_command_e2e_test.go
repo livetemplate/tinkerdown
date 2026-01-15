@@ -3,6 +3,7 @@
 package tinkerdown_test
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -21,8 +22,12 @@ func getProjectRoot() string {
 func buildTinkerdown(t *testing.T, outputDir string) string {
 	t.Helper()
 	binPath := filepath.Join(outputDir, "tinkerdown")
-	buildCmd := exec.Command("go", "build", "-o", binPath, "./cmd/tinkerdown")
-	buildCmd.Dir = getProjectRoot()
+	projectRoot := getProjectRoot()
+
+	// Build with ldflags to embed the source path (needed for build command tests)
+	ldflags := fmt.Sprintf("-X 'github.com/livetemplate/tinkerdown/cmd/tinkerdown/commands.tinkerdownSourcePath=%s'", projectRoot)
+	buildCmd := exec.Command("go", "build", "-ldflags", ldflags, "-o", binPath, "./cmd/tinkerdown")
+	buildCmd.Dir = projectRoot
 	buildCmd.Env = append(os.Environ(), "GOWORK=off")
 	output, err := buildCmd.CombinedOutput()
 	if err != nil {

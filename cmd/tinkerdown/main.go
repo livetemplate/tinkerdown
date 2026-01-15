@@ -57,6 +57,8 @@ func main() {
 		err = commands.BlocksCommand(args)
 	case "cli":
 		err = commands.CLICommand(args)
+	case "build":
+		err = commands.BuildCommand(args)
 	case "version":
 		fmt.Printf("tinkerdown version %s\n", version)
 	case "help", "-h", "--help":
@@ -78,6 +80,7 @@ func printUsage() {
 	fmt.Println()
 	fmt.Println("Usage:")
 	fmt.Println("  tinkerdown serve [directory]     Start development server")
+	fmt.Println("  tinkerdown build <file|dir>      Build standalone executable")
 	fmt.Println("  tinkerdown validate [directory]  Validate markdown files")
 	fmt.Println("  tinkerdown fix [directory]       Auto-fix common issues")
 	fmt.Println("  tinkerdown blocks [directory]    Inspect code blocks")
@@ -90,6 +93,9 @@ func printUsage() {
 	fmt.Println("  tinkerdown serve                 # Serve current directory")
 	fmt.Println("  tinkerdown serve ./tutorials     # Serve tutorials directory")
 	fmt.Println("  tinkerdown serve --watch         # Serve with live reload")
+	fmt.Println("  tinkerdown build app.md -o myapp # Build single-file app")
+	fmt.Println("  tinkerdown build ./docs -o docs  # Build directory into binary")
+	fmt.Println("  tinkerdown build app.md --target=linux/amd64  # Cross-compile")
 	fmt.Println("  tinkerdown validate              # Validate current directory")
 	fmt.Println("  tinkerdown validate examples/    # Validate specific directory")
 	fmt.Println("  tinkerdown fix                   # Auto-fix issues in current directory")
