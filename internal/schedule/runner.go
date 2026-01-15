@@ -113,6 +113,7 @@ func (r *Runner) ParsePage(pageID, content string) ([]*Imperative, error) {
 			PageID:  pageID,
 			Line:    imp.Raw,
 			Token:   imp.Token,
+			Filters: imp.FilterTokens, // Pass filter tokens so they're applied to scheduling
 			Handler: r.createJobHandler(pageID, imp),
 		}
 		r.cron.AddJob(job)
