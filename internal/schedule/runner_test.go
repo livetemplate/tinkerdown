@@ -457,3 +457,284 @@ func TestOneTimeJobDisabled(t *testing.T) {
 		t.Error("one-time job should be disabled after execution")
 	}
 }
+
+func TestFilterTokenParsing(t *testing.T) {
+	p := NewParser(time.UTC)
+
+	tests := []struct {
+		input    string
+		wantType TokenType
+		isFilter bool
+	}{
+		{"@weekdays", TokenWeekdays, true},
+		{"@weekends", TokenWeekends, true},
+		{"@WEEKDAYS", TokenWeekdays, true},
+		{"@Weekends", TokenWeekends, true},
+		{"@daily:9am", TokenDaily, false},
+		{"@weekly:mon", TokenWeekly, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			token, err := p.ParseToken(tt.input)
+			if err != nil {
+				t.Fatalf("ParseToken(%q) error: %v", tt.input, err)
+			}
+			if token.Type != tt.wantType {
+				t.Errorf("Type = %v, want %v", token.Type, tt.wantType)
+			}
+			if token.IsFilterToken() != tt.isFilter {
+				t.Errorf("IsFilterToken() = %v, want %v", token.IsFilterToken(), tt.isFilter)
+			}
+		})
+	}
+}
+
+func TestPassesFilter(t *testing.T) {
+	p := NewParser(time.UTC)
+
+	// 2024-01-15 is a Monday
+	monday := time.Date(2024, time.January, 15, 9, 0, 0, 0, time.UTC)
+	// 2024-01-20 is a Saturday
+	saturday := time.Date(2024, time.January, 20, 9, 0, 0, 0, time.UTC)
+	// 2024-01-21 is a Sunday
+	sunday := time.Date(2024, time.January, 21, 9, 0, 0, 0, time.UTC)
+
+	weekdaysToken, _ := p.ParseToken("@weekdays")
+	weekendsToken, _ := p.ParseToken("@weekends")
+
+	tests := []struct {
+		name   string
+		token  *Token
+		time   time.Time
+		passes bool
+	}{
+		{"weekdays passes Monday", weekdaysToken, monday, true},
+		{"weekdays fails Saturday", weekdaysToken, saturday, false},
+		{"weekdays fails Sunday", weekdaysToken, sunday, false},
+		{"weekends passes Saturday", weekendsToken, saturday, true},
+		{"weekends passes Sunday", weekendsToken, sunday, true},
+		{"weekends fails Monday", weekendsToken, monday, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.token.PassesFilter(tt.time)
+			if got != tt.passes {
+				t.Errorf("PassesFilter(%v) = %v, want %v", tt.time.Weekday(), got, tt.passes)
+			}
+		})
+	}
+}
+
+func TestNextOccurrenceWithFilters(t *testing.T) {
+	p := NewParser(time.UTC)
+
+	// 2024-01-15 is a Monday at 8:59am - before the schedule time
+	mondayBefore := time.Date(2024, time.January, 15, 8, 59, 0, 0, time.UTC)
+
+	dailyToken, _ := p.ParseToken("@daily:9am")
+	weekdaysFilter, _ := p.ParseToken("@weekdays")
+	weekendsFilter, _ := p.ParseToken("@weekends")
+
+	// Test @daily:9am @weekdays from Monday before 9am
+	// Should return Monday Jan 15 at 9am (same day since it passes weekday filter)
+	next := NextOccurrenceWithFilters(dailyToken, []*Token{weekdaysFilter}, mondayBefore, time.UTC)
+	expectedWeekday := time.Date(2024, time.January, 15, 9, 0, 0, 0, time.UTC)
+	if !next.Equal(expectedWeekday) {
+		t.Errorf("NextOccurrenceWithFilters(@daily:9am @weekdays from Monday before 9am) = %v, want %v", next, expectedWeekday)
+	}
+
+	// Test @daily:9am @weekends from Monday before 9am
+	// Should skip weekdays and return Saturday Jan 20 at 9am
+	nextWeekend := NextOccurrenceWithFilters(dailyToken, []*Token{weekendsFilter}, mondayBefore, time.UTC)
+	expectedWeekend := time.Date(2024, time.January, 20, 9, 0, 0, 0, time.UTC)
+	if !nextWeekend.Equal(expectedWeekend) {
+		t.Errorf("NextOccurrenceWithFilters(@daily:9am @weekends from Monday) = %v, want %v", nextWeekend, expectedWeekend)
+	}
+
+	// Test with no filters - should behave same as NextOccurrence
+	nextNoFilter := NextOccurrenceWithFilters(dailyToken, nil, mondayBefore, time.UTC)
+	expectedNoFilter := time.Date(2024, time.January, 15, 9, 0, 0, 0, time.UTC)
+	if !nextNoFilter.Equal(expectedNoFilter) {
+		t.Errorf("NextOccurrenceWithFilters(@daily:9am no filters from Monday before 9am) = %v, want %v", nextNoFilter, expectedNoFilter)
+	}
+}
+
+func TestParseNotifyWithFilterTokens(t *testing.T) {
+	r := NewRunner(RunnerConfig{Location: time.UTC})
+
+	tests := []struct {
+		line           string
+		wantFilters    int
+		wantMsg        string
+		hasSchedule    bool
+	}{
+		{"Notify @daily:9am @weekdays Standup", 1, "Standup", true},
+		{"Notify @daily:9am @weekdays @weekends Test", 2, "Test", true},
+		{"Notify @weekdays Only filter", 1, "Only filter", false}, // @weekdays is parsed as filter, no schedule
+		{"Notify @daily:9am No filters", 0, "No filters", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.line, func(t *testing.T) {
+			imp := r.parseNotifyLine(tt.line, 1)
+			if imp == nil {
+				t.Fatal("parseNotifyLine returned nil")
+			}
+			if len(imp.FilterTokens) != tt.wantFilters {
+				t.Errorf("FilterTokens count = %d, want %d", len(imp.FilterTokens), tt.wantFilters)
+			}
+			if imp.Message != tt.wantMsg {
+				t.Errorf("Message = %q, want %q", imp.Message, tt.wantMsg)
+			}
+			if tt.hasSchedule && imp.Token == nil {
+				t.Error("expected schedule token but got nil")
+			}
+			if !tt.hasSchedule && imp.Token != nil {
+				t.Errorf("expected no schedule token but got %v", imp.Token.Type)
+			}
+		})
+	}
+}
+
+func TestParseBlockquoteMessage(t *testing.T) {
+	r := NewRunner(RunnerConfig{Location: time.UTC})
+
+	tests := []struct {
+		name         string
+		lines        []string
+		startIdx     int
+		wantMessage  string
+		wantConsumed int
+	}{
+		{
+			name:         "single line blockquote",
+			lines:        []string{"> Hello world"},
+			startIdx:     0,
+			wantMessage:  "Hello world",
+			wantConsumed: 1,
+		},
+		{
+			name:         "multi-line blockquote",
+			lines:        []string{"> Line 1", "> Line 2", "> Line 3"},
+			startIdx:     0,
+			wantMessage:  "Line 1\nLine 2\nLine 3",
+			wantConsumed: 3,
+		},
+		{
+			name:         "blockquote with empty line after",
+			lines:        []string{"> Hello", "", "Regular line"},
+			startIdx:     0,
+			wantMessage:  "Hello",
+			wantConsumed: 1,
+		},
+		{
+			name:         "blockquote with leading empty lines",
+			lines:        []string{"", "", "> Hello"},
+			startIdx:     0,
+			wantMessage:  "Hello",
+			wantConsumed: 3,
+		},
+		{
+			name:         "no blockquote",
+			lines:        []string{"Regular line", "Another line"},
+			startIdx:     0,
+			wantMessage:  "",
+			wantConsumed: 0,
+		},
+		{
+			name:         "blockquote terminated by non-blockquote",
+			lines:        []string{"> Part 1", "> Part 2", "Not a blockquote"},
+			startIdx:     0,
+			wantMessage:  "Part 1\nPart 2",
+			wantConsumed: 2,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			msg, consumed := r.parseBlockquoteMessage(tt.lines, tt.startIdx)
+			if msg != tt.wantMessage {
+				t.Errorf("message = %q, want %q", msg, tt.wantMessage)
+			}
+			if consumed != tt.wantConsumed {
+				t.Errorf("consumed = %d, want %d", consumed, tt.wantConsumed)
+			}
+		})
+	}
+}
+
+func TestParsePageWithBlockquotes(t *testing.T) {
+	r := NewRunner(RunnerConfig{Location: time.UTC})
+
+	content := `
+Notify @daily:9am
+> This is a blockquote message
+> spanning multiple lines
+
+Run action:test @weekly:mon
+> Action message here
+
+Regular content
+`
+
+	imperatives, err := r.ParsePage("test-page", content)
+	if err != nil {
+		t.Fatalf("ParsePage error: %v", err)
+	}
+
+	if len(imperatives) != 2 {
+		t.Errorf("got %d imperatives, want 2", len(imperatives))
+		return
+	}
+
+	// Check first imperative (Notify) has blockquote message
+	if imperatives[0].Type != ImperativeNotify {
+		t.Error("first imperative should be Notify")
+	}
+	wantMsg1 := "This is a blockquote message\nspanning multiple lines"
+	if imperatives[0].Message != wantMsg1 {
+		t.Errorf("first message = %q, want %q", imperatives[0].Message, wantMsg1)
+	}
+
+	// Check second imperative (Run) has blockquote message
+	if imperatives[1].Type != ImperativeRunAction {
+		t.Error("second imperative should be RunAction")
+	}
+	wantMsg2 := "Action message here"
+	if imperatives[1].Message != wantMsg2 {
+		t.Errorf("second message = %q, want %q", imperatives[1].Message, wantMsg2)
+	}
+}
+
+func TestBlockquoteNotReParsed(t *testing.T) {
+	r := NewRunner(RunnerConfig{Location: time.UTC})
+
+	// This test ensures blockquote lines are consumed and not re-parsed
+	// as separate imperatives if they happen to look like imperatives
+	content := `
+Notify @daily:9am First notification
+> Notify @weekly:mon This should NOT be parsed as separate imperative
+
+Notify @daily:10am Second notification
+`
+
+	imperatives, err := r.ParsePage("test-page", content)
+	if err != nil {
+		t.Fatalf("ParsePage error: %v", err)
+	}
+
+	// Should only have 2 imperatives, not 3
+	if len(imperatives) != 2 {
+		t.Errorf("got %d imperatives, want 2 (blockquote content should not be re-parsed)", len(imperatives))
+	}
+
+	// First imperative should have the blockquote as its message
+	if len(imperatives) > 0 {
+		wantMsg := "Notify @weekly:mon This should NOT be parsed as separate imperative"
+		if imperatives[0].Message != wantMsg {
+			t.Errorf("first message = %q, want %q", imperatives[0].Message, wantMsg)
+		}
+	}
+}

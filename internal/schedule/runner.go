@@ -147,10 +147,12 @@ func (r *Runner) parseImperatives(content string) ([]*Imperative, error) {
 			imp := r.parseNotifyLine(trimmed, lineNum+1)
 			if imp != nil {
 				// Check for blockquote message on following lines
-				blockquote := r.parseBlockquoteMessage(lines, lineNum+1)
+				// Note: blockquote content overrides any inline message
+				blockquote, consumed := r.parseBlockquoteMessage(lines, lineNum+1)
 				if blockquote != "" {
 					imp.Message = blockquote
 				}
+				lineNum += consumed // Skip consumed blockquote lines
 				imperatives = append(imperatives, imp)
 			}
 		}
@@ -160,10 +162,12 @@ func (r *Runner) parseImperatives(content string) ([]*Imperative, error) {
 			imp := r.parseRunActionLine(trimmed, lineNum+1)
 			if imp != nil {
 				// Check for blockquote message on following lines
-				blockquote := r.parseBlockquoteMessage(lines, lineNum+1)
+				// Note: blockquote content overrides any inline message
+				blockquote, consumed := r.parseBlockquoteMessage(lines, lineNum+1)
 				if blockquote != "" {
 					imp.Message = blockquote
 				}
+				lineNum += consumed // Skip consumed blockquote lines
 				imperatives = append(imperatives, imp)
 			}
 		}
@@ -174,8 +178,10 @@ func (r *Runner) parseImperatives(content string) ([]*Imperative, error) {
 
 // parseBlockquoteMessage extracts blockquote content following an imperative.
 // It collects lines starting with ">" and joins them into a single message.
-func (r *Runner) parseBlockquoteMessage(lines []string, startIdx int) string {
+// Returns the message content and the number of lines consumed (including empty lines).
+func (r *Runner) parseBlockquoteMessage(lines []string, startIdx int) (string, int) {
 	var messageLines []string
+	consumed := 0
 
 	for i := startIdx; i < len(lines); i++ {
 		trimmed := strings.TrimSpace(lines[i])
@@ -183,7 +189,8 @@ func (r *Runner) parseBlockquoteMessage(lines []string, startIdx int) string {
 		// Empty lines before blockquote are allowed
 		if trimmed == "" {
 			if len(messageLines) == 0 {
-				continue // Skip leading empty lines
+				consumed++ // Count empty lines before blockquote
+				continue   // Skip leading empty lines
 			}
 			// If we've started collecting, an empty line ends the blockquote
 			break
@@ -195,13 +202,14 @@ func (r *Runner) parseBlockquoteMessage(lines []string, startIdx int) string {
 			content := strings.TrimPrefix(trimmed, ">")
 			content = strings.TrimPrefix(content, " ")
 			messageLines = append(messageLines, content)
+			consumed++
 		} else {
 			// Non-blockquote line ends collection
 			break
 		}
 	}
 
-	return strings.Join(messageLines, "\n")
+	return strings.Join(messageLines, "\n"), consumed
 }
 
 // parseNotifyLine parses a "Notify @schedule [@filter...] message" line.
