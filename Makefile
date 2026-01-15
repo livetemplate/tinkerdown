@@ -31,7 +31,7 @@ build-client: ## Build the TypeScript client
 .PHONY: build
 build: build-client ## Build the tinkerdown binary
 	@echo "Building $(BINARY_NAME)..."
-	$(GO) build $(LDFLAGS) -o $(BINARY_NAME) $(CMD_PATH)
+	GOWORK=off $(GO) build $(LDFLAGS) -o $(BINARY_NAME) $(CMD_PATH)
 	@echo "Build complete: ./$(BINARY_NAME)"
 
 .PHONY: install
@@ -59,30 +59,30 @@ clean: ## Remove build artifacts
 .PHONY: test
 test: ## Run all tests
 	@echo "Running tests..."
-	$(GO) test -v ./...
+	GOWORK=off $(GO) test -v ./...
 
 .PHONY: test-coverage
 test-coverage: ## Run tests with coverage report
 	@echo "Running tests with coverage..."
-	$(GO) test -v -coverprofile=coverage.out ./...
-	$(GO) tool cover -html=coverage.out -o coverage.html
+	GOWORK=off $(GO) test -v -coverprofile=coverage.out ./...
+	GOWORK=off $(GO) tool cover -html=coverage.out -o coverage.html
 	@echo "Coverage report generated: coverage.html"
 
 .PHONY: fmt
 fmt: ## Format Go code
 	@echo "Formatting code..."
-	$(GO) fmt ./...
+	GOWORK=off $(GO) fmt ./...
 
 .PHONY: vet
 vet: ## Run go vet
 	@echo "Running go vet..."
-	$(GO) vet ./...
+	GOWORK=off $(GO) vet ./...
 
 .PHONY: lint
 lint: vet ## Run linters
 	@echo "Running linters..."
 	@if command -v golangci-lint >/dev/null 2>&1; then \
-		golangci-lint run; \
+		GOWORK=off golangci-lint run; \
 	else \
 		echo "golangci-lint not installed, skipping..."; \
 		echo "Install with: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest"; \
@@ -91,8 +91,8 @@ lint: vet ## Run linters
 .PHONY: deps
 deps: ## Download dependencies
 	@echo "Downloading dependencies..."
-	$(GO) mod download
-	$(GO) mod tidy
+	GOWORK=off $(GO) mod download
+	GOWORK=off $(GO) mod tidy
 
 .PHONY: dev
 dev: build ## Build and run in development mode
