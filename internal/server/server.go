@@ -119,7 +119,7 @@ func NewWithConfig(rootDir string, cfg *config.Config) *Server {
 }
 
 // executeScheduledAction handles action execution triggered by schedules.
-func (s *Server) executeScheduledAction(pageID, actionName string, args []string) error {
+func (s *Server) executeScheduledAction(pageID, actionName string, args []string, message string) error {
 	if s.config == nil || s.config.Actions == nil {
 		return fmt.Errorf("no actions configured")
 	}
@@ -141,6 +141,10 @@ func (s *Server) executeScheduledAction(pageID, actionName string, args []string
 		} else {
 			log.Printf("[Schedule] Warning: skipping invalid arg format %q (expected key=value)", arg)
 		}
+	}
+	// Add message to params for use in action templates (e.g., {{.Message}})
+	if message != "" {
+		params["Message"] = message
 	}
 	return executor.execute(action, params)
 }
@@ -290,7 +294,7 @@ func (s *Server) createScheduleHandler(pageID string, imp *schedule.Imperative) 
 		case schedule.ImperativeNotify:
 			return s.handleScheduledNotification(pageID, imp.Message)
 		case schedule.ImperativeRunAction:
-			return s.executeScheduledAction(pageID, imp.ActionName, imp.Args)
+			return s.executeScheduledAction(pageID, imp.ActionName, imp.Args, imp.Message)
 		}
 		return nil
 	}

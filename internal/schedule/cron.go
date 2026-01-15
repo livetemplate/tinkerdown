@@ -14,6 +14,7 @@ type Job struct {
 	PageID       string
 	Line         string // The imperative line (e.g., "Notify @daily:9am Check email")
 	Token        *Token
+	Filters      []*Token // Filter tokens (e.g., @weekdays, @weekends) that constrain when job runs
 	NextRun      time.Time
 	LastRun      *time.Time
 	Enabled      bool
@@ -80,7 +81,8 @@ func (c *Cron) AddJob(job *Job) {
 	defer c.mu.Unlock()
 
 	if job.Token != nil {
-		job.NextRun = job.Token.NextOccurrence(c.now(), c.location)
+		// Use NextOccurrenceWithFilters to respect filter tokens
+		job.NextRun = NextOccurrenceWithFilters(job.Token, job.Filters, c.now(), c.location)
 	}
 	job.Enabled = true
 	c.jobs[job.ID] = job

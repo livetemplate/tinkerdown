@@ -22,20 +22,22 @@ const (
 
 // Imperative represents a parsed imperative line.
 type Imperative struct {
-	Type       ImperativeType
-	Token      *Token   // The schedule token
-	Message    string   // For Notify: the notification message
-	ActionName string   // For RunAction: the action name
-	Args       []string // For RunAction: optional arguments
-	Line       int      // Source line number
-	Raw        string   // Original line text
+	Type         ImperativeType
+	Token        *Token   // The primary schedule token (e.g., @daily:9am)
+	FilterTokens []*Token // Filter tokens (e.g., @weekdays, @weekends)
+	Message      string   // For Notify: inline message, or blockquote content
+	ActionName   string   // For RunAction: the action name
+	Args         []string // For RunAction: optional arguments
+	Line         int      // Source line number
+	Raw          string   // Original line text
 }
 
 // NotificationHandler is called when a notification should be sent.
 type NotificationHandler func(pageID, message string) error
 
 // ActionHandler is called when an action should be executed.
-type ActionHandler func(pageID, actionName string, args []string) error
+// The message parameter contains any blockquote content associated with the imperative.
+type ActionHandler func(pageID, actionName string, args []string, message string) error
 
 // Runner manages scheduled job execution.
 type Runner struct {
@@ -111,6 +113,7 @@ func (r *Runner) ParsePage(pageID, content string) ([]*Imperative, error) {
 			PageID:  pageID,
 			Line:    imp.Raw,
 			Token:   imp.Token,
+			Filters: imp.FilterTokens, // Pass filter tokens so they're applied to scheduling
 			Handler: r.createJobHandler(pageID, imp),
 		}
 		r.cron.AddJob(job)
@@ -126,7 +129,8 @@ func (r *Runner) parseImperatives(content string) ([]*Imperative, error) {
 	lines := strings.Split(content, "\n")
 	inCodeBlock := false
 
-	for lineNum, line := range lines {
+	for lineNum := 0; lineNum < len(lines); lineNum++ {
+		line := lines[lineNum]
 		// Skip code blocks
 		if strings.HasPrefix(strings.TrimSpace(line), "```") {
 			inCodeBlock = !inCodeBlock
@@ -142,6 +146,13 @@ func (r *Runner) parseImperatives(content string) ([]*Imperative, error) {
 		if strings.HasPrefix(trimmed, "Notify ") {
 			imp := r.parseNotifyLine(trimmed, lineNum+1)
 			if imp != nil {
+				// Check for blockquote message on following lines
+				// Note: blockquote content overrides any inline message
+				blockquote, consumed := r.parseBlockquoteMessage(lines, lineNum+1)
+				if blockquote != "" {
+					imp.Message = blockquote
+				}
+				lineNum += consumed // Skip consumed blockquote lines
 				imperatives = append(imperatives, imp)
 			}
 		}
@@ -150,6 +161,13 @@ func (r *Runner) parseImperatives(content string) ([]*Imperative, error) {
 		if strings.HasPrefix(trimmed, "Run action:") {
 			imp := r.parseRunActionLine(trimmed, lineNum+1)
 			if imp != nil {
+				// Check for blockquote message on following lines
+				// Note: blockquote content overrides any inline message
+				blockquote, consumed := r.parseBlockquoteMessage(lines, lineNum+1)
+				if blockquote != "" {
+					imp.Message = blockquote
+				}
+				lineNum += consumed // Skip consumed blockquote lines
 				imperatives = append(imperatives, imp)
 			}
 		}
@@ -158,10 +176,47 @@ func (r *Runner) parseImperatives(content string) ([]*Imperative, error) {
 	return imperatives, nil
 }
 
-// parseNotifyLine parses a "Notify @schedule message" line.
+// parseBlockquoteMessage extracts blockquote content following an imperative.
+// It collects lines starting with ">" and joins them into a single message.
+// Returns the message content and the number of lines consumed (including empty lines).
+func (r *Runner) parseBlockquoteMessage(lines []string, startIdx int) (string, int) {
+	var messageLines []string
+	consumed := 0
+
+	for i := startIdx; i < len(lines); i++ {
+		trimmed := strings.TrimSpace(lines[i])
+
+		// Empty lines before blockquote are allowed
+		if trimmed == "" {
+			if len(messageLines) == 0 {
+				consumed++ // Count empty lines before blockquote
+				continue   // Skip leading empty lines
+			}
+			// If we've started collecting, an empty line ends the blockquote
+			break
+		}
+
+		// Check if this line is a blockquote
+		if strings.HasPrefix(trimmed, ">") {
+			// Extract content after ">" and trim leading space if present
+			content := strings.TrimPrefix(trimmed, ">")
+			content = strings.TrimPrefix(content, " ")
+			messageLines = append(messageLines, content)
+			consumed++
+		} else {
+			// Non-blockquote line ends collection
+			break
+		}
+	}
+
+	return strings.Join(messageLines, "\n"), consumed
+}
+
+// parseNotifyLine parses a "Notify @schedule [@filter...] message" line.
 func (r *Runner) parseNotifyLine(line string, lineNum int) *Imperative {
-	// Format: Notify @schedule Message here
+	// Format: Notify @schedule [@filter...] Message here
 	// Example: Notify @daily:9am Check your email
+	// Example: Notify @daily:9am @weekdays Check your email
 
 	rest := strings.TrimPrefix(line, "Notify ")
 	rest = strings.TrimSpace(rest)
@@ -170,63 +225,58 @@ func (r *Runner) parseNotifyLine(line string, lineNum int) *Imperative {
 		return nil
 	}
 
-	// Find the schedule token
-	var token *Token
-	var message string
+	// Parse all tokens and message
+	var scheduleToken *Token
+	var filterTokens []*Token
+	var messageParts []string
+	tokensDone := false
 
-	// Look for @ token at the start
-	if strings.HasPrefix(rest, "@") {
-		// Extract token (up to first space)
-		parts := strings.SplitN(rest, " ", 2)
-		tokenStr := parts[0]
-
-		var err error
-		token, err = r.parser.ParseToken(tokenStr)
-		if err != nil {
-			// Add warning but continue
-			r.parser.Warnings = append(r.parser.Warnings, ParseWarning{
-				Message: err.Error(),
-				Line:    lineNum,
-				Token:   tokenStr,
-			})
-		}
-
-		if len(parts) > 1 {
-			message = strings.TrimSpace(parts[1])
-
-			// Check for additional schedule tokens in the message
-			for _, word := range strings.Fields(message) {
-				if strings.HasPrefix(word, "@") {
-					// Check if it looks like a schedule token
-					if _, parseErr := r.parser.ParseToken(word); parseErr == nil {
-						r.parser.Warnings = append(r.parser.Warnings, ParseWarning{
-							Message: "multiple schedule tokens in imperative; only first will be used",
-							Line:    lineNum,
-							Token:   word,
-						})
-					}
-				}
+	for _, word := range strings.Fields(rest) {
+		if !tokensDone && strings.HasPrefix(word, "@") {
+			parsed, err := r.parser.ParseToken(word)
+			if err != nil {
+				// Add warning but treat as message
+				r.parser.Warnings = append(r.parser.Warnings, ParseWarning{
+					Message: err.Error(),
+					Line:    lineNum,
+					Token:   word,
+				})
+				tokensDone = true
+				messageParts = append(messageParts, word)
+			} else if parsed.IsFilterToken() {
+				filterTokens = append(filterTokens, parsed)
+			} else if scheduleToken == nil {
+				scheduleToken = parsed
+			} else {
+				// Multiple schedule tokens - warn
+				r.parser.Warnings = append(r.parser.Warnings, ParseWarning{
+					Message: "multiple schedule tokens; only first will be used",
+					Line:    lineNum,
+					Token:   word,
+				})
 			}
+		} else {
+			tokensDone = true
+			messageParts = append(messageParts, word)
 		}
-	} else {
-		// No schedule token, just a message
-		message = rest
 	}
 
 	return &Imperative{
-		Type:    ImperativeNotify,
-		Token:   token,
-		Message: message,
-		Line:    lineNum,
-		Raw:     line,
+		Type:         ImperativeNotify,
+		Token:        scheduleToken,
+		FilterTokens: filterTokens,
+		Message:      strings.Join(messageParts, " "),
+		Line:         lineNum,
+		Raw:          line,
 	}
 }
 
-// parseRunActionLine parses a "Run action:name @schedule" line.
+// parseRunActionLine parses a "Run action:name @schedule [@filter...] [args...]" line.
 func (r *Runner) parseRunActionLine(line string, lineNum int) *Imperative {
-	// Format: Run action:name @schedule [args...]
+	// Format: Run action:name @schedule [@filter...] [args...]
 	// Example: Run action:backup @daily:2am
 	// Example: Run action:sync @weekly:mon,fri:9am --force
+	// Example: Run action:notify @daily:9am @weekdays
 
 	rest := strings.TrimPrefix(line, "Run action:")
 	rest = strings.TrimSpace(rest)
@@ -242,29 +292,30 @@ func (r *Runner) parseRunActionLine(line string, lineNum int) *Imperative {
 	}
 
 	actionName := parts[0]
-	var token *Token
+	var scheduleToken *Token
+	var filterTokens []*Token
 	var args []string
-	tokenCount := 0
 
 	for i := 1; i < len(parts); i++ {
 		part := parts[i]
 		if strings.HasPrefix(part, "@") {
-			tokenCount++
-			if token == nil {
-				// This is the first schedule token - use it
-				var err error
-				token, err = r.parser.ParseToken(part)
-				if err != nil {
-					r.parser.Warnings = append(r.parser.Warnings, ParseWarning{
-						Message: err.Error(),
-						Line:    lineNum,
-						Token:   part,
-					})
-				}
+			parsed, err := r.parser.ParseToken(part)
+			if err != nil {
+				r.parser.Warnings = append(r.parser.Warnings, ParseWarning{
+					Message: err.Error(),
+					Line:    lineNum,
+					Token:   part,
+				})
+				// Treat as argument
+				args = append(args, part)
+			} else if parsed.IsFilterToken() {
+				filterTokens = append(filterTokens, parsed)
+			} else if scheduleToken == nil {
+				scheduleToken = parsed
 			} else {
 				// Multiple schedule tokens - warn and treat as argument
 				r.parser.Warnings = append(r.parser.Warnings, ParseWarning{
-					Message: "multiple schedule tokens in imperative; only first will be used",
+					Message: "multiple schedule tokens; only first will be used",
 					Line:    lineNum,
 					Token:   part,
 				})
@@ -275,13 +326,13 @@ func (r *Runner) parseRunActionLine(line string, lineNum int) *Imperative {
 			args = append(args, part)
 		}
 	}
-	_ = tokenCount // Used for warning above
 
 	return &Imperative{
-		Type:       ImperativeRunAction,
-		Token:      token,
-		ActionName: actionName,
-		Args:       args,
+		Type:         ImperativeRunAction,
+		Token:        scheduleToken,
+		FilterTokens: filterTokens,
+		ActionName:   actionName,
+		Args:         args,
 		Line:       lineNum,
 		Raw:        line,
 	}
@@ -302,7 +353,7 @@ func (r *Runner) createJobHandler(pageID string, imp *Imperative) JobHandler {
 			}
 		case ImperativeRunAction:
 			if actionHandler != nil {
-				return actionHandler(pageID, imp.ActionName, imp.Args)
+				return actionHandler(pageID, imp.ActionName, imp.Args, imp.Message)
 			}
 		}
 		return nil

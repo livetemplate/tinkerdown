@@ -42,6 +42,8 @@ const (
 	TokenWeekly                      // @weekly:mon,wed
 	TokenMonthly                     // @monthly:1st, @monthly:15
 	TokenYearly                      // @yearly:mar-15
+	TokenWeekdays                    // @weekdays - filter: Mon-Fri only
+	TokenWeekends                    // @weekends - filter: Sat-Sun only
 )
 
 // TimeSpec represents a time of day.
@@ -263,6 +265,16 @@ func (p *Parser) ParseToken(s string) (*Token, error) {
 	if month, day, ts, ok := p.parseYearly(s); ok {
 		token.Type = TokenYearly
 		token.Recurring = &RecurSpec{Month: month, Day: day, Time: ts}
+		return token, nil
+	}
+
+	// Filter tokens (composable modifiers)
+	switch strings.ToLower(s) {
+	case "weekdays":
+		token.Type = TokenWeekdays
+		return token, nil
+	case "weekends":
+		token.Type = TokenWeekends
 		return token, nil
 	}
 
@@ -808,6 +820,10 @@ func (t TokenType) String() string {
 		return "monthly"
 	case TokenYearly:
 		return "yearly"
+	case TokenWeekdays:
+		return "weekdays"
+	case TokenWeekends:
+		return "weekends"
 	default:
 		return "unknown"
 	}
@@ -819,4 +835,58 @@ func (ts *TimeSpec) String() string {
 		return ""
 	}
 	return fmt.Sprintf("%02d:%02d", ts.Hour, ts.Minute)
+}
+
+// IsFilterToken returns true if this token is a filter modifier (not a schedule).
+func (t *Token) IsFilterToken() bool {
+	return t.Type == TokenWeekdays || t.Type == TokenWeekends
+}
+
+// PassesFilter checks if a candidate time passes this filter token's constraints.
+// Returns true if the token is not a filter or if the candidate matches the filter.
+func (t *Token) PassesFilter(candidate time.Time) bool {
+	switch t.Type {
+	case TokenWeekdays:
+		wd := candidate.Weekday()
+		return wd >= time.Monday && wd <= time.Friday
+	case TokenWeekends:
+		wd := candidate.Weekday()
+		return wd == time.Saturday || wd == time.Sunday
+	default:
+		return true // Non-filter tokens always pass
+	}
+}
+
+// NextOccurrenceWithFilters finds the next occurrence that passes all filter constraints.
+// It iterates through schedule candidates until finding one that passes all filters.
+func NextOccurrenceWithFilters(schedule *Token, filters []*Token, now time.Time, loc *time.Location) time.Time {
+	if schedule == nil {
+		return now
+	}
+
+	// If no filters, just return the regular next occurrence
+	if len(filters) == 0 {
+		return schedule.NextOccurrence(now, loc)
+	}
+
+	// Find next occurrence that passes all filters
+	// Try up to 366 candidates (covers yearly schedules + filter combinations)
+	candidate := schedule.NextOccurrence(now, loc)
+	for i := 0; i < 366; i++ {
+		passes := true
+		for _, f := range filters {
+			if f != nil && !f.PassesFilter(candidate) {
+				passes = false
+				break
+			}
+		}
+		if passes {
+			return candidate
+		}
+		// Move to next occurrence
+		candidate = schedule.NextOccurrence(candidate.Add(time.Minute), loc)
+	}
+
+	// Fallback: return the last candidate even if filters don't pass
+	return candidate
 }
