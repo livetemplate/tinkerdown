@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -176,12 +177,21 @@ func extractFS(contentFS fs.FS, rootPath string, destDir string) error {
 		srcFS = contentFS
 	}
 
+	// Clean destDir for path traversal validation
+	cleanDestDir := filepath.Clean(destDir)
+
 	return fs.WalkDir(srcFS, ".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 
 		destPath := filepath.Join(destDir, path)
+
+		// Path traversal validation: ensure destPath stays within destDir
+		cleanDestPath := filepath.Clean(destPath)
+		if !strings.HasPrefix(cleanDestPath, cleanDestDir+string(os.PathSeparator)) && cleanDestPath != cleanDestDir {
+			return fmt.Errorf("path traversal detected: %q resolves outside destination directory", path)
+		}
 
 		if d.IsDir() {
 			return os.MkdirAll(destPath, 0755)

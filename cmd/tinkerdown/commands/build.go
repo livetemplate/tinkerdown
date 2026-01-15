@@ -9,6 +9,10 @@ import (
 	"strings"
 )
 
+// maxDirTraversalDepth is the maximum number of parent directories to search
+// when looking for the tinkerdown module's go.mod file.
+const maxDirTraversalDepth = 15
+
 // BuildCommand implements the build command.
 // It compiles a tinkerdown app into a standalone executable.
 func BuildCommand(args []string) error {
@@ -61,9 +65,29 @@ func BuildCommand(args []string) error {
 	// Set default output name
 	if outputPath == "" {
 		if info.IsDir() {
-			outputPath = filepath.Base(inputPath) + "-server"
+			// Handle special paths like "." or "/"
+			base := filepath.Base(filepath.Clean(inputPath))
+			if base == "." || base == string(os.PathSeparator) {
+				// Use current directory's actual name
+				if wd, err := os.Getwd(); err == nil {
+					if wdBase := filepath.Base(wd); wdBase != "" && wdBase != "." && wdBase != string(os.PathSeparator) {
+						base = wdBase
+					} else {
+						base = "server"
+					}
+				} else {
+					base = "server"
+				}
+			}
+			outputPath = base + "-server"
 		} else {
-			outputPath = strings.TrimSuffix(filepath.Base(inputPath), ".md")
+			// Handle edge case where input is just ".md"
+			base := filepath.Base(inputPath)
+			name := strings.TrimSuffix(base, ".md")
+			if name == "" {
+				return fmt.Errorf("cannot derive default output name from input file %q; please specify --output", inputPath)
+			}
+			outputPath = name
 		}
 	}
 
@@ -139,8 +163,8 @@ func generateBuildSource(inputPath string, isDir bool) (string, error) {
 		}
 	}
 
-	// Copy config file if it exists
-	configFiles := []string{"tinkerdown.yaml", "tinkerdown.yml", ".tinkerdown.yaml", ".tinkerdown.yml"}
+	// Copy config file if it exists (aligned with config.LoadFromDir search order)
+	configFiles := []string{"tinkerdown.yaml", "lmt.yaml", "livemdtools.yaml"}
 	for _, configFile := range configFiles {
 		var configPath string
 		if isDir {
@@ -150,10 +174,14 @@ func generateBuildSource(inputPath string, isDir bool) (string, error) {
 		}
 		if _, err := os.Stat(configPath); err == nil {
 			configContent, err := os.ReadFile(configPath)
-			if err == nil {
-				os.WriteFile(filepath.Join(contentDir, configFile), configContent, 0644)
-				break
+			if err != nil {
+				continue // Try next config file
 			}
+			if err := os.WriteFile(filepath.Join(contentDir, configFile), configContent, 0644); err != nil {
+				os.RemoveAll(tmpDir)
+				return "", fmt.Errorf("failed to write config file: %w", err)
+			}
+			break
 		}
 	}
 
@@ -224,39 +252,15 @@ func findTinkerdownModule() (string, string, error) {
 			execPath = realPath
 		}
 
-		// Walk up from executable to find go.mod
-		dir := filepath.Dir(execPath)
-		for i := 0; i < 15; i++ {
-			goModPath := filepath.Join(dir, "go.mod")
-			if content, err := os.ReadFile(goModPath); err == nil {
-				if strings.Contains(string(content), "module github.com/livetemplate/tinkerdown") {
-					return dir, "", nil
-				}
-			}
-			parent := filepath.Dir(dir)
-			if parent == dir {
-				break
-			}
-			dir = parent
+		if dir := findModuleInParents(filepath.Dir(execPath)); dir != "" {
+			return dir, "", nil
 		}
 	}
 
 	// Try to find from working directory (for development)
-	wd, err := os.Getwd()
-	if err == nil {
-		dir := wd
-		for i := 0; i < 15; i++ {
-			goModPath := filepath.Join(dir, "go.mod")
-			if content, err := os.ReadFile(goModPath); err == nil {
-				if strings.Contains(string(content), "module github.com/livetemplate/tinkerdown") {
-					return dir, "", nil
-				}
-			}
-			parent := filepath.Dir(dir)
-			if parent == dir {
-				break
-			}
-			dir = parent
+	if wd, err := os.Getwd(); err == nil {
+		if dir := findModuleInParents(wd); dir != "" {
+			return dir, "", nil
 		}
 	}
 
@@ -270,12 +274,12 @@ func findTinkerdownModule() (string, string, error) {
 	modCache := filepath.Join(gopath, "pkg", "mod", "github.com", "livetemplate")
 	entries, err := os.ReadDir(modCache)
 	if err == nil {
-		// Find the latest tinkerdown version
+		// Find the latest tinkerdown version using semver-aware comparison
 		var latestVersion string
 		for _, entry := range entries {
 			if strings.HasPrefix(entry.Name(), "tinkerdown@") {
 				version := strings.TrimPrefix(entry.Name(), "tinkerdown@")
-				if latestVersion == "" || version > latestVersion {
+				if latestVersion == "" || compareSemver(version, latestVersion) > 0 {
 					latestVersion = version
 				}
 			}
@@ -286,6 +290,66 @@ func findTinkerdownModule() (string, string, error) {
 	}
 
 	return "", "", fmt.Errorf("could not find tinkerdown module - please ensure tinkerdown is installed or run from source directory")
+}
+
+// findModuleInParents walks up the directory tree looking for the tinkerdown module's go.mod.
+func findModuleInParents(startDir string) string {
+	dir := startDir
+	for i := 0; i < maxDirTraversalDepth; i++ {
+		goModPath := filepath.Join(dir, "go.mod")
+		if content, err := os.ReadFile(goModPath); err == nil {
+			if strings.Contains(string(content), "module github.com/livetemplate/tinkerdown") {
+				return dir
+			}
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return ""
+}
+
+// compareSemver compares two semantic version strings.
+// Returns positive if v1 > v2, negative if v1 < v2, zero if equal.
+// Handles versions like "v0.9.0" vs "v0.10.0" correctly.
+func compareSemver(v1, v2 string) int {
+	// Strip "v" prefix if present
+	v1 = strings.TrimPrefix(v1, "v")
+	v2 = strings.TrimPrefix(v2, "v")
+
+	parts1 := strings.Split(v1, ".")
+	parts2 := strings.Split(v2, ".")
+
+	// Compare each part numerically
+	maxLen := len(parts1)
+	if len(parts2) > maxLen {
+		maxLen = len(parts2)
+	}
+
+	for i := 0; i < maxLen; i++ {
+		var n1, n2 int
+		if i < len(parts1) {
+			// Parse numeric part (ignore pre-release suffixes)
+			numStr := parts1[i]
+			if idx := strings.IndexAny(numStr, "-+"); idx >= 0 {
+				numStr = numStr[:idx]
+			}
+			fmt.Sscanf(numStr, "%d", &n1)
+		}
+		if i < len(parts2) {
+			numStr := parts2[i]
+			if idx := strings.IndexAny(numStr, "-+"); idx >= 0 {
+				numStr = numStr[:idx]
+			}
+			fmt.Sscanf(numStr, "%d", &n2)
+		}
+		if n1 != n2 {
+			return n1 - n2
+		}
+	}
+	return 0
 }
 
 // generateMainGo generates the main.go source code for the standalone binary.

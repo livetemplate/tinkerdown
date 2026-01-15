@@ -270,6 +270,8 @@ This page was served from a standalone binary.
 	}
 	defer func() {
 		serverCmd.Process.Kill()
+		// Wait for process to exit to avoid race condition on serverOutput
+		serverCmd.Wait()
 		t.Logf("Server output:\n%s", serverOutput.String())
 	}()
 
