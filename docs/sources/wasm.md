@@ -36,12 +36,12 @@ sources:
 
 ```yaml
 sources:
-  notion_pages:
+  external_data:
     type: wasm
-    module: ./sources/notion.wasm
+    module: ./sources/external-api.wasm
     config:
-      api_key: ${NOTION_API_KEY}
-      database_id: ${NOTION_DB_ID}
+      api_key: ${EXTERNAL_API_KEY}
+      resource_id: ${EXTERNAL_RESOURCE_ID}
 ```
 
 ## Writing WASM Sources
@@ -187,9 +187,8 @@ WASM sources run in a sandboxed environment:
 Browse community-contributed sources:
 
 - GitHub API source
-- Notion source
-- Airtable source
-- Slack source
+- REST API sources
+- Database sources
 
 ## Full Example
 

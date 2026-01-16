@@ -21,11 +21,11 @@ A runbook in tinkerdown is:
 
 ### Current Tools
 
-| Tool | What It Does | Limitation |
-|------|--------------|------------|
-| Confluence/Notion | Static runbook docs | No execution, no tracking |
-| PagerDuty/Rundeck | Automation + logging | Locked in their system |
-| Runme | Execute code blocks | No step tracking, no snapshots |
+| Tool Type | What It Does | Limitation |
+|-----------|--------------|------------|
+| Wiki/docs platforms | Static runbook docs | No execution, no tracking |
+| Automation platforms | Automation + logging | Locked in their system |
+| Code execution tools | Execute code blocks | No step tracking, no snapshots |
 
 ### What's Missing Everywhere
 
@@ -472,9 +472,9 @@ A runbook system is successful if:
 ## What Tinkerdown Does NOT Do
 
 - **Real-time collaboration** - Use dedicated incident management tools for war rooms
-- **Automated remediation** - Use Rundeck/PagerDuty Automation
-- **Paging/alerting** - Use PagerDuty/OpsGenie
-- **Dashboards** - Use Grafana/Datadog
+- **Automated remediation** - Use dedicated automation platforms
+- **Paging/alerting** - Use dedicated alerting tools
+- **Dashboards** - Use dedicated monitoring/dashboard tools
 - **Authentication/Authorization** - Delegate to sources and CLI tools
 
 Tinkerdown is for: **executable documentation that becomes the incident record.**
@@ -487,7 +487,7 @@ Tinkerdown is for: **executable documentation that becomes the incident record.*
 
 ### Why No Built-in Auth?
 
-1. **Orgs already have auth** - SSO, LDAP, Okta, IAM roles
+1. **Orgs already have auth** - SSO, LDAP, IAM roles
 2. **CLI tools have auth** - kubectl uses kubeconfig, aws uses credentials, gh uses tokens
 3. **Sources can check permissions** - Call your existing permission APIs
 4. **Less to maintain** - No token management, no user database
@@ -504,7 +504,7 @@ identity:
   # Environment variable
   operator: ${USER}
   # Or from SSO
-  operator: ${OKTA_USER}
+  operator: ${SSO_USER}
   # Or from git
   operator: $(git config user.email)
 ```
@@ -590,8 +590,8 @@ Approvals are **log entries + notifications**, not an auth system:
 
 This:
 1. Adds log entry: `| 14:35 | access_request | prod-db-write | alice |`
-2. Sends Slack notification to approvers
-3. Approver clicks button in Slack (or CLI)
+2. Sends notification to approvers
+3. Approver clicks button in notification (or CLI)
 4. Adds log entry: `| 14:37 | access_approved | prod-db-write | alice | bob |`
 ```
 
@@ -625,25 +625,25 @@ api:
 | Operator identity | Environment ($USER, SSO) |
 | Permission checks | Custom sources (call your APIs) |
 | Command authorization | CLI tools (kubectl, aws, etc.) |
-| Approval tracking | Log entries + Slack |
+| Approval tracking | Log entries + notifications |
 | API auth | Bearer token or auth proxy |
 
 **Tinkerdown is a UI and record-keeper, not a security boundary.**
 
 ---
 
-## Appendix: Why Not Just Use Runme?
+## Appendix: Tinkerdown vs Code Execution Tools
 
-[Runme](https://runme.dev) executes code blocks in markdown. How is tinkerdown different?
+Code execution tools run code blocks in markdown. How is tinkerdown different?
 
-| Feature | Runme | Tinkerdown |
-|---------|-------|------------|
+| Feature | Code Execution Tools | Tinkerdown |
+|---------|---------------------|------------|
 | Execute code blocks | ✅ | ✅ (exec source) |
 | **Live data display** | ❌ | ✅ (tables, lists) |
 | **Execution logging** | ❌ | ✅ (markdown source) |
 | **Snapshot capture** | ❌ | ✅ |
 | **Forms for input** | ❌ | ✅ |
 | **Step tracking** | ❌ | ✅ |
-| VS Code integration | ✅ | ❌ (browser) |
+| IDE integration | ✅ | ❌ (browser) |
 
-Runme is great for running commands. Tinkerdown is for **tracking what was done.**
+Code execution tools are great for running commands. Tinkerdown is for **tracking what was done.**

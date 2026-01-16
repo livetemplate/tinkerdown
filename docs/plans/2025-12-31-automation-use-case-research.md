@@ -129,9 +129,9 @@ triggers:
 
 **Examples:**
 - GitHub issue → add to tracker
-- Stripe payment → update records
-- PagerDuty alert → start runbook
-- Slack command → execute action
+- Payment webhook → update records
+- Alert webhook → start runbook
+- Chat command → execute action
 
 ---
 

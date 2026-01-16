@@ -129,7 +129,7 @@ SORT due ASC
 **Pros:** SQL-like, powerful queries
 **Cons:** Display only, no mutations
 
-### 3.5 Notion-Style Databases
+### 3.5 GUI-Style Databases
 
 ```
 /database inline

@@ -517,20 +517,19 @@ waiting for connections to drain. Next: verify health."
 
 External systems trigger runbook actions via API.
 
-#### Trigger from PagerDuty
+#### Trigger from Alerting System
 
 ```yaml
-# PagerDuty webhook → runbook
+# Alerting webhook → runbook
 POST /api/incidents
 {
   "template": "service-down",
   "title": "{{alert.title}}",
   "metadata": {
-    "pagerduty_id": "{{incident.id}}",
+    "alert_id": "{{incident.id}}",
     "severity": "{{alert.severity}}",
     "service": "{{service.name}}"
   }
-}
 ```
 
 Response:
@@ -596,11 +595,11 @@ GET /api/incidents/2024-01-15-1432-api-outage
 ```yaml
 # tinkerdown.yaml
 webhooks:
-  - url: https://pagerduty.com/webhooks/tinkerdown
+  - url: https://alerts.internal/webhooks/tinkerdown
     events: [incident.resolved]
-  - url: https://datadog.internal/events
+  - url: https://monitoring.internal/events
     events: [step.completed, step.failed]
-  - url: https://slack.internal/incidents
+  - url: https://chat.internal/incidents
     events: [approval.requested, approval.granted]
 ```
 
