@@ -45,9 +45,9 @@ func TestUXEnhancements(t *testing.T) {
 
 		html := string(bodyBytes)
 
-		// Check for PicoCSS CDN
-		if !strings.Contains(html, "picocss") {
-			t.Error("PicoCSS CDN not found in HTML")
+		// Check for PicoCSS (embedded at /assets/pico.css)
+		if !strings.Contains(html, "/assets/pico.css") {
+			t.Error("PicoCSS not found in HTML")
 		}
 	})
 
