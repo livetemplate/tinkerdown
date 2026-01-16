@@ -25,7 +25,6 @@ A runbook in tinkerdown is:
 |------|--------------|------------|
 | Confluence/Notion | Static runbook docs | No execution, no tracking |
 | PagerDuty/Rundeck | Automation + logging | Locked in their system |
-| incident.io | Incident management | Runbooks are separate from record |
 | Runme | Execute code blocks | No step tracking, no snapshots |
 
 ### What's Missing Everywhere
@@ -472,7 +471,7 @@ A runbook system is successful if:
 
 ## What Tinkerdown Does NOT Do
 
-- **Real-time collaboration** - Use incident.io for war rooms
+- **Real-time collaboration** - Use dedicated incident management tools for war rooms
 - **Automated remediation** - Use Rundeck/PagerDuty Automation
 - **Paging/alerting** - Use PagerDuty/OpsGenie
 - **Dashboards** - Use Grafana/Datadog
