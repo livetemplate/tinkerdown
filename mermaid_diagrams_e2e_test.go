@@ -81,8 +81,8 @@ func TestMermaidDiagramsRendering(t *testing.T) {
 		t.Logf("Warning: Could not save HTML: %v", err)
 	}
 
-	// Verify Mermaid.js script is loaded
-	if !strings.Contains(html, "mermaid.min.js") {
+	// Verify Mermaid.js script is loaded (embedded at /assets/mermaid.js)
+	if !strings.Contains(html, "/assets/mermaid.js") {
 		t.Error("Mermaid.js script not found in HTML")
 	}
 

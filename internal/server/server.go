@@ -493,6 +493,72 @@ func (s *Server) serveAsset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Serve Prism.js core
+	if path == "prism.js" {
+		js, err := assets.GetPrismJS()
+		if err != nil {
+			http.Error(w, "Asset not found", http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/javascript")
+		w.Header().Set("Cache-Control", "public, max-age=31536000")
+		w.Write(js)
+		return
+	}
+
+	// Serve Prism.js CSS theme
+	if path == "prism.css" {
+		css, err := assets.GetPrismCSS()
+		if err != nil {
+			http.Error(w, "Asset not found", http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "text/css")
+		w.Header().Set("Cache-Control", "public, max-age=31536000")
+		w.Write(css)
+		return
+	}
+
+	// Serve Prism language components
+	if strings.HasPrefix(path, "prism-") && strings.HasSuffix(path, ".js") {
+		lang := strings.TrimSuffix(strings.TrimPrefix(path, "prism-"), ".js")
+		js, err := assets.GetPrismLanguage(lang)
+		if err != nil {
+			http.Error(w, "Asset not found", http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/javascript")
+		w.Header().Set("Cache-Control", "public, max-age=31536000")
+		w.Write(js)
+		return
+	}
+
+	// Serve Mermaid.js
+	if path == "mermaid.js" {
+		js, err := assets.GetMermaidJS()
+		if err != nil {
+			http.Error(w, "Asset not found", http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/javascript")
+		w.Header().Set("Cache-Control", "public, max-age=31536000")
+		w.Write(js)
+		return
+	}
+
+	// Serve Pico CSS
+	if path == "pico.css" {
+		css, err := assets.GetPicoCSS()
+		if err != nil {
+			http.Error(w, "Asset not found", http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "text/css")
+		w.Header().Set("Cache-Control", "public, max-age=31536000")
+		w.Write(css)
+		return
+	}
+
 	http.NotFound(w, r)
 }
 
@@ -576,8 +642,8 @@ func (s *Server) renderPage(page *tinkerdown.Page, currentPath string, host stri
     <meta name="tinkerdown-debug" content="true">
     <meta name="tinkerdown-sidebar" content="%t">
     <title>%s</title>
-    <!-- PicoCSS - Semantic/Classless CSS Framework -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+    <!-- PicoCSS - Semantic/Classless CSS Framework (embedded) -->
+    <link rel="stylesheet" href="/assets/pico.css">
     <link rel="stylesheet" href="/assets/tinkerdown-client.css">
     <style>
         /* Theme Variables */
@@ -1796,8 +1862,8 @@ func (s *Server) renderPage(page *tinkerdown.Page, currentPath string, host stri
         }
     </style>
 
-    <!-- Prism.js for syntax highlighting -->
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css" rel="stylesheet" />
+    <!-- Prism.js for syntax highlighting (embedded) -->
+    <link href="/assets/prism.css" rel="stylesheet" />
 </head>
 <body>
     <!-- Unified Toolbar -->
@@ -2135,17 +2201,17 @@ func (s *Server) renderPage(page *tinkerdown.Page, currentPath string, host stri
 
     <script src="/assets/tinkerdown-client.js"></script>
 
-    <!-- Prism.js for syntax highlighting -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-go.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-javascript.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-jsx.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-markup.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-css.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-yaml.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-json.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-markdown.min.js"></script>
+    <!-- Prism.js for syntax highlighting (embedded) -->
+    <script src="/assets/prism.js"></script>
+    <script src="/assets/prism-go.js"></script>
+    <script src="/assets/prism-javascript.js"></script>
+    <script src="/assets/prism-jsx.js"></script>
+    <script src="/assets/prism-markup.js"></script>
+    <script src="/assets/prism-css.js"></script>
+    <script src="/assets/prism-yaml.js"></script>
+    <script src="/assets/prism-json.js"></script>
+    <script src="/assets/prism-bash.js"></script>
+    <script src="/assets/prism-markdown.js"></script>
     <script>
         // Highlight all code blocks on page load
         document.addEventListener('DOMContentLoaded', function() {
@@ -2153,8 +2219,8 @@ func (s *Server) renderPage(page *tinkerdown.Page, currentPath string, host stri
         });
     </script>
 
-    <!-- Mermaid.js for diagrams -->
-    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <!-- Mermaid.js for diagrams (embedded) -->
+    <script src="/assets/mermaid.js"></script>
     <script>
         // Initialize Mermaid for diagram rendering
         mermaid.initialize({
