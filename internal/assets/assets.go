@@ -3,6 +3,7 @@ package assets
 
 import (
 	"embed"
+	"fmt"
 	"io/fs"
 )
 
@@ -47,8 +48,25 @@ func GetPrismCSS() ([]byte, error) {
 	return prismFS.ReadFile("vendor/prism/prism-tomorrow.min.css")
 }
 
-// GetPrismLanguage returns a Prism language component
+// SupportedPrismLanguages is the whitelist of available Prism language components
+var SupportedPrismLanguages = map[string]bool{
+	"go":         true,
+	"javascript": true,
+	"jsx":        true,
+	"markup":     true,
+	"css":        true,
+	"yaml":       true,
+	"json":       true,
+	"bash":       true,
+	"markdown":   true,
+}
+
+// GetPrismLanguage returns a Prism language component.
+// The language must be in the SupportedPrismLanguages whitelist.
 func GetPrismLanguage(lang string) ([]byte, error) {
+	if !SupportedPrismLanguages[lang] {
+		return nil, fmt.Errorf("unsupported prism language: %q", lang)
+	}
 	return prismFS.ReadFile("vendor/prism/prism-" + lang + ".min.js")
 }
 
