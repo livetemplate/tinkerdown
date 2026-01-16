@@ -65,9 +65,9 @@ git push
 
 | Traditional Approach | Tinkerdown Approach |
 |---------------------|---------------------|
-| Runbook in Confluence | Template in git |
-| Incident in PagerDuty | Instance file in git |
-| Postmortem in Notion | Same instance file |
+| Runbook in wiki | Template in git |
+| Incident in alerting tool | Instance file in git |
+| Postmortem in docs tool | Same instance file |
 | 3 separate tools | 1 markdown file |
 | Vendor lock-in | Portable markdown |
 | Can't search history | `grep` just works |

@@ -29,12 +29,12 @@
 │                    TODAY'S PRODUCTIVITY STACK                   │
 ├─────────────────────────────────────────────────────────────────┤
 │                                                                 │
-│  Notion          Todoist        Trello        Spreadsheets      │
-│  ────────        ───────        ──────        ────────────      │
-│  • $10/mo        • $5/mo        • $10/mo      • Free but ugly   │
-│  • Vendor lock   • Limited      • Too visual  • No interactivity│
-│  • Heavy         • No custom    • No code     • Export hell     │
-│  • Slow          • Sync issues  • Inflexible  • No version ctrl │
+│  Note Apps       Todo Apps      Kanban Boards  Spreadsheets     │
+│  ────────        ─────────      ────────────   ────────────     │
+│  • $10/mo        • $5/mo        • $10/mo       • Free but ugly  │
+│  • Vendor lock   • Limited      • Too visual   • No interactivity│
+│  • Heavy         • No custom    • No code      • Export hell    │
+│  • Slow          • Sync issues  • Inflexible   • No version ctrl│
 │                                                                 │
 │  Problems:                                                      │
 │  • Too many accounts                                            │
@@ -626,7 +626,7 @@ sources:
 **Use case:** Track recurring 1:1s, action items, career growth.
 
 **Why tinkerdown:**
-- Private (not in Notion/Google)
+- Private (not in cloud services)
 - Long-term history
 - Template for consistency
 - Action item tracking

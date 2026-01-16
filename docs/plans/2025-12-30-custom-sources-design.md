@@ -289,7 +289,7 @@ org-tinkerdown-sources/
 │   ├── check-permission.py
 │   ├── compliance-check
 │   ├── approval-status.py
-│   └── pagerduty-oncall.sh
+│   └── oncall-lookup.sh
 └── install.sh
 ```
 
@@ -304,7 +304,7 @@ Reference in markdown:
 sources:
   oncall:
     type: exec
-    command: "pagerduty-oncall.sh"
+    command: "oncall-lookup.sh"
 ```
 
 ### Option 2: Package Manager
@@ -349,7 +349,7 @@ runbooks/
 
 ```python
 #!/usr/bin/env python3
-"""Fetch current on-call from PagerDuty"""
+"""Fetch current on-call from alerting system"""
 import sys, json, os, requests
 
 def main():
@@ -357,8 +357,8 @@ def main():
     schedule_id = input_data["query"].get("schedule", "PRIMARY")
 
     resp = requests.get(
-        f"https://api.pagerduty.com/oncalls",
-        headers={"Authorization": f"Token token={os.environ['PAGERDUTY_TOKEN']}"},
+        f"https://api.alerting.internal/oncalls",
+        headers={"Authorization": f"Token token={os.environ['ALERTING_API_TOKEN']}"},
         params={"schedule_ids[]": schedule_id}
     )
 
@@ -475,7 +475,7 @@ sources:
 sources:
   oncall:
     type: exec
-    command: "pagerduty-oncall.sh"
+    command: "oncall-lookup.sh"
   freeze:
     type: exec
     command: "change-freeze-check.sh"

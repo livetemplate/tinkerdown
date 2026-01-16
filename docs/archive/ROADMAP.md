@@ -603,7 +603,7 @@ Auto-rendering is for common patterns only. Use Go templates when you need:
 - [ ] `tinkerdown wasm build` - Compile TinyGo source to WASM
 - [ ] `tinkerdown wasm test` - Test WASM module locally
 - [ ] Documentation for WASM interface contract
-- [ ] Example sources: GitHub API, Notion, Airtable
+- [ ] Example sources: GitHub API, REST APIs
 
 **Impact:** Enable community source contributions
 
@@ -1888,7 +1888,7 @@ func TestWasmTest(t *testing.T) {
 #### Example Updates
 
 - [ ] `examples/wasm-github-source/` - GitHub API WASM source
-- [ ] `examples/wasm-notion-source/` - Notion API WASM source
+- [ ] `examples/wasm-rest-source/` - REST API WASM source
 
 ---
 
