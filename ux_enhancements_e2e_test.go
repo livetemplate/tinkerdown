@@ -72,8 +72,15 @@ func TestUXEnhancements(t *testing.T) {
 	})
 
 	t.Run("ImprovedLayoutWidths", func(t *testing.T) {
-		// Create chromedp context
-		ctx, cancel := chromedp.NewContext(context.Background())
+		// Create chromedp context with no-sandbox for CI environments
+		allocCtx, cancel := chromedp.NewExecAllocator(context.Background(),
+			append(chromedp.DefaultExecAllocatorOptions[:],
+				chromedp.Flag("headless", true),
+				chromedp.Flag("no-sandbox", true),
+			)...)
+		defer cancel()
+
+		ctx, cancel := chromedp.NewContext(allocCtx)
 		defer cancel()
 
 		ctx, cancel = context.WithTimeout(ctx, 30*time.Second)
@@ -115,8 +122,15 @@ func TestUXEnhancements(t *testing.T) {
 	})
 
 	t.Run("MonacoLazyLoading", func(t *testing.T) {
-		// Create chromedp context
-		ctx, cancel := chromedp.NewContext(context.Background())
+		// Create chromedp context with no-sandbox for CI environments
+		allocCtx, cancel := chromedp.NewExecAllocator(context.Background(),
+			append(chromedp.DefaultExecAllocatorOptions[:],
+				chromedp.Flag("headless", true),
+				chromedp.Flag("no-sandbox", true),
+			)...)
+		defer cancel()
+
+		ctx, cancel := chromedp.NewContext(allocCtx)
 		defer cancel()
 
 		ctx, cancel = context.WithTimeout(ctx, 30*time.Second)
