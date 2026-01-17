@@ -132,6 +132,7 @@ title: "REST API Test"
 	allocCtx, cancel := chromedp.NewExecAllocator(context.Background(),
 		append(chromedp.DefaultExecAllocatorOptions[:],
 			chromedp.Flag("headless", true),
+			chromedp.Flag("no-sandbox", true),
 		)...)
 	defer cancel()
 

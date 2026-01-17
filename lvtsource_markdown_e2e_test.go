@@ -168,6 +168,7 @@ func setupMarkdownTestInternal(t *testing.T, exampleDir string, enableWatch bool
 	allocCtx, allocCancel := chromedp.NewExecAllocator(context.Background(),
 		append(chromedp.DefaultExecAllocatorOptions[:],
 			chromedp.Flag("headless", true),
+			chromedp.Flag("no-sandbox", true),
 		)...)
 
 	ctx, ctxCancel := chromedp.NewContext(allocCtx, chromedp.WithLogf(t.Logf))
@@ -213,6 +214,7 @@ func TestLvtSourceMarkdownTaskList(t *testing.T) {
 	allocCtx, cancel := chromedp.NewExecAllocator(context.Background(),
 		append(chromedp.DefaultExecAllocatorOptions[:],
 			chromedp.Flag("headless", true),
+			chromedp.Flag("no-sandbox", true),
 		)...)
 	defer cancel()
 

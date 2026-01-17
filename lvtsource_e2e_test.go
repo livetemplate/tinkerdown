@@ -60,6 +60,7 @@ func TestLvtSourceExec(t *testing.T) {
 	allocCtx, cancel := chromedp.NewExecAllocator(context.Background(),
 		append(chromedp.DefaultExecAllocatorOptions[:],
 			chromedp.Flag("headless", true),
+			chromedp.Flag("no-sandbox", true),
 		)...)
 	defer cancel()
 
