@@ -43,11 +43,8 @@ func TestActionButtons(t *testing.T) {
 	ts := httptest.NewServer(handler)
 	defer ts.Close()
 
-	// Setup chromedp
-	allocCtx, cancel := chromedp.NewExecAllocator(context.Background(),
-		append(chromedp.DefaultExecAllocatorOptions[:],
-			chromedp.Flag("headless", true),
-		)...)
+	// Setup chromedp (NewChromedpAllocator adds --no-sandbox in CI)
+	allocCtx, cancel := NewChromedpAllocator(context.Background())
 	defer cancel()
 
 	ctx, cancel := chromedp.NewContext(allocCtx, chromedp.WithLogf(t.Logf))

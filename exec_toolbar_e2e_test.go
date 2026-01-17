@@ -61,10 +61,7 @@ func TestExecToolbarManualMode(t *testing.T) {
 	defer ts.Close()
 
 	// Setup chromedp
-	allocCtx, cancel := chromedp.NewExecAllocator(context.Background(),
-		append(chromedp.DefaultExecAllocatorOptions[:],
-			chromedp.Flag("headless", true),
-		)...)
+	allocCtx, cancel := NewChromedpAllocator(context.Background())
 	defer cancel()
 
 	ctx, cancel := chromedp.NewContext(allocCtx, chromedp.WithLogf(t.Logf))
@@ -374,10 +371,7 @@ func TestExecToolbarAutoMode(t *testing.T) {
 	defer ts.Close()
 
 	// Setup chromedp
-	allocCtx, cancel := chromedp.NewExecAllocator(context.Background(),
-		append(chromedp.DefaultExecAllocatorOptions[:],
-			chromedp.Flag("headless", true),
-		)...)
+	allocCtx, cancel := NewChromedpAllocator(context.Background())
 	defer cancel()
 
 	ctx, cancel := chromedp.NewContext(allocCtx, chromedp.WithLogf(t.Logf))
