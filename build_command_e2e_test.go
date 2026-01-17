@@ -288,7 +288,15 @@ This page was served from a standalone binary.
 	t.Logf("HTTP GET /app status: %d", resp.StatusCode)
 
 	// Test with chromedp with its own timeout
-	chromeCtx, chromeCancel := chromedp.NewContext(ctx)
+	// Use NewExecAllocator with no-sandbox for CI environments
+	allocCtx, allocCancel := chromedp.NewExecAllocator(ctx,
+		append(chromedp.DefaultExecAllocatorOptions[:],
+			chromedp.Flag("headless", true),
+			chromedp.Flag("no-sandbox", true),
+		)...)
+	defer allocCancel()
+
+	chromeCtx, chromeCancel := chromedp.NewContext(allocCtx)
 	defer chromeCancel()
 
 	chromeCtx, chromeTimeout := context.WithTimeout(chromeCtx, 30*time.Second)
