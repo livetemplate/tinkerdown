@@ -164,11 +164,8 @@ func setupMarkdownTestInternal(t *testing.T, exampleDir string, enableWatch bool
 	handler := server.WithCompression(srv)
 	ts := httptest.NewServer(handler)
 
-	// Setup chromedp
-	allocCtx, allocCancel := chromedp.NewExecAllocator(context.Background(),
-		append(chromedp.DefaultExecAllocatorOptions[:],
-			chromedp.Flag("headless", true),
-		)...)
+	// Setup chromedp (NewChromedpAllocator adds --no-sandbox in CI)
+	allocCtx, allocCancel := NewChromedpAllocator(context.Background())
 
 	ctx, ctxCancel := chromedp.NewContext(allocCtx, chromedp.WithLogf(t.Logf))
 	ctx, timeoutCancel := context.WithTimeout(ctx, 90*time.Second)
@@ -210,10 +207,7 @@ func TestLvtSourceMarkdownTaskList(t *testing.T) {
 	defer ts.Close()
 
 	// Setup chromedp
-	allocCtx, cancel := chromedp.NewExecAllocator(context.Background(),
-		append(chromedp.DefaultExecAllocatorOptions[:],
-			chromedp.Flag("headless", true),
-		)...)
+	allocCtx, cancel := NewChromedpAllocator(context.Background())
 	defer cancel()
 
 	ctx, cancel := chromedp.NewContext(allocCtx, chromedp.WithLogf(t.Logf))

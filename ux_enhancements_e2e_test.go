@@ -226,12 +226,10 @@ func TestResponsiveLayout(t *testing.T) {
 
 	for _, vp := range viewports {
 		t.Run(vp.name, func(t *testing.T) {
-			// Create chromedp context with specific viewport
-			opts := append(chromedp.DefaultExecAllocatorOptions[:],
+			// Create chromedp context with specific viewport (NewChromedpAllocator adds --no-sandbox in CI)
+			allocCtx, cancel := NewChromedpAllocator(context.Background(),
 				chromedp.WindowSize(vp.width, vp.height),
 			)
-
-			allocCtx, cancel := chromedp.NewExecAllocator(context.Background(), opts...)
 			defer cancel()
 
 			ctx, cancel := chromedp.NewContext(allocCtx)
