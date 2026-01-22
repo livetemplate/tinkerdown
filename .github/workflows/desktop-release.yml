@@ -1,0 +1,253 @@
+name: Desktop Release
+
+on:
+  push:
+    tags:
+      - 'desktop-v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version (e.g., 1.0.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+env:
+  GO_VERSION: '1.25.3'
+  NODE_VERSION: '20'
+
+jobs:
+  build-macos:
+    name: Build macOS
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        arch: [amd64, arm64]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+          cache-dependency-path: desktop/go.sum
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: 'desktop/frontend/package-lock.json'
+
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+      - name: Install frontend dependencies
+        working-directory: desktop/frontend
+        run: npm install
+
+      - name: Build Wails app
+        working-directory: desktop
+        run: |
+          if [ "${{ matrix.arch }}" = "arm64" ]; then
+            wails build -platform darwin/arm64
+          else
+            wails build -platform darwin/amd64
+          fi
+
+      - name: Package macOS app
+        working-directory: desktop
+        run: |
+          mkdir -p dist
+          cd build/bin
+          zip -r ../../dist/tinkerdown-desktop-macos-${{ matrix.arch }}.zip tinkerdown-desktop.app
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-${{ matrix.arch }}
+          path: desktop/dist/tinkerdown-desktop-macos-${{ matrix.arch }}.zip
+
+  build-windows:
+    name: Build Windows
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        arch: [amd64, arm64]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+          cache-dependency-path: desktop/go.sum
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: 'desktop/frontend/package-lock.json'
+
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+      - name: Install frontend dependencies
+        working-directory: desktop/frontend
+        run: npm install
+
+      - name: Build Wails app
+        working-directory: desktop
+        run: |
+          if ("${{ matrix.arch }}" -eq "arm64") {
+            wails build -platform windows/arm64
+          } else {
+            wails build -platform windows/amd64
+          }
+
+      - name: Package Windows app
+        working-directory: desktop
+        run: |
+          mkdir dist
+          Compress-Archive -Path "build\bin\tinkerdown-desktop.exe" -DestinationPath "dist\tinkerdown-desktop-windows-${{ matrix.arch }}.zip"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-${{ matrix.arch }}
+          path: desktop/dist/tinkerdown-desktop-windows-${{ matrix.arch }}.zip
+
+  build-linux:
+    name: Build Linux
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [amd64, arm64]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+          cache-dependency-path: desktop/go.sum
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: 'desktop/frontend/package-lock.json'
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev
+
+      - name: Install Wails
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+      - name: Install frontend dependencies
+        working-directory: desktop/frontend
+        run: npm install
+
+      - name: Build Wails app
+        working-directory: desktop
+        run: |
+          if [ "${{ matrix.arch }}" = "arm64" ]; then
+            wails build -platform linux/arm64
+          else
+            wails build -platform linux/amd64
+          fi
+
+      - name: Package Linux app
+        working-directory: desktop
+        run: |
+          mkdir -p dist
+          cd build/bin
+          tar -czvf ../../dist/tinkerdown-desktop-linux-${{ matrix.arch }}.tar.gz tinkerdown-desktop
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-${{ matrix.arch }}
+          path: desktop/dist/tinkerdown-desktop-linux-${{ matrix.arch }}.tar.gz
+
+  release:
+    name: Create Release
+    needs: [build-macos, build-windows, build-linux]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release files
+        run: |
+          mkdir -p release
+          find artifacts -type f \( -name "*.zip" -o -name "*.tar.gz" \) -exec cp {} release/ \;
+          ls -la release/
+
+      - name: Get version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "version=${{ inputs.version }}" >> $GITHUB_OUTPUT
+          else
+            # Extract version from tag (e.g., desktop-v1.0.0 -> 1.0.0)
+            echo "version=${GITHUB_REF_NAME#desktop-v}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Tinkerdown Desktop v${{ steps.version.outputs.version }}
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && format('desktop-v{0}', inputs.version) || github.ref_name }}
+          generate_release_notes: true
+          files: release/*
+          body: |
+            ## Tinkerdown Desktop v${{ steps.version.outputs.version }}
+
+            Cross-platform desktop application for viewing tinkerdown markdown files.
+
+            ### Downloads
+
+            | Platform | Architecture | Download |
+            |----------|--------------|----------|
+            | macOS | Apple Silicon (M1/M2/M3) | `tinkerdown-desktop-macos-arm64.zip` |
+            | macOS | Intel | `tinkerdown-desktop-macos-amd64.zip` |
+            | Windows | x64 | `tinkerdown-desktop-windows-amd64.zip` |
+            | Windows | ARM64 | `tinkerdown-desktop-windows-arm64.zip` |
+            | Linux | x64 | `tinkerdown-desktop-linux-amd64.tar.gz` |
+            | Linux | ARM64 | `tinkerdown-desktop-linux-arm64.tar.gz` |
+
+            ### Installation
+
+            **macOS:**
+            1. Download the appropriate zip file for your Mac
+            2. Extract the zip file
+            3. Move `tinkerdown-desktop.app` to your Applications folder
+            4. On first launch, right-click and select "Open" to bypass Gatekeeper
+
+            **Windows:**
+            1. Download the zip file
+            2. Extract to a folder of your choice
+            3. Run `tinkerdown-desktop.exe`
+
+            **Linux:**
+            1. Download the tar.gz file
+            2. Extract: `tar -xzf tinkerdown-desktop-linux-*.tar.gz`
+            3. Run: `./tinkerdown-desktop`

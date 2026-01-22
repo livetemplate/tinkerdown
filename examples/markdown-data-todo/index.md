@@ -38,7 +38,7 @@ This example demonstrates reading AND writing task list data from a separate mar
 
     <hr style="margin: 16px 0;">
 
-    <form lvt-submit="Add" style="display: flex; gap: 8px; align-items: center;">
+    <form lvt-submit="Add" lvt-reset-on:success style="display: flex; gap: 8px; align-items: center;">
         <input type="text" name="text" placeholder="Add new task..." required
                style="flex: 1; min-width: 0; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
         <button type="submit"

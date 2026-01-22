@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+    <title>Tinkerdown Desktop</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #fff;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+        }
+        body.content-loaded {
+            padding: 0;
+            background: #fff;
+        }
+        .container {
+            text-align: center;
+            max-width: 600px;
+        }
+        body.content-loaded .container {
+            display: none;
+        }
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+            background: linear-gradient(90deg, #00d4ff, #7c3aed);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        p {
+            color: #94a3b8;
+            font-size: 1.1rem;
+            line-height: 1.6;
+            margin-bottom: 2rem;
+        }
+        .actions {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        button {
+            background: linear-gradient(135deg, #7c3aed 0%, #00d4ff 100%);
+            border: none;
+            color: white;
+            padding: 0.875rem 1.75rem;
+            font-size: 1rem;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 20px rgba(124, 58, 237, 0.4);
+        }
+        button:active {
+            transform: translateY(0);
+        }
+        .keyboard-hint {
+            margin-top: 2rem;
+            color: #64748b;
+            font-size: 0.875rem;
+        }
+        kbd {
+            background: #334155;
+            border-radius: 4px;
+            padding: 0.25rem 0.5rem;
+            font-family: monospace;
+        }
+        #status {
+            margin-top: 1rem;
+            font-size: 0.875rem;
+            min-height: 1.5em;
+        }
+        .error { color: #ef4444; }
+        .success { color: #22c55e; }
+        #content-frame {
+            display: none;
+            width: 100%;
+            height: 100vh;
+            border: none;
+        }
+        body.content-loaded #content-frame {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Tinkerdown Desktop</h1>
+        <p>Open a markdown file or directory to get started with interactive documentation and tutorials.</p>
+        <div class="actions">
+            <button id="openFile">Open File</button>
+            <button id="openDir">Open Directory</button>
+        </div>
+        <p class="keyboard-hint">
+            <kbd>Cmd+O</kbd> / <kbd>Ctrl+O</kbd> to open
+        </p>
+        <p id="status"></p>
+    </div>
+    <iframe id="content-frame"></iframe>
+    <script>
+        // Wait for Wails runtime to be ready
+        function initApp() {
+            console.log('=== Tinkerdown Desktop Init ===');
+            console.log('window.go type:', typeof window.go);
+            console.log('window.go.main:', window.go ? window.go.main : 'N/A');
+            console.log('window.go.main.App:', window.go && window.go.main ? window.go.main.App : 'N/A');
+            console.log('window.runtime type:', typeof window.runtime);
+            console.log('OpenFile available:', window.go && window.go.main && window.go.main.App ? typeof window.go.main.App.OpenFile : 'N/A');
+
+            const statusEl = document.getElementById('status');
+            const contentFrame = document.getElementById('content-frame');
+
+            function showStatus(message, type) {
+                console.log('Status:', message, type);
+                statusEl.textContent = message;
+                statusEl.className = type || '';
+            }
+
+            function loadContent(url) {
+                console.log('Loading content from:', url);
+                contentFrame.src = url;
+                document.body.classList.add('content-loaded');
+            }
+
+            showStatus('Ready', 'success');
+
+            document.getElementById('openFile').addEventListener('click', async function() {
+                console.log('Open File clicked');
+                try {
+                    showStatus('Opening file dialog...');
+                    const dir = await window.go.main.App.OpenFile();
+                    console.log('OpenFile returned:', dir);
+                    if (dir) {
+                        showStatus('Loading ' + dir + '...', 'success');
+                    } else {
+                        showStatus('Cancelled');
+                    }
+                } catch (err) {
+                    console.error('OpenFile error:', err);
+                    showStatus('Error: ' + err, 'error');
+                }
+            });
+
+            document.getElementById('openDir').addEventListener('click', async function() {
+                console.log('Open Directory clicked');
+                try {
+                    showStatus('Opening directory dialog...');
+                    const dir = await window.go.main.App.OpenDirectory();
+                    console.log('OpenDirectory returned:', dir);
+                    if (dir) {
+                        showStatus('Loading ' + dir + '...', 'success');
+                    } else {
+                        showStatus('Cancelled');
+                    }
+                } catch (err) {
+                    console.error('OpenDirectory error:', err);
+                    showStatus('Error: ' + err, 'error');
+                }
+            });
+
+            // Listen for navigate event to load content in iframe
+            if (window.runtime && window.runtime.EventsOn) {
+                console.log('Registering navigate event listener');
+                window.runtime.EventsOn("navigate", function(url) {
+                    console.log('Navigate event received:', url);
+                    loadContent(url);
+                });
+            } else {
+                console.error('window.runtime.EventsOn not available');
+            }
+
+            console.log('=== Init complete ===');
+        }
+
+        // Wait for Wails runtime to be available
+        function waitForWails() {
+            if (window.go && window.runtime) {
+                console.log('Wails runtime ready');
+                initApp();
+            } else {
+                console.log('Waiting for Wails runtime...');
+                setTimeout(waitForWails, 50);
+            }
+        }
+
+        // Start waiting after DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', waitForWails);
+        } else {
+            waitForWails();
+        }
+    </script>
+</body>
+</html>
