@@ -127,9 +127,8 @@ jobs:
   build-linux:
     name: Build Linux
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        arch: [amd64, arm64]
+    # Note: Only building amd64 as arm64 requires complex cross-compilation setup
+    # for CGO-based applications with WebKit dependencies
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -162,25 +161,20 @@ jobs:
 
       - name: Build Wails app
         working-directory: desktop
-        run: |
-          if [ "${{ matrix.arch }}" = "arm64" ]; then
-            wails build -platform linux/arm64 -tags webkit2_41
-          else
-            wails build -platform linux/amd64 -tags webkit2_41
-          fi
+        run: wails build -platform linux/amd64 -tags webkit2_41
 
       - name: Package Linux app
         working-directory: desktop
         run: |
           mkdir -p dist
           cd build/bin
-          tar -czvf ../../dist/tinkerdown-desktop-linux-${{ matrix.arch }}.tar.gz tinkerdown-desktop
+          tar -czvf ../../dist/tinkerdown-desktop-linux-amd64.tar.gz tinkerdown-desktop
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: linux-${{ matrix.arch }}
-          path: desktop/dist/tinkerdown-desktop-linux-${{ matrix.arch }}.tar.gz
+          name: linux-amd64
+          path: desktop/dist/tinkerdown-desktop-linux-amd64.tar.gz
 
   release:
     name: Create Release
@@ -232,7 +226,6 @@ jobs:
             | Windows | x64 | `tinkerdown-desktop-windows-amd64.zip` |
             | Windows | ARM64 | `tinkerdown-desktop-windows-arm64.zip` |
             | Linux | x64 | `tinkerdown-desktop-linux-amd64.tar.gz` |
-            | Linux | ARM64 | `tinkerdown-desktop-linux-arm64.tar.gz` |
 
             ### Installation
 
