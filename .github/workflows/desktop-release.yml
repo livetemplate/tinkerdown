@@ -233,7 +233,9 @@ jobs:
             1. Download the appropriate zip file for your Mac
             2. Extract the zip file
             3. Move `tinkerdown-desktop.app` to your Applications folder
-            4. On first launch, right-click and select "Open" to bypass Gatekeeper
+            4. **Important:** The app is not code-signed. To open it:
+               - Right-click the app → "Open" → click "Open" in the dialog, OR
+               - Run in Terminal: `xattr -cr /Applications/tinkerdown-desktop.app`
 
             **Windows:**
             1. Download the zip file
