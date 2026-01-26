@@ -3,7 +3,6 @@
 package tinkerdown_test
 
 import (
-	"context"
 	"database/sql"
 	"fmt"
 	"os"
@@ -43,19 +42,11 @@ func TestActionButtons(t *testing.T) {
 	ts := httptest.NewServer(handler)
 	defer ts.Close()
 
-	// Setup chromedp
-	allocCtx, cancel := chromedp.NewExecAllocator(context.Background(),
-		append(chromedp.DefaultExecAllocatorOptions[:],
-			chromedp.Flag("headless", true),
-			chromedp.Flag("no-sandbox", true),
-		)...)
-	defer cancel()
+	// Setup Docker Chrome for reliable CI execution
+	chromeCtx, cleanup := SetupDockerChrome(t, 60*time.Second)
+	defer cleanup()
 
-	ctx, cancel := chromedp.NewContext(allocCtx, chromedp.WithLogf(t.Logf))
-	defer cancel()
-
-	ctx, cancel = context.WithTimeout(ctx, 60*time.Second)
-	defer cancel()
+	ctx := chromeCtx.Context
 
 	// Store console logs for debugging
 	var consoleLogs []string
@@ -68,9 +59,10 @@ func TestActionButtons(t *testing.T) {
 	})
 
 	// Navigate and wait for WebSocket connection
+	url := ConvertURLForDockerChrome(ts.URL)
 	var wsConnected bool
 	err := chromedp.Run(ctx,
-		chromedp.Navigate(ts.URL),
+		chromedp.Navigate(url),
 		chromedp.WaitVisible(`[lvt-source="tasks"]`, chromedp.ByQuery),
 		chromedp.Evaluate(`window.tinkerdownWS !== undefined && window.tinkerdownWS.readyState === 1`, &wsConnected),
 	)

@@ -3,7 +3,6 @@
 package tinkerdown_test
 
 import (
-	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -49,19 +48,11 @@ func TestComputedExpressions(t *testing.T) {
 	ts := httptest.NewServer(handler)
 	defer ts.Close()
 
-	// Setup chromedp
-	allocCtx, cancel := chromedp.NewExecAllocator(context.Background(),
-		append(chromedp.DefaultExecAllocatorOptions[:],
-			chromedp.Flag("headless", true),
-			chromedp.Flag("no-sandbox", true),
-		)...)
-	defer cancel()
+	// Setup Docker Chrome for reliable CI execution
+	chromeCtx, cleanup := SetupDockerChrome(t, 60*time.Second)
+	defer cleanup()
 
-	ctx, cancel := chromedp.NewContext(allocCtx, chromedp.WithLogf(t.Logf))
-	defer cancel()
-
-	ctx, cancel = context.WithTimeout(ctx, 60*time.Second)
-	defer cancel()
+	ctx := chromeCtx.Context
 
 	// Store console logs and errors for debugging
 	var consoleLogs []string
@@ -73,12 +64,14 @@ func TestComputedExpressions(t *testing.T) {
 		}
 	})
 
-	t.Logf("Test server URL: %s", ts.URL)
+	// Convert URL for Docker Chrome access
+	url := ConvertURLForDockerChrome(ts.URL)
+	t.Logf("Test server URL: %s (Docker: %s)", ts.URL, url)
 
 	// Wait for page load and WebSocket connection
 	var pageHTML string
 	err = chromedp.Run(ctx,
-		chromedp.Navigate(ts.URL+"/index.html"),
+		chromedp.Navigate(url+"/index.html"),
 		chromedp.WaitVisible(".tinkerdown-interactive-block", chromedp.ByQuery),
 		chromedp.Sleep(2*time.Second), // Allow WebSocket to connect and expressions to evaluate
 		chromedp.OuterHTML("html", &pageHTML),

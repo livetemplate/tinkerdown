@@ -3,7 +3,6 @@
 package tinkerdown_test
 
 import (
-	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -48,19 +47,11 @@ func TestLvtSourceJSON(t *testing.T) {
 	ts := httptest.NewServer(handler)
 	defer ts.Close()
 
-	// Setup chromedp
-	allocCtx, cancel := chromedp.NewExecAllocator(context.Background(),
-		append(chromedp.DefaultExecAllocatorOptions[:],
-			chromedp.Flag("headless", true),
-			chromedp.Flag("no-sandbox", true),
-		)...)
-	defer cancel()
+	// Setup Docker Chrome for reliable CI execution
+	chromeCtx, cleanup := SetupDockerChrome(t, 60*time.Second)
+	defer cleanup()
 
-	ctx, cancel := chromedp.NewContext(allocCtx, chromedp.WithLogf(t.Logf))
-	defer cancel()
-
-	ctx, cancel = context.WithTimeout(ctx, 60*time.Second)
-	defer cancel()
+	ctx := chromeCtx.Context
 
 	// Store console logs for debugging
 	var consoleLogs []string
@@ -72,12 +63,14 @@ func TestLvtSourceJSON(t *testing.T) {
 		}
 	})
 
-	t.Logf("Test server URL: %s", ts.URL)
+	// Convert URL for Docker Chrome access
+	url := ConvertURLForDockerChrome(ts.URL)
+	t.Logf("Test server URL: %s (Docker: %s)", ts.URL, url)
 
 	// Test 1: Navigate and wait for WebSocket to render content
 	var hasUserTable bool
 	err = chromedp.Run(ctx,
-		chromedp.Navigate(ts.URL+"/"),
+		chromedp.Navigate(url+"/"),
 		chromedp.Sleep(5*time.Second),
 		chromedp.Evaluate(`document.querySelector('[lvt-source="users"] table') !== null`, &hasUserTable),
 	)
@@ -152,19 +145,11 @@ func TestLvtSourceCSV(t *testing.T) {
 	ts := httptest.NewServer(handler)
 	defer ts.Close()
 
-	// Setup chromedp
-	allocCtx, cancel := chromedp.NewExecAllocator(context.Background(),
-		append(chromedp.DefaultExecAllocatorOptions[:],
-			chromedp.Flag("headless", true),
-			chromedp.Flag("no-sandbox", true),
-		)...)
-	defer cancel()
+	// Setup Docker Chrome for reliable CI execution
+	chromeCtx, cleanup := SetupDockerChrome(t, 60*time.Second)
+	defer cleanup()
 
-	ctx, cancel := chromedp.NewContext(allocCtx, chromedp.WithLogf(t.Logf))
-	defer cancel()
-
-	ctx, cancel = context.WithTimeout(ctx, 60*time.Second)
-	defer cancel()
+	ctx := chromeCtx.Context
 
 	// Store console logs for debugging
 	var consoleLogs []string
@@ -176,12 +161,14 @@ func TestLvtSourceCSV(t *testing.T) {
 		}
 	})
 
-	t.Logf("Test server URL: %s", ts.URL)
+	// Convert URL for Docker Chrome access
+	url := ConvertURLForDockerChrome(ts.URL)
+	t.Logf("Test server URL: %s (Docker: %s)", ts.URL, url)
 
 	// Test 1: Navigate and wait for WebSocket to render content
 	var hasProductTable bool
 	err = chromedp.Run(ctx,
-		chromedp.Navigate(ts.URL+"/"),
+		chromedp.Navigate(url+"/"),
 		chromedp.Sleep(5*time.Second),
 		chromedp.Evaluate(`document.querySelector('[lvt-source="products"] table') !== null`, &hasProductTable),
 	)

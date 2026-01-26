@@ -3,7 +3,6 @@
 package tinkerdown_test
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -72,24 +71,19 @@ func TestUXEnhancements(t *testing.T) {
 	})
 
 	t.Run("ImprovedLayoutWidths", func(t *testing.T) {
-		// Create chromedp context with no-sandbox for CI environments
-		allocCtx, cancel := chromedp.NewExecAllocator(context.Background(),
-			append(chromedp.DefaultExecAllocatorOptions[:],
-				chromedp.Flag("headless", true),
-				chromedp.Flag("no-sandbox", true),
-			)...)
-		defer cancel()
+		// Setup Docker Chrome for reliable CI execution
+		chromeCtx, cleanup := SetupDockerChrome(t, 30*time.Second)
+		defer cleanup()
 
-		ctx, cancel := chromedp.NewContext(allocCtx)
-		defer cancel()
+		ctx := chromeCtx.Context
 
-		ctx, cancel = context.WithTimeout(ctx, 30*time.Second)
-		defer cancel()
+		// Convert URL for Docker Chrome access
+		url := ConvertURLForDockerChrome(ts.URL)
 
 		var bodyMaxWidth, sidebarWidth string
 
 		err := chromedp.Run(ctx,
-			chromedp.Navigate(ts.URL),
+			chromedp.Navigate(url),
 			chromedp.WaitVisible("body", chromedp.ByQuery),
 
 			// Check body max-width
@@ -122,25 +116,20 @@ func TestUXEnhancements(t *testing.T) {
 	})
 
 	t.Run("MonacoLazyLoading", func(t *testing.T) {
-		// Create chromedp context with no-sandbox for CI environments
-		allocCtx, cancel := chromedp.NewExecAllocator(context.Background(),
-			append(chromedp.DefaultExecAllocatorOptions[:],
-				chromedp.Flag("headless", true),
-				chromedp.Flag("no-sandbox", true),
-			)...)
-		defer cancel()
+		// Setup Docker Chrome for reliable CI execution
+		chromeCtx, cleanup := SetupDockerChrome(t, 30*time.Second)
+		defer cleanup()
 
-		ctx, cancel := chromedp.NewContext(allocCtx)
-		defer cancel()
+		ctx := chromeCtx.Context
 
-		ctx, cancel = context.WithTimeout(ctx, 30*time.Second)
-		defer cancel()
+		// Convert URL for Docker Chrome access
+		url := ConvertURLForDockerChrome(ts.URL)
 
 		var monacoLoadedInitially bool
 		var hasEditableBlocks bool
 
 		err := chromedp.Run(ctx,
-			chromedp.Navigate(ts.URL),
+			chromedp.Navigate(url),
 			chromedp.WaitVisible("body", chromedp.ByQuery),
 			chromedp.Sleep(1*time.Second), // Give page time to load
 
@@ -240,25 +229,21 @@ func TestResponsiveLayout(t *testing.T) {
 
 	for _, vp := range viewports {
 		t.Run(vp.name, func(t *testing.T) {
-			// Create chromedp context with specific viewport
-			opts := append(chromedp.DefaultExecAllocatorOptions[:],
-				chromedp.WindowSize(vp.width, vp.height),
-				chromedp.Flag("no-sandbox", true),
-			)
+			// Setup Docker Chrome for reliable CI execution
+			chromeCtx, cleanup := SetupDockerChrome(t, 30*time.Second)
+			defer cleanup()
 
-			allocCtx, cancel := chromedp.NewExecAllocator(context.Background(), opts...)
-			defer cancel()
+			ctx := chromeCtx.Context
 
-			ctx, cancel := chromedp.NewContext(allocCtx)
-			defer cancel()
-
-			ctx, cancel = context.WithTimeout(ctx, 30*time.Second)
-			defer cancel()
+			// Convert URL for Docker Chrome access
+			url := ConvertURLForDockerChrome(ts.URL)
 
 			var bodyVisible, sidebarVisible bool
 
 			err := chromedp.Run(ctx,
-				chromedp.Navigate(ts.URL),
+				// Set viewport via emulation
+				chromedp.EmulateViewport(int64(vp.width), int64(vp.height)),
+				chromedp.Navigate(url),
 				chromedp.WaitVisible("body", chromedp.ByQuery),
 				chromedp.Sleep(500*time.Millisecond),
 

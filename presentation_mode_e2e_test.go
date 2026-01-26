@@ -3,7 +3,7 @@
 package tinkerdown
 
 import (
-	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"testing"
@@ -14,8 +14,14 @@ import (
 
 // TestPresentationMode verifies that presentation mode works correctly
 func TestPresentationMode(t *testing.T) {
+	// Use dynamic port to avoid conflicts
+	port, err := getFreePort()
+	if err != nil {
+		t.Fatalf("Failed to get free port: %v", err)
+	}
+
 	// Start the server - use docs-site which has multiple H2 sections for presentation mode
-	serverCmd := exec.Command("./tinkerdown", "serve", "examples/docs-site", "--port", "8080")
+	serverCmd := exec.Command("./tinkerdown", "serve", "examples/docs-site", "--port", fmt.Sprintf("%d", port))
 	serverCmd.Stdout = os.Stdout
 	serverCmd.Stderr = os.Stderr
 
@@ -28,25 +34,15 @@ func TestPresentationMode(t *testing.T) {
 		}
 	}()
 
-	// Wait for server to start
-	time.Sleep(5 * time.Second)
+	// Wait for server to be ready
+	WaitForServer(t, fmt.Sprintf("http://localhost:%d", port), 30*time.Second)
 
-	// Create chrome context
-	opts := append(chromedp.DefaultExecAllocatorOptions[:],
-		chromedp.Flag("headless", true),
-		chromedp.Flag("disable-gpu", true),
-		chromedp.Flag("no-sandbox", true),
-	)
+	// Use Docker Chrome for reliable CI execution
+	chromeCtx, cleanup := SetupDockerChrome(t, 60*time.Second)
+	defer cleanup()
 
-	allocCtx, cancel := chromedp.NewExecAllocator(context.Background(), opts...)
-	defer cancel()
-
-	ctx, cancel := chromedp.NewContext(allocCtx)
-	defer cancel()
-
-	// Set timeout
-	ctx, cancel = context.WithTimeout(ctx, 45*time.Second)
-	defer cancel()
+	ctx := chromeCtx.Context
+	url := GetChromeTestURL(port)
 
 	var presentationBtnExists bool
 	var bodyHasPresentationClass bool
@@ -55,8 +51,8 @@ func TestPresentationMode(t *testing.T) {
 	var html string
 
 	// Test 1: Verify presentation button exists
-	err := chromedp.Run(ctx,
-		chromedp.Navigate("http://localhost:8080/"),
+	err = chromedp.Run(ctx,
+		chromedp.Navigate(url+"/"),
 		chromedp.Sleep(2*time.Second),
 
 		// Get HTML for debugging
@@ -236,14 +232,20 @@ func TestPresentationMode(t *testing.T) {
 		t.Error("Presentation button should have 'active' class when in presentation mode")
 	}
 
-	t.Logf("✓ Presentation mode working correctly!")
+	t.Logf("Presentation mode working correctly!")
 }
 
-// TestPresentationModeDocsS site tests presentation mode specifically on the docs-site
+// TestPresentationModeDocsSite tests presentation mode specifically on the docs-site
 // This is a regression test for the nested .content-wrapper bug reported by the user
 func TestPresentationModeDocsSite(t *testing.T) {
+	// Use dynamic port to avoid conflicts
+	port, err := getFreePort()
+	if err != nil {
+		t.Fatalf("Failed to get free port: %v", err)
+	}
+
 	// Start the server for docs-site
-	serverCmd := exec.Command("./tinkerdown", "serve", "examples/docs-site", "--port", "9191")
+	serverCmd := exec.Command("./tinkerdown", "serve", "examples/docs-site", "--port", fmt.Sprintf("%d", port))
 	serverCmd.Stdout = os.Stdout
 	serverCmd.Stderr = os.Stderr
 
@@ -256,25 +258,15 @@ func TestPresentationModeDocsSite(t *testing.T) {
 		}
 	}()
 
-	// Wait for server to start
-	time.Sleep(5 * time.Second)
+	// Wait for server to be ready
+	WaitForServer(t, fmt.Sprintf("http://localhost:%d", port), 30*time.Second)
 
-	// Create chrome context
-	opts := append(chromedp.DefaultExecAllocatorOptions[:],
-		chromedp.Flag("headless", true),
-		chromedp.Flag("disable-gpu", true),
-		chromedp.Flag("no-sandbox", true),
-	)
+	// Use Docker Chrome for reliable CI execution
+	chromeCtx, cleanup := SetupDockerChrome(t, 60*time.Second)
+	defer cleanup()
 
-	allocCtx, cancel := chromedp.NewExecAllocator(context.Background(), opts...)
-	defer cancel()
-
-	ctx, cancel := chromedp.NewContext(allocCtx)
-	defer cancel()
-
-	// Set timeout
-	ctx, cancel = context.WithTimeout(ctx, 45*time.Second)
-	defer cancel()
+	ctx := chromeCtx.Context
+	url := GetChromeTestURL(port)
 
 	var h2Count int
 	var currentSectionExists bool
@@ -282,8 +274,8 @@ func TestPresentationModeDocsSite(t *testing.T) {
 	var contentVisible bool
 
 	// Navigate to the intro page (where user reported the bug)
-	err := chromedp.Run(ctx,
-		chromedp.Navigate("http://localhost:9191/getting-started/intro"),
+	err = chromedp.Run(ctx,
+		chromedp.Navigate(url+"/getting-started/intro"),
 		chromedp.Sleep(2*time.Second),
 
 		// Count H2 elements found by the selector
@@ -380,5 +372,5 @@ func TestPresentationModeDocsSite(t *testing.T) {
 		t.Error("Current section should have visible text content")
 	}
 
-	t.Logf("✓ Presentation mode working correctly on docs-site!")
+	t.Logf("Presentation mode working correctly on docs-site!")
 }

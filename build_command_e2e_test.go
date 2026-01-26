@@ -17,6 +17,8 @@ import (
 	"github.com/chromedp/chromedp"
 )
 
+// Note: context import is still needed for exec.CommandContext
+
 // TestBuildCommandSingleFile tests building a single markdown file
 func TestBuildCommandSingleFile(t *testing.T) {
 	tmpDir := t.TempDir()
@@ -287,24 +289,16 @@ This page was served from a standalone binary.
 	resp.Body.Close()
 	t.Logf("HTTP GET /app status: %d", resp.StatusCode)
 
-	// Test with chromedp with its own timeout
-	// Use NewExecAllocator with no-sandbox for CI environments
-	allocCtx, allocCancel := chromedp.NewExecAllocator(ctx,
-		append(chromedp.DefaultExecAllocatorOptions[:],
-			chromedp.Flag("headless", true),
-			chromedp.Flag("no-sandbox", true),
-		)...)
-	defer allocCancel()
+	// Test with Docker Chrome
+	chromeTestCtx, chromeCleanup := SetupDockerChrome(t, 30*time.Second)
+	defer chromeCleanup()
 
-	chromeCtx, chromeCancel := chromedp.NewContext(allocCtx)
-	defer chromeCancel()
-
-	chromeCtx, chromeTimeout := context.WithTimeout(chromeCtx, 30*time.Second)
-	defer chromeTimeout()
+	// Convert addr for Docker Chrome access
+	dockerAddr := ConvertURLForDockerChrome(addr)
 
 	var pageTitle string
-	err = chromedp.Run(chromeCtx,
-		chromedp.Navigate(addr+"/app"), // Single files are copied as app.md -> /app route
+	err = chromedp.Run(chromeTestCtx.Context,
+		chromedp.Navigate(dockerAddr+"/app"), // Single files are copied as app.md -> /app route
 		chromedp.WaitVisible("h1", chromedp.ByQuery),
 		chromedp.Text("h1", &pageTitle, chromedp.ByQuery),
 	)
