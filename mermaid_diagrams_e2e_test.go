@@ -3,7 +3,7 @@
 package tinkerdown
 
 import (
-	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"strings"
@@ -15,8 +15,14 @@ import (
 
 // TestMermaidDiagramsRendering verifies that Mermaid.js diagrams render correctly
 func TestMermaidDiagramsRendering(t *testing.T) {
+	// Use a dynamic port to avoid conflicts
+	port, err := getFreePort()
+	if err != nil {
+		t.Fatalf("Failed to get free port: %v", err)
+	}
+
 	// Start the server
-	serverCmd := exec.Command("./tinkerdown", "serve", "examples/mermaid-diagrams-test", "--port", "8090")
+	serverCmd := exec.Command("./tinkerdown", "serve", "examples/mermaid-diagrams-test", "--port", fmt.Sprintf("%d", port))
 	serverCmd.Stdout = os.Stdout
 	serverCmd.Stderr = os.Stderr
 
@@ -29,34 +35,27 @@ func TestMermaidDiagramsRendering(t *testing.T) {
 		}
 	}()
 
-	// Wait for server to start
-	time.Sleep(3 * time.Second)
+	// Wait for server to be ready with proper polling
+	WaitForServer(t, fmt.Sprintf("http://localhost:%d", port), 30*time.Second)
 
-	// Create chrome context
-	opts := append(chromedp.DefaultExecAllocatorOptions[:],
-		chromedp.Flag("headless", true),
-		chromedp.Flag("disable-gpu", true),
-		chromedp.Flag("no-sandbox", true),
-	)
+	// Use Docker Chrome for reliable CI execution
+	chromeCtx, cleanup := SetupDockerChrome(t, 60*time.Second)
+	defer cleanup()
 
-	allocCtx, cancel := chromedp.NewExecAllocator(context.Background(), opts...)
-	defer cancel()
-
-	ctx, cancel := chromedp.NewContext(allocCtx)
-	defer cancel()
-
-	// Set timeout
-	ctx, cancel = context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
+	ctx := chromeCtx.Context
 
 	var html string
 	var mermaidDivCount int
 	var svgCount int
 
-	err := chromedp.Run(ctx,
-		chromedp.Navigate("http://localhost:8090/"),
-		chromedp.Sleep(2*time.Second), // Wait for page to load
-		chromedp.Sleep(2*time.Second), // Wait for Mermaid to render
+	// Use host.docker.internal for Docker Chrome to access host server
+	url := GetChromeTestURL(port)
+
+	err = chromedp.Run(ctx,
+		chromedp.Navigate(url),
+		// Wait for page to be fully loaded and Mermaid to render
+		chromedp.WaitVisible(`svg`, chromedp.ByQuery),
+		chromedp.Sleep(2*time.Second), // Extra time for Mermaid to render all diagrams
 
 		// Get the full HTML to inspect
 		chromedp.OuterHTML("html", &html),
@@ -97,5 +96,5 @@ func TestMermaidDiagramsRendering(t *testing.T) {
 		t.Errorf("Expected at least 3 SVG diagrams to render, got %d", svgCount)
 	}
 
-	t.Logf("✓ Mermaid diagrams rendered successfully: %d divs, %d SVGs", mermaidDivCount, svgCount)
+	t.Logf("Mermaid diagrams rendered successfully: %d divs, %d SVGs", mermaidDivCount, svgCount)
 }

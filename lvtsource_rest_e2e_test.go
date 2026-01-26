@@ -3,7 +3,6 @@
 package tinkerdown_test
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -128,19 +127,11 @@ title: "REST API Test"
 	ts := httptest.NewServer(handler)
 	defer ts.Close()
 
-	// Setup chromedp
-	allocCtx, cancel := chromedp.NewExecAllocator(context.Background(),
-		append(chromedp.DefaultExecAllocatorOptions[:],
-			chromedp.Flag("headless", true),
-			chromedp.Flag("no-sandbox", true),
-		)...)
-	defer cancel()
+	// Setup Docker Chrome for reliable CI execution
+	chromeCtx, cleanup := SetupDockerChrome(t, 60*time.Second)
+	defer cleanup()
 
-	ctx, cancel := chromedp.NewContext(allocCtx, chromedp.WithLogf(t.Logf))
-	defer cancel()
-
-	ctx, cancel = context.WithTimeout(ctx, 60*time.Second)
-	defer cancel()
+	ctx := chromeCtx.Context
 
 	// Store console logs for debugging
 	var consoleLogs []string
@@ -152,12 +143,14 @@ title: "REST API Test"
 		}
 	})
 
-	t.Logf("Test server URL: %s", ts.URL)
+	// Convert URL for Docker Chrome access
+	url := ConvertURLForDockerChrome(ts.URL)
+	t.Logf("Test server URL: %s (Docker: %s)", ts.URL, url)
 
 	// Test 1: Navigate and wait for WebSocket to render content
 	var hasInteractiveBlock bool
 	err = chromedp.Run(ctx,
-		chromedp.Navigate(ts.URL+"/"),
+		chromedp.Navigate(url+"/"),
 		chromedp.Sleep(3*time.Second),
 		chromedp.Evaluate(`document.querySelector('.tinkerdown-interactive-block') !== null`, &hasInteractiveBlock),
 	)

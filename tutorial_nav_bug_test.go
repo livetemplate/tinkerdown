@@ -13,6 +13,8 @@ import (
 	"github.com/livetemplate/tinkerdown/internal/server"
 )
 
+// Note: context import is still needed for http server shutdown
+
 // TestTutorialNavigationDoesNotOverrideSiteNavigation verifies that the
 // TutorialNavigation client-side JavaScript does not create tutorial navigation
 // when site navigation already exists (i.e., in site mode).
@@ -70,23 +72,14 @@ func TestTutorialNavigationDoesNotOverrideSiteNavigation(t *testing.T) {
 		httpServer.Shutdown(ctx)
 	}()
 
-	// Create Chrome context
-	opts := append(chromedp.DefaultExecAllocatorOptions[:],
-		chromedp.Flag("headless", true),
-		chromedp.Flag("disable-gpu", true),
-		chromedp.Flag("no-sandbox", true),
-	)
+	// Setup Docker Chrome
+	chromeCtx, chromeCleanup := SetupDockerChrome(t, 15*time.Second)
+	defer chromeCleanup()
 
-	allocCtx, allocCancel := chromedp.NewExecAllocator(context.Background(), opts...)
-	defer allocCancel()
+	ctx := chromeCtx.Context
 
-	ctx, cancel := chromedp.NewContext(allocCtx)
-	defer cancel()
-
-	ctx, cancel2 := context.WithTimeout(ctx, 15*time.Second)
-	defer cancel2()
-
-	baseURL := fmt.Sprintf("http://%s", addr)
+	// Convert URL for Docker Chrome access
+	baseURL := ConvertURLForDockerChrome(fmt.Sprintf("http://%s", addr))
 
 	// Test: Verify site navigation exists and tutorial navigation does NOT exist
 	var siteNavExists bool

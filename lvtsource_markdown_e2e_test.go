@@ -3,7 +3,6 @@
 package tinkerdown_test
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -134,18 +133,28 @@ sources:
 	return tempDir, cleanup
 }
 
+// markdownTestContext holds all test context for markdown tests
+type markdownTestContext struct {
+	Server      *httptest.Server
+	ChromeCtx   *DockerChromeContext
+	URL         string
+	ConsoleLogs *threadSafeLogs
+	srv         *server.Server
+	enableWatch bool
+}
+
 // setupMarkdownTest creates a test server and chromedp context for markdown tests
-func setupMarkdownTest(t *testing.T, exampleDir string) (*httptest.Server, context.Context, context.CancelFunc, *threadSafeLogs) {
+func setupMarkdownTest(t *testing.T, exampleDir string) (*markdownTestContext, func()) {
 	return setupMarkdownTestInternal(t, exampleDir, false)
 }
 
 // setupMarkdownTestWithWatch creates a test server with file watching enabled
-func setupMarkdownTestWithWatch(t *testing.T, exampleDir string) (*httptest.Server, context.Context, context.CancelFunc, *threadSafeLogs) {
+func setupMarkdownTestWithWatch(t *testing.T, exampleDir string) (*markdownTestContext, func()) {
 	return setupMarkdownTestInternal(t, exampleDir, true)
 }
 
 // setupMarkdownTestInternal is the internal helper for setting up test servers
-func setupMarkdownTestInternal(t *testing.T, exampleDir string, enableWatch bool) (*httptest.Server, context.Context, context.CancelFunc, *threadSafeLogs) {
+func setupMarkdownTestInternal(t *testing.T, exampleDir string, enableWatch bool) (*markdownTestContext, func()) {
 	t.Helper()
 
 	// Create test server - sources are defined in frontmatter
@@ -164,30 +173,15 @@ func setupMarkdownTestInternal(t *testing.T, exampleDir string, enableWatch bool
 	handler := server.WithCompression(srv)
 	ts := httptest.NewServer(handler)
 
-	// Setup chromedp
-	allocCtx, allocCancel := chromedp.NewExecAllocator(context.Background(),
-		append(chromedp.DefaultExecAllocatorOptions[:],
-			chromedp.Flag("headless", true),
-			chromedp.Flag("no-sandbox", true),
-		)...)
+	// Setup Docker Chrome
+	chromeCtx, chromeCleanup := SetupDockerChrome(t, 90*time.Second)
 
-	ctx, ctxCancel := chromedp.NewContext(allocCtx, chromedp.WithLogf(t.Logf))
-	ctx, timeoutCancel := context.WithTimeout(ctx, 90*time.Second)
-
-	// Combined cancel function
-	cancel := func() {
-		timeoutCancel()
-		ctxCancel()
-		allocCancel()
-		if enableWatch {
-			srv.StopWatch()
-		}
-		ts.Close()
-	}
+	// Convert URL for Docker Chrome access
+	url := ConvertURLForDockerChrome(ts.URL)
 
 	// Store console logs for debugging (thread-safe)
 	consoleLogs := &threadSafeLogs{}
-	chromedp.ListenTarget(ctx, func(ev interface{}) {
+	chromedp.ListenTarget(chromeCtx.Context, func(ev any) {
 		if ev, ok := ev.(*runtime.EventConsoleAPICalled); ok {
 			for _, arg := range ev.Args {
 				consoleLogs.append(fmt.Sprintf("[Console] %s", arg.Value))
@@ -195,7 +189,25 @@ func setupMarkdownTestInternal(t *testing.T, exampleDir string, enableWatch bool
 		}
 	})
 
-	return ts, ctx, cancel, consoleLogs
+	testCtx := &markdownTestContext{
+		Server:      ts,
+		ChromeCtx:   chromeCtx,
+		URL:         url,
+		ConsoleLogs: consoleLogs,
+		srv:         srv,
+		enableWatch: enableWatch,
+	}
+
+	// Combined cleanup function
+	cleanup := func() {
+		chromeCleanup()
+		if enableWatch {
+			srv.StopWatch()
+		}
+		ts.Close()
+	}
+
+	return testCtx, cleanup
 }
 
 // TestLvtSourceMarkdownTaskList tests the lvt-source functionality with markdown task lists
@@ -210,23 +222,18 @@ func TestLvtSourceMarkdownTaskList(t *testing.T) {
 	ts := httptest.NewServer(handler)
 	defer ts.Close()
 
-	// Setup chromedp
-	allocCtx, cancel := chromedp.NewExecAllocator(context.Background(),
-		append(chromedp.DefaultExecAllocatorOptions[:],
-			chromedp.Flag("headless", true),
-			chromedp.Flag("no-sandbox", true),
-		)...)
-	defer cancel()
+	// Setup Docker Chrome
+	chromeCtx, cleanup := SetupDockerChrome(t, 60*time.Second)
+	defer cleanup()
 
-	ctx, cancel := chromedp.NewContext(allocCtx, chromedp.WithLogf(t.Logf))
-	defer cancel()
+	ctx := chromeCtx.Context
 
-	ctx, cancel = context.WithTimeout(ctx, 60*time.Second)
-	defer cancel()
+	// Convert URL for Docker Chrome access
+	url := ConvertURLForDockerChrome(ts.URL)
 
 	// Store console logs for debugging
 	var consoleLogs []string
-	chromedp.ListenTarget(ctx, func(ev interface{}) {
+	chromedp.ListenTarget(ctx, func(ev any) {
 		if ev, ok := ev.(*runtime.EventConsoleAPICalled); ok {
 			for _, arg := range ev.Args {
 				consoleLogs = append(consoleLogs, fmt.Sprintf("[Console] %s", arg.Value))
@@ -242,7 +249,7 @@ func TestLvtSourceMarkdownTaskList(t *testing.T) {
 	// Plugin compilation can take 15-20 seconds on first run
 	var hasTaskList bool
 	err = chromedp.Run(ctx,
-		chromedp.Navigate(ts.URL+"/"),
+		chromedp.Navigate(url+"/"),
 		chromedp.Sleep(15*time.Second),
 		chromedp.Evaluate(`document.querySelector('[lvt-source="tasks"] ul') !== null`, &hasTaskList),
 	)
@@ -335,19 +342,21 @@ func TestLvtSourceMarkdownTaskList(t *testing.T) {
 // TestLvtSourceMarkdownToggle tests toggling a task's done state
 func TestLvtSourceMarkdownToggle(t *testing.T) {
 	// Create temp example
-	tempDir, cleanup := createTempMarkdownExample(t)
+	tempDir, tempCleanup := createTempMarkdownExample(t)
+	defer tempCleanup()
+
+	testCtx, cleanup := setupMarkdownTest(t, tempDir)
 	defer cleanup()
 
-	ts, ctx, cancel, consoleLogs := setupMarkdownTest(t, tempDir)
-	defer cancel()
+	ctx := testCtx.ChromeCtx.Context
 
-	t.Logf("Test server URL: %s", ts.URL)
+	t.Logf("Test server URL: %s", testCtx.Server.URL)
 	t.Logf("Temp dir: %s", tempDir)
 
 	// Navigate and wait for content
 	var hasTaskList bool
 	err := chromedp.Run(ctx,
-		chromedp.Navigate(ts.URL+"/"),
+		chromedp.Navigate(testCtx.URL+"/"),
 		chromedp.Sleep(10*time.Second), // Wait for plugin compilation
 		chromedp.Evaluate(`document.querySelector('[lvt-source="tasks"] ul') !== null`, &hasTaskList),
 	)
@@ -359,7 +368,7 @@ func TestLvtSourceMarkdownToggle(t *testing.T) {
 		var htmlContent string
 		chromedp.Run(ctx, chromedp.OuterHTML("html", &htmlContent))
 		t.Logf("HTML (first 2000 chars): %s", htmlContent[:min(2000, len(htmlContent))])
-		t.Logf("Console logs: %v", consoleLogs.get())
+		t.Logf("Console logs: %v", testCtx.ConsoleLogs.get())
 		t.Fatal("Task list was not rendered")
 	}
 	t.Log("Task list rendered")
@@ -410,7 +419,7 @@ func TestLvtSourceMarkdownToggle(t *testing.T) {
 	}
 
 	if !afterChecked {
-		t.Logf("Console logs: %v", consoleLogs.get())
+		t.Logf("Console logs: %v", testCtx.ConsoleLogs.get())
 		t.Fatal("Checkbox should be checked after toggle")
 	}
 	t.Log("Checkbox is now checked")
@@ -433,19 +442,21 @@ func TestLvtSourceMarkdownToggle(t *testing.T) {
 // TestLvtSourceMarkdownToggleBack tests toggling a completed task back to incomplete
 func TestLvtSourceMarkdownToggleBack(t *testing.T) {
 	// Create temp example
-	tempDir, cleanup := createTempMarkdownExample(t)
+	tempDir, tempCleanup := createTempMarkdownExample(t)
+	defer tempCleanup()
+
+	testCtx, cleanup := setupMarkdownTest(t, tempDir)
 	defer cleanup()
 
-	ts, ctx, cancel, consoleLogs := setupMarkdownTest(t, tempDir)
-	defer cancel()
+	ctx := testCtx.ChromeCtx.Context
 
-	t.Logf("Test server URL: %s", ts.URL)
+	t.Logf("Test server URL: %s", testCtx.Server.URL)
 	t.Logf("Temp dir: %s", tempDir)
 
 	// Navigate and wait for content
 	var hasTaskList bool
 	err := chromedp.Run(ctx,
-		chromedp.Navigate(ts.URL+"/"),
+		chromedp.Navigate(testCtx.URL+"/"),
 		chromedp.Sleep(10*time.Second), // Wait for plugin compilation
 		chromedp.Evaluate(`document.querySelector('[lvt-source="tasks"] ul') !== null`, &hasTaskList),
 	)
@@ -457,7 +468,7 @@ func TestLvtSourceMarkdownToggleBack(t *testing.T) {
 		var htmlContent string
 		chromedp.Run(ctx, chromedp.OuterHTML("html", &htmlContent))
 		t.Logf("HTML (first 2000 chars): %s", htmlContent[:min(2000, len(htmlContent))])
-		t.Logf("Console logs: %v", consoleLogs.get())
+		t.Logf("Console logs: %v", testCtx.ConsoleLogs.get())
 		t.Fatal("Task list was not rendered")
 	}
 	t.Log("Task list rendered")
@@ -508,7 +519,7 @@ func TestLvtSourceMarkdownToggleBack(t *testing.T) {
 	}
 
 	if afterChecked {
-		t.Logf("Console logs: %v", consoleLogs.get())
+		t.Logf("Console logs: %v", testCtx.ConsoleLogs.get())
 		t.Fatal("Checkbox should be UNCHECKED after toggle")
 	}
 	t.Log("Checkbox is now unchecked")
@@ -531,18 +542,20 @@ func TestLvtSourceMarkdownToggleBack(t *testing.T) {
 // TestLvtSourceMarkdownAdd tests adding a new task
 func TestLvtSourceMarkdownAdd(t *testing.T) {
 	// Create temp example
-	tempDir, cleanup := createTempMarkdownExample(t)
+	tempDir, tempCleanup := createTempMarkdownExample(t)
+	defer tempCleanup()
+
+	testCtx, cleanup := setupMarkdownTest(t, tempDir)
 	defer cleanup()
 
-	ts, ctx, cancel, consoleLogs := setupMarkdownTest(t, tempDir)
-	defer cancel()
+	ctx := testCtx.ChromeCtx.Context
 
-	t.Logf("Test server URL: %s", ts.URL)
+	t.Logf("Test server URL: %s", testCtx.Server.URL)
 
 	// Navigate and wait for content
 	var hasForm bool
 	err := chromedp.Run(ctx,
-		chromedp.Navigate(ts.URL+"/"),
+		chromedp.Navigate(testCtx.URL+"/"),
 		chromedp.Sleep(10*time.Second), // Wait for plugin compilation
 		chromedp.Evaluate(`document.querySelector('form[lvt-submit="Add"]') !== null`, &hasForm),
 	)
@@ -554,7 +567,7 @@ func TestLvtSourceMarkdownAdd(t *testing.T) {
 		var htmlContent string
 		chromedp.Run(ctx, chromedp.OuterHTML("html", &htmlContent))
 		t.Logf("HTML (first 2000 chars): %s", htmlContent[:min(2000, len(htmlContent))])
-		t.Logf("Console logs: %v", consoleLogs.get())
+		t.Logf("Console logs: %v", testCtx.ConsoleLogs.get())
 		t.Fatal("Add form was not rendered")
 	}
 	t.Log("Add form rendered")
@@ -593,7 +606,7 @@ func TestLvtSourceMarkdownAdd(t *testing.T) {
 	}
 
 	if newCount != initialCount+1 {
-		t.Logf("Console logs: %v", consoleLogs.get())
+		t.Logf("Console logs: %v", testCtx.ConsoleLogs.get())
 		t.Fatalf("Expected %d tasks after add, got %d", initialCount+1, newCount)
 	}
 	t.Logf("Task count increased to %d", newCount)
@@ -643,15 +656,17 @@ func TestLvtSourceMarkdownDelete(t *testing.T) {
 	tempDir, cleanup := createTempMarkdownExample(t)
 	defer cleanup()
 
-	ts, ctx, cancel, consoleLogs := setupMarkdownTest(t, tempDir)
-	defer cancel()
+	testCtx, cleanup := setupMarkdownTest(t, tempDir)
+	defer cleanup()
 
-	t.Logf("Test server URL: %s", ts.URL)
+	ctx := testCtx.ChromeCtx.Context
+
+	t.Logf("Test server URL: %s", testCtx.Server.URL)
 
 	// Navigate and wait for content
 	var hasTaskList bool
 	err := chromedp.Run(ctx,
-		chromedp.Navigate(ts.URL+"/"),
+		chromedp.Navigate(testCtx.URL+"/"),
 		chromedp.Sleep(10*time.Second), // Wait for plugin compilation
 		chromedp.Evaluate(`document.querySelector('[lvt-source="tasks"] ul') !== null`, &hasTaskList),
 	)
@@ -663,7 +678,7 @@ func TestLvtSourceMarkdownDelete(t *testing.T) {
 		var htmlContent string
 		chromedp.Run(ctx, chromedp.OuterHTML("html", &htmlContent))
 		t.Logf("HTML (first 2000 chars): %s", htmlContent[:min(2000, len(htmlContent))])
-		t.Logf("Console logs: %v", consoleLogs.get())
+		t.Logf("Console logs: %v", testCtx.ConsoleLogs.get())
 		t.Fatal("Task list was not rendered")
 	}
 	t.Log("Task list rendered")
@@ -712,7 +727,7 @@ func TestLvtSourceMarkdownDelete(t *testing.T) {
 	}
 
 	if newCount != initialCount-1 {
-		t.Logf("Console logs: %v", consoleLogs.get())
+		t.Logf("Console logs: %v", testCtx.ConsoleLogs.get())
 		t.Fatalf("Expected %d tasks after delete, got %d", initialCount-1, newCount)
 	}
 	t.Logf("Task count decreased to %d", newCount)
@@ -823,18 +838,20 @@ sources:
 
 // TestLvtSourceMarkdownBulletList tests the lvt-source functionality with markdown bullet lists
 func TestLvtSourceMarkdownBulletList(t *testing.T) {
-	tempDir, cleanup := createTempBulletListExample(t)
+	tempDir, tempCleanup := createTempBulletListExample(t)
+	defer tempCleanup()
+
+	testCtx, cleanup := setupMarkdownTest(t, tempDir)
 	defer cleanup()
 
-	ts, ctx, cancel, consoleLogs := setupMarkdownTest(t, tempDir)
-	defer cancel()
+	ctx := testCtx.ChromeCtx.Context
 
-	t.Logf("Test server URL: %s", ts.URL)
+	t.Logf("Test server URL: %s", testCtx.Server.URL)
 
 	// Navigate and wait for content
 	var hasItemList bool
 	err := chromedp.Run(ctx,
-		chromedp.Navigate(ts.URL+"/"),
+		chromedp.Navigate(testCtx.URL+"/"),
 		chromedp.Sleep(10*time.Second),
 		chromedp.Evaluate(`document.querySelector('[lvt-source="items"] ul') !== null`, &hasItemList),
 	)
@@ -846,7 +863,7 @@ func TestLvtSourceMarkdownBulletList(t *testing.T) {
 		var htmlContent string
 		chromedp.Run(ctx, chromedp.OuterHTML("html", &htmlContent))
 		t.Logf("HTML (first 2000 chars): %s", htmlContent[:min(2000, len(htmlContent))])
-		t.Logf("Console logs: %v", consoleLogs.get())
+		t.Logf("Console logs: %v", testCtx.ConsoleLogs.get())
 		t.Fatal("Item list was not rendered")
 	}
 	t.Log("Bullet list rendered")
@@ -967,18 +984,20 @@ sources:
 
 // TestLvtSourceMarkdownTable tests the lvt-source functionality with markdown tables
 func TestLvtSourceMarkdownTable(t *testing.T) {
-	tempDir, cleanup := createTempTableExample(t)
+	tempDir, tempCleanup := createTempTableExample(t)
+	defer tempCleanup()
+
+	testCtx, cleanup := setupMarkdownTest(t, tempDir)
 	defer cleanup()
 
-	ts, ctx, cancel, consoleLogs := setupMarkdownTest(t, tempDir)
-	defer cancel()
+	ctx := testCtx.ChromeCtx.Context
 
-	t.Logf("Test server URL: %s", ts.URL)
+	t.Logf("Test server URL: %s", testCtx.Server.URL)
 
 	// Navigate and wait for content
 	var hasTable bool
 	err := chromedp.Run(ctx,
-		chromedp.Navigate(ts.URL+"/"),
+		chromedp.Navigate(testCtx.URL+"/"),
 		chromedp.Sleep(10*time.Second),
 		chromedp.Evaluate(`document.querySelector('[lvt-source="products"] table') !== null`, &hasTable),
 	)
@@ -990,7 +1009,7 @@ func TestLvtSourceMarkdownTable(t *testing.T) {
 		var htmlContent string
 		chromedp.Run(ctx, chromedp.OuterHTML("html", &htmlContent))
 		t.Logf("HTML (first 2000 chars): %s", htmlContent[:min(2000, len(htmlContent))])
-		t.Logf("Console logs: %v", consoleLogs.get())
+		t.Logf("Console logs: %v", testCtx.ConsoleLogs.get())
 		t.Fatal("Table was not rendered")
 	}
 	t.Log("Table rendered")
@@ -1111,18 +1130,20 @@ sources:
 
 // TestLvtSourceMarkdownExternalFile tests reading data from an external markdown file
 func TestLvtSourceMarkdownExternalFile(t *testing.T) {
-	tempDir, cleanup := createTempExternalFileExample(t)
+	tempDir, tempCleanup := createTempExternalFileExample(t)
+	defer tempCleanup()
+
+	testCtx, cleanup := setupMarkdownTest(t, tempDir)
 	defer cleanup()
 
-	ts, ctx, cancel, consoleLogs := setupMarkdownTest(t, tempDir)
-	defer cancel()
+	ctx := testCtx.ChromeCtx.Context
 
-	t.Logf("Test server URL: %s", ts.URL)
+	t.Logf("Test server URL: %s", testCtx.Server.URL)
 
 	// Navigate and wait for content
 	var hasNoteList bool
 	err := chromedp.Run(ctx,
-		chromedp.Navigate(ts.URL+"/"),
+		chromedp.Navigate(testCtx.URL+"/"),
 		chromedp.Sleep(10*time.Second),
 		chromedp.Evaluate(`document.querySelector('[lvt-source="notes"] ul') !== null`, &hasNoteList),
 	)
@@ -1134,7 +1155,7 @@ func TestLvtSourceMarkdownExternalFile(t *testing.T) {
 		var htmlContent string
 		chromedp.Run(ctx, chromedp.OuterHTML("html", &htmlContent))
 		t.Logf("HTML (first 2000 chars): %s", htmlContent[:min(2000, len(htmlContent))])
-		t.Logf("Console logs: %v", consoleLogs.get())
+		t.Logf("Console logs: %v", testCtx.ConsoleLogs.get())
 		t.Fatal("Note list was not rendered")
 	}
 	t.Log("External file data rendered")
@@ -1237,18 +1258,20 @@ sources:
 
 // TestLvtSourceMarkdownMissingAnchor tests behavior when anchor doesn't exist
 func TestLvtSourceMarkdownMissingAnchor(t *testing.T) {
-	tempDir, cleanup := createTempMissingAnchorExample(t)
+	tempDir, tempCleanup := createTempMissingAnchorExample(t)
+	defer tempCleanup()
+
+	testCtx, cleanup := setupMarkdownTest(t, tempDir)
 	defer cleanup()
 
-	ts, ctx, cancel, _ := setupMarkdownTest(t, tempDir)
-	defer cancel()
+	ctx := testCtx.ChromeCtx.Context
 
-	t.Logf("Test server URL: %s", ts.URL)
+	t.Logf("Test server URL: %s", testCtx.Server.URL)
 
 	// Navigate and wait for content
 	var hasEmptyMessage bool
 	err := chromedp.Run(ctx,
-		chromedp.Navigate(ts.URL+"/"),
+		chromedp.Navigate(testCtx.URL+"/"),
 		chromedp.Sleep(10*time.Second),
 		chromedp.Evaluate(`document.querySelector('#empty-message') !== null`, &hasEmptyMessage),
 	)
@@ -1283,8 +1306,8 @@ func TestLvtSourceMarkdownMissingAnchor(t *testing.T) {
 
 // TestLvtSourceMarkdownUpdate tests updating an item's text
 func TestLvtSourceMarkdownUpdate(t *testing.T) {
-	tempDir, cleanup := createTempMarkdownExample(t)
-	defer cleanup()
+	tempDir, tempCleanup := createTempMarkdownExample(t)
+	defer tempCleanup()
 
 	// Modify index.md to include an update form
 	indexContent, err := os.ReadFile(filepath.Join(tempDir, "index.md"))
@@ -1306,15 +1329,17 @@ func TestLvtSourceMarkdownUpdate(t *testing.T) {
 		t.Fatalf("Failed to write updated index.md: %v", err)
 	}
 
-	ts, ctx, cancel, consoleLogs := setupMarkdownTest(t, tempDir)
-	defer cancel()
+	testCtx, cleanup := setupMarkdownTest(t, tempDir)
+	defer cleanup()
 
-	t.Logf("Test server URL: %s", ts.URL)
+	ctx := testCtx.ChromeCtx.Context
+
+	t.Logf("Test server URL: %s", testCtx.Server.URL)
 
 	// Navigate and wait for content
 	var hasUpdateBtn bool
 	err = chromedp.Run(ctx,
-		chromedp.Navigate(ts.URL+"/"),
+		chromedp.Navigate(testCtx.URL+"/"),
 		chromedp.Sleep(10*time.Second),
 		chromedp.Evaluate(`document.querySelector('.update-btn') !== null`, &hasUpdateBtn),
 	)
@@ -1326,7 +1351,7 @@ func TestLvtSourceMarkdownUpdate(t *testing.T) {
 		var htmlContent string
 		chromedp.Run(ctx, chromedp.OuterHTML("html", &htmlContent))
 		t.Logf("HTML (first 2000 chars): %s", htmlContent[:min(2000, len(htmlContent))])
-		t.Logf("Console logs: %v", consoleLogs.get())
+		t.Logf("Console logs: %v", testCtx.ConsoleLogs.get())
 		t.Fatal("Update button not found")
 	}
 	t.Log("Update button rendered")
@@ -1412,15 +1437,17 @@ sources:
 		t.Fatalf("Failed to write index.md: %v", err)
 	}
 
-	ts, ctx, cancel, consoleLogs := setupMarkdownTest(t, tempDir)
-	defer cancel()
+	testCtx, cleanup := setupMarkdownTest(t, tempDir)
+	defer cleanup()
 
-	t.Logf("Test server URL: %s", ts.URL)
+	ctx := testCtx.ChromeCtx.Context
+
+	t.Logf("Test server URL: %s", testCtx.Server.URL)
 
 	// Navigate and wait for content
 	var hasTasks bool
 	err = chromedp.Run(ctx,
-		chromedp.Navigate(ts.URL+"/"),
+		chromedp.Navigate(testCtx.URL+"/"),
 		chromedp.Sleep(10*time.Second),
 		chromedp.Evaluate(`document.querySelectorAll('[lvt-source="tasks"] li').length > 0`, &hasTasks),
 	)
@@ -1432,7 +1459,7 @@ sources:
 		var htmlContent string
 		chromedp.Run(ctx, chromedp.OuterHTML("html", &htmlContent))
 		t.Logf("HTML (first 2000 chars): %s", htmlContent[:min(2000, len(htmlContent))])
-		t.Logf("Console logs: %v", consoleLogs.get())
+		t.Logf("Console logs: %v", testCtx.ConsoleLogs.get())
 		t.Fatal("Tasks not rendered")
 	}
 	t.Log("Tasks rendered")
@@ -1519,15 +1546,17 @@ sources:
 		t.Fatalf("Failed to write index.md: %v", err)
 	}
 
-	ts, ctx, cancel, consoleLogs := setupMarkdownTest(t, tempDir)
-	defer cancel()
+	testCtx, cleanup := setupMarkdownTest(t, tempDir)
+	defer cleanup()
 
-	t.Logf("Test server URL: %s", ts.URL)
+	ctx := testCtx.ChromeCtx.Context
+
+	t.Logf("Test server URL: %s", testCtx.Server.URL)
 
 	// Navigate and wait for content
 	var hasItems bool
 	err = chromedp.Run(ctx,
-		chromedp.Navigate(ts.URL+"/"),
+		chromedp.Navigate(testCtx.URL+"/"),
 		chromedp.Sleep(10*time.Second),
 		chromedp.Evaluate(`document.querySelectorAll('[lvt-source="items"] li').length > 0`, &hasItems),
 	)
@@ -1539,7 +1568,7 @@ sources:
 		var htmlContent string
 		chromedp.Run(ctx, chromedp.OuterHTML("html", &htmlContent))
 		t.Logf("HTML (first 2000 chars): %s", htmlContent[:min(2000, len(htmlContent))])
-		t.Logf("Console logs: %v", consoleLogs.get())
+		t.Logf("Console logs: %v", testCtx.ConsoleLogs.get())
 		t.Fatal("Items not rendered")
 	}
 	t.Log("Items with special chars rendered")
@@ -1574,19 +1603,21 @@ sources:
 
 // TestLvtSourceMarkdownExternalEdit tests that external file changes trigger a live refresh
 func TestLvtSourceMarkdownExternalEdit(t *testing.T) {
-	tempDir, cleanup := createTempExternalFileExample(t)
-	defer cleanup()
+	tempDir, tempCleanup := createTempExternalFileExample(t)
+	defer tempCleanup()
 
 	// Use watch-enabled test setup for file watching
-	ts, ctx, cancel, consoleLogs := setupMarkdownTestWithWatch(t, tempDir)
-	defer cancel()
+	testCtx, cleanup := setupMarkdownTestWithWatch(t, tempDir)
+	defer cleanup()
 
-	t.Logf("Test server URL: %s", ts.URL)
+	ctx := testCtx.ChromeCtx.Context
+
+	t.Logf("Test server URL: %s", testCtx.Server.URL)
 
 	// Navigate and wait for initial content
 	var hasNotes bool
 	err := chromedp.Run(ctx,
-		chromedp.Navigate(ts.URL+"/"),
+		chromedp.Navigate(testCtx.URL+"/"),
 		chromedp.Sleep(10*time.Second),
 		chromedp.Evaluate(`document.querySelector('[lvt-source="notes"] ul') !== null`, &hasNotes),
 	)
@@ -1598,7 +1629,7 @@ func TestLvtSourceMarkdownExternalEdit(t *testing.T) {
 		var htmlContent string
 		chromedp.Run(ctx, chromedp.OuterHTML("html", &htmlContent))
 		t.Logf("HTML (first 2000 chars): %s", htmlContent[:min(2000, len(htmlContent))])
-		t.Logf("Console logs: %v", consoleLogs.get())
+		t.Logf("Console logs: %v", testCtx.ConsoleLogs.get())
 		t.Fatal("Notes list not rendered initially")
 	}
 	t.Log("Initial notes rendered")
@@ -1660,7 +1691,7 @@ func TestLvtSourceMarkdownExternalEdit(t *testing.T) {
 
 	if finalCount != 3 {
 		t.Logf("Expected 3 notes after external edit, got %d", finalCount)
-		t.Logf("Console logs: %v", consoleLogs.get())
+		t.Logf("Console logs: %v", testCtx.ConsoleLogs.get())
 		// This is expected if file watching is not working yet
 		t.Skip("File watching not fully implemented - test would pass when Phase 3 is complete")
 	}
@@ -1676,15 +1707,17 @@ func TestLvtSourceMarkdownExternalEdit(t *testing.T) {
 // TestLvtSourceMarkdownConflictCopy tests that conflict files are created when
 // there's a concurrent modification to the markdown file.
 func TestLvtSourceMarkdownConflictCopy(t *testing.T) {
-	tempDir, cleanup := createTempMarkdownExample(t)
+	tempDir, tempCleanup := createTempMarkdownExample(t)
+	defer tempCleanup()
+
+	testCtx, cleanup := setupMarkdownTest(t, tempDir)
 	defer cleanup()
 
-	ts, ctx, cancel, consoleLogs := setupMarkdownTest(t, tempDir)
-	defer cancel()
+	ctx := testCtx.ChromeCtx.Context
 
 	// Navigate to the page
 	err := chromedp.Run(ctx,
-		chromedp.Navigate(ts.URL),
+		chromedp.Navigate(testCtx.URL),
 		chromedp.WaitVisible(`[lvt-source="tasks"]`, chromedp.ByQuery),
 	)
 	if err != nil {
@@ -1747,7 +1780,7 @@ func TestLvtSourceMarkdownConflictCopy(t *testing.T) {
 	}
 
 	// Log console for debugging
-	t.Logf("Console logs: %v", consoleLogs.get())
+	t.Logf("Console logs: %v", testCtx.ConsoleLogs.get())
 
 	if len(files) > 0 {
 		t.Logf("Conflict file(s) created: %v", files)

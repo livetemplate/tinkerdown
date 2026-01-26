@@ -3,7 +3,6 @@
 package tinkerdown_test
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -37,20 +36,11 @@ func TestSearchFunctionality(t *testing.T) {
 	ts := httptest.NewServer(handler)
 	defer ts.Close()
 
-	// Setup context with output options
-	allocCtx, cancel := chromedp.NewExecAllocator(context.Background(),
-		append(chromedp.DefaultExecAllocatorOptions[:],
-			chromedp.Flag("headless", true),
-			chromedp.Flag("no-sandbox", true),
-		)...)
-	defer cancel()
+	// Setup Docker Chrome for reliable CI execution
+	chromeCtx, cleanup := SetupDockerChrome(t, 60*time.Second)
+	defer cleanup()
 
-	ctx, cancel := chromedp.NewContext(allocCtx, chromedp.WithLogf(t.Logf))
-	defer cancel()
-
-	// Set timeout for the entire test
-	ctx, cancel = context.WithTimeout(ctx, 60*time.Second)
-	defer cancel()
+	ctx := chromeCtx.Context
 
 	// Store console logs
 	var consoleLogs []string
@@ -62,13 +52,16 @@ func TestSearchFunctionality(t *testing.T) {
 		}
 	})
 
+	// Convert URL for Docker Chrome access
+	url := ConvertURLForDockerChrome(ts.URL)
+
 	// Navigate to the docs site
 	var htmlContent string
 	var searchButtonExists bool
 	var modalHTML string
 
 	err = chromedp.Run(ctx,
-		chromedp.Navigate(ts.URL+"/"),
+		chromedp.Navigate(url+"/"),
 		chromedp.WaitVisible(".tinkerdown-nav-sidebar", chromedp.ByQuery),
 		chromedp.Sleep(500*time.Millisecond), // Wait for client to initialize
 		chromedp.OuterHTML("html", &htmlContent),
@@ -376,8 +369,10 @@ func TestSearchFunctionality(t *testing.T) {
 
 	var searchButtonInNonSiteMode bool
 
+	// Convert counterTS URL for Docker Chrome access
+	counterURL := ConvertURLForDockerChrome(counterTS.URL)
 	err = chromedp.Run(ctx,
-		chromedp.Navigate(counterTS.URL+"/"),
+		chromedp.Navigate(counterURL+"/"),
 		chromedp.Sleep(500*time.Millisecond),
 		chromedp.Evaluate(`document.querySelector('.search-button') !== null`, &searchButtonInNonSiteMode),
 	)

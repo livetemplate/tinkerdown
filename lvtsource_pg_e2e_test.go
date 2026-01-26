@@ -21,6 +21,8 @@ import (
 	"github.com/livetemplate/tinkerdown/internal/server"
 )
 
+// Note: context import is still needed for setupTestDatabase function
+
 // TestLvtSourcePostgres tests the lvt-source functionality with PostgreSQL
 // This test verifies that:
 // 1. lvt-source="users" fetches data from the configured PostgreSQL query
@@ -79,23 +81,18 @@ func TestLvtSourcePostgres(t *testing.T) {
 	ts := httptest.NewServer(handler)
 	defer ts.Close()
 
-	// Setup chromedp
-	allocCtx, cancel := chromedp.NewExecAllocator(context.Background(),
-		append(chromedp.DefaultExecAllocatorOptions[:],
-			chromedp.Flag("headless", true),
-			chromedp.Flag("no-sandbox", true),
-		)...)
-	defer cancel()
+	// Setup Docker Chrome
+	chromeCtx, chromeCleanup := SetupDockerChrome(t, 60*time.Second)
+	defer chromeCleanup()
 
-	ctx, cancel := chromedp.NewContext(allocCtx, chromedp.WithLogf(t.Logf))
-	defer cancel()
+	ctx := chromeCtx.Context
 
-	ctx, cancel = context.WithTimeout(ctx, 60*time.Second)
-	defer cancel()
+	// Convert URL for Docker Chrome access
+	url := ConvertURLForDockerChrome(ts.URL)
 
 	// Store console logs for debugging
 	var consoleLogs []string
-	chromedp.ListenTarget(ctx, func(ev interface{}) {
+	chromedp.ListenTarget(ctx, func(ev any) {
 		if ev, ok := ev.(*runtime.EventConsoleAPICalled); ok {
 			for _, arg := range ev.Args {
 				consoleLogs = append(consoleLogs, fmt.Sprintf("[Console] %s", arg.Value))
@@ -108,7 +105,7 @@ func TestLvtSourcePostgres(t *testing.T) {
 	// Test 1: Navigate and wait for WebSocket to render content
 	var hasInteractiveBlock bool
 	err = chromedp.Run(ctx,
-		chromedp.Navigate(ts.URL+"/"),
+		chromedp.Navigate(url+"/"),
 		chromedp.Sleep(3*time.Second),
 		chromedp.Evaluate(`document.querySelector('.tinkerdown-interactive-block') !== null`, &hasInteractiveBlock),
 	)
