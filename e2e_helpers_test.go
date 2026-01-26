@@ -1,5 +1,13 @@
 //go:build !ci
 
+// Package tinkerdown E2E test helpers.
+//
+// NOTE: This file is intentionally duplicated in e2e_helpers_external_test.go
+// because Go does not allow sharing code between internal tests (package tinkerdown)
+// and external tests (package tinkerdown_test) without exporting it. Since these
+// helpers are test-only infrastructure, we duplicate rather than export.
+// The only differences are: package declaration and container name prefix.
+
 package tinkerdown
 
 import (
@@ -16,7 +24,8 @@ import (
 )
 
 const (
-	dockerImage           = "chromedp/headless-shell:latest"
+	// Pin to specific version for reproducible CI builds
+	dockerImage           = "chromedp/headless-shell:131.0.6778.264"
 	chromeContainerPrefix = "chrome-e2e-tinkerdown-"
 )
 
@@ -96,7 +105,7 @@ func startDockerChrome(t *testing.T, debugPort int) error {
 	}
 
 	containerName := fmt.Sprintf("%s%d", chromeContainerPrefix, debugPort)
-	cleanupContainerByName(t, containerName)
+	cleanupContainerByName(containerName)
 
 	// Check if image exists, if not try to pull it (with timeout)
 	checkCmd := exec.Command("docker", "image", "inspect", dockerImage)
@@ -140,8 +149,10 @@ func startDockerChrome(t *testing.T, debugPort int) error {
 	chromeURL := fmt.Sprintf("http://localhost:%d/json/version", debugPort)
 	ready := false
 	var lastErr error
+	// Use HTTP client with timeout to avoid hanging indefinitely
+	httpClient := &http.Client{Timeout: 2 * time.Second}
 	for i := 0; i < 120; i++ { // 60 seconds
-		resp, err := http.Get(chromeURL)
+		resp, err := httpClient.Get(chromeURL)
 		if err == nil {
 			resp.Body.Close()
 			ready = true
@@ -187,7 +198,8 @@ func stopDockerChrome(t *testing.T, debugPort int) {
 }
 
 // cleanupContainerByName removes any existing container with the given name.
-func cleanupContainerByName(t *testing.T, name string) {
+// Errors are ignored since the container may not exist.
+func cleanupContainerByName(name string) {
 	rmCmd := exec.Command("docker", "rm", "-f", name)
 	rmCmd.CombinedOutput() // Ignore errors - container may not exist
 }
