@@ -9,7 +9,8 @@ import (
 	"github.com/livetemplate/tinkerdown/cmd/tinkerdown/commands"
 )
 
-const version = "0.1.0-dev"
+// version is set via ldflags during build: -ldflags="-X main.version=1.0.0"
+var version = "dev"
 
 func main() {
 	if len(os.Args) < 2 {
@@ -38,10 +39,10 @@ func main() {
 				skipNext = false
 				continue
 			}
-			if strings.HasPrefix(arg, "--template=") {
-				templateName = strings.TrimPrefix(arg, "--template=")
-			} else if strings.HasPrefix(arg, "-t=") {
-				templateName = strings.TrimPrefix(arg, "-t=")
+			if val, ok := strings.CutPrefix(arg, "--template="); ok {
+				templateName = val
+			} else if val, ok := strings.CutPrefix(arg, "-t="); ok {
+				templateName = val
 			} else if arg == "--template" || arg == "-t" {
 				// Handle space-separated: -t todo or --template todo
 				if i+1 < len(args) {
