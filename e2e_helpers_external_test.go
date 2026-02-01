@@ -24,8 +24,9 @@ import (
 )
 
 const (
-	// Pin to specific version for reproducible CI builds
-	dockerImage           = "chromedp/headless-shell:131.0.6778.264"
+	// Use stable tag for reliable CI builds - specific version 131.0.6778.264
+	// was removed from Docker Hub
+	dockerImage           = "chromedp/headless-shell:stable"
 	chromeContainerPrefix = "chrome-e2e-tinkerdown-ext-"
 )
 
