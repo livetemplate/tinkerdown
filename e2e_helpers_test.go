@@ -78,9 +78,9 @@ func SetupDockerChrome(t *testing.T, timeout time.Duration) (*DockerChromeContex
 }
 
 // GetChromeTestURL returns the URL for Chrome (in Docker) to access the test server.
-// Chrome container uses host.docker.internal to reach the host on all platforms.
+// With --network host mode, Chrome accesses localhost directly.
 func GetChromeTestURL(port int) string {
-	return fmt.Sprintf("http://host.docker.internal:%d", port)
+	return fmt.Sprintf("http://localhost:%d", port)
 }
 
 // getFreePort asks the kernel for a free open port that is ready to use.
@@ -127,18 +127,17 @@ func startDockerChrome(t *testing.T, debugPort int) error {
 		t.Log("Docker image pulled successfully")
 	}
 
-	// Start the container
+	// Start the container with --network host for reliable localhost access on Linux CI
 	t.Log("Starting Chrome headless Docker container...")
-	portMapping := fmt.Sprintf("%d:9222", debugPort)
 
 	cmd := exec.Command("docker", "run", "-d",
 		"--rm",
+		"--network", "host",
 		"--memory", "512m",
 		"--cpus", "0.5",
-		"-p", portMapping,
 		"--name", containerName,
-		"--add-host", "host.docker.internal:host-gateway",
 		dockerImage,
+		"--remote-debugging-port="+fmt.Sprintf("%d", debugPort),
 	)
 
 	if _, err := cmd.Output(); err != nil {
@@ -222,12 +221,12 @@ func WaitForServer(t *testing.T, serverURL string, timeout time.Duration) {
 	t.Fatalf("Server at %s failed to become ready within %v", serverURL, timeout)
 }
 
-// ConvertURLForDockerChrome converts an httptest URL (like http://127.0.0.1:12345)
-// to a URL accessible from Docker Chrome (http://host.docker.internal:12345).
+// ConvertURLForDockerChrome converts an httptest URL for Docker Chrome access.
+// With --network host mode, Chrome accesses localhost directly, so minimal conversion needed.
 func ConvertURLForDockerChrome(httptestURL string) string {
 	// httptest URLs are like "http://127.0.0.1:12345" or "http://[::1]:12345"
-	// We need to replace the host with host.docker.internal
-	url := strings.Replace(httptestURL, "127.0.0.1", "host.docker.internal", 1)
-	url = strings.Replace(url, "[::1]", "host.docker.internal", 1)
+	// With --network host, we just normalize to localhost
+	url := strings.Replace(httptestURL, "127.0.0.1", "localhost", 1)
+	url = strings.Replace(url, "[::1]", "localhost", 1)
 	return url
 }
