@@ -9,8 +9,7 @@ GOFLAGS=-ldflags="-s -w"
 
 # Get version from git tag or use dev
 VERSION?=$(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
-BUILD_TIME=$(shell date -u '+%Y-%m-%d_%H:%M:%S')
-LDFLAGS=-ldflags "-s -w -X main.version=$(VERSION) -X main.buildTime=$(BUILD_TIME)"
+LDFLAGS=-ldflags "-s -w -X main.version=$(VERSION)"
 
 .PHONY: help
 help: ## Show this help message
