@@ -154,16 +154,22 @@ jobs:
             **Manual installation:**
             ```bash
             # macOS Apple Silicon
-            curl -L https://github.com/livetemplate/tinkerdown/releases/download/v${{ steps.version.outputs.version }}/tinkerdown-darwin-arm64.tar.gz | tar xz
-            sudo mv tinkerdown /usr/local/bin/
+            TMPDIR="$(mktemp -d)" && \
+              curl -L https://github.com/livetemplate/tinkerdown/releases/download/v${{ steps.version.outputs.version }}/tinkerdown-darwin-arm64.tar.gz | tar xz -C "$TMPDIR" && \
+              sudo install -m 0755 "$TMPDIR/tinkerdown" /usr/local/bin/tinkerdown && \
+              rm -rf "$TMPDIR"
 
             # macOS Intel
-            curl -L https://github.com/livetemplate/tinkerdown/releases/download/v${{ steps.version.outputs.version }}/tinkerdown-darwin-amd64.tar.gz | tar xz
-            sudo mv tinkerdown /usr/local/bin/
+            TMPDIR="$(mktemp -d)" && \
+              curl -L https://github.com/livetemplate/tinkerdown/releases/download/v${{ steps.version.outputs.version }}/tinkerdown-darwin-amd64.tar.gz | tar xz -C "$TMPDIR" && \
+              sudo install -m 0755 "$TMPDIR/tinkerdown" /usr/local/bin/tinkerdown && \
+              rm -rf "$TMPDIR"
 
             # Linux
-            curl -L https://github.com/livetemplate/tinkerdown/releases/download/v${{ steps.version.outputs.version }}/tinkerdown-linux-amd64.tar.gz | tar xz
-            sudo mv tinkerdown /usr/local/bin/
+            TMPDIR="$(mktemp -d)" && \
+              curl -L https://github.com/livetemplate/tinkerdown/releases/download/v${{ steps.version.outputs.version }}/tinkerdown-linux-amd64.tar.gz | tar xz -C "$TMPDIR" && \
+              sudo install -m 0755 "$TMPDIR/tinkerdown" /usr/local/bin/tinkerdown && \
+              rm -rf "$TMPDIR"
             ```
 
             ### Verify Installation
