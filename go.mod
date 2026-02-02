@@ -9,7 +9,7 @@ require (
 	github.com/gorilla/websocket v1.5.3
 	github.com/lib/pq v1.10.9
 	github.com/livetemplate/components v0.0.0-20251224004709-1f8c1de230b4
-	github.com/livetemplate/livetemplate v0.8.0
+	github.com/livetemplate/livetemplate v0.8.2
 	github.com/stretchr/testify v1.11.0
 	github.com/tetratelabs/wazero v1.11.0
 	github.com/wailsapp/wails/v2 v2.11.0
