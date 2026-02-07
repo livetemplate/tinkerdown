@@ -32,8 +32,11 @@ Thumbs.db
 # Test artifacts
 testdata/tmp/
 *.sqlite
+*.sqlite-*
 coverage.out
 coverage.html
+*.log
+.env*
 
 # Development files
 .claude/

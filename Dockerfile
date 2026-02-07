@@ -9,14 +9,14 @@ COPY client/ ./
 RUN npm run build
 
 # Build stage 2: Build Go binary
-FROM golang:1.24-alpine AS go-builder
+FROM golang:1.25-alpine AS go-builder
 
 # Install git for version info and ca-certificates for HTTPS
 RUN apk add --no-cache git ca-certificates
 
 WORKDIR /app
 
-# Allow Go to download required toolchain version automatically
+# Allow Go to download required toolchain version if go.mod specifies newer
 ENV GOTOOLCHAIN=auto
 
 # Copy go mod files first for better caching
@@ -26,10 +26,13 @@ RUN go mod download
 # Copy source code
 COPY . .
 
-# Copy built client assets from previous stage
+# Copy built client assets from previous stage (JS, CSS, and source maps)
 COPY --from=client-builder /app/client/dist/ ./client/dist/
 RUN mkdir -p internal/assets/client && \
-    cp client/dist/tinkerdown-client.browser.* internal/assets/client/
+    cp client/dist/tinkerdown-client.browser.js internal/assets/client/ && \
+    cp client/dist/tinkerdown-client.browser.js.map internal/assets/client/ && \
+    cp client/dist/tinkerdown-client.browser.css internal/assets/client/ && \
+    cp client/dist/tinkerdown-client.browser.css.map internal/assets/client/
 
 # Build with optimizations and version info
 ARG VERSION=dev
