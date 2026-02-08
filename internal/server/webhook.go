@@ -670,8 +670,19 @@ func (e *webhookActionExecutor) executeHTTPAction(action *config.Action, data ma
 		}
 	}
 
-	// Execute request with timeout
-	client := &http.Client{Timeout: 30 * time.Second}
+	// Execute request with timeout and SSRF-safe redirect checking
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 10 {
+				return fmt.Errorf("too many redirects")
+			}
+			if err := security.ValidateHTTPURL(req.URL.String()); err != nil {
+				return fmt.Errorf("redirect blocked: %w", err)
+			}
+			return nil
+		},
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("HTTP request failed: %w", err)

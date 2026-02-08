@@ -489,8 +489,8 @@ func TestExecuteSQLAction_SourceNotFound(t *testing.T) {
 
 func TestExecuteHTTPAction(t *testing.T) {
 	// Bypass SSRF validation for mock server tests
-	security.TestBypassSSRF = true
-	defer func() { security.TestBypassSSRF = false }()
+	security.SetTestBypassSSRF(true)
+	t.Cleanup(func() { security.SetTestBypassSSRF(false) })
 
 	tests := []struct {
 		name           string
@@ -601,8 +601,8 @@ func TestExecuteHTTPAction(t *testing.T) {
 
 func TestExecuteHTTPAction_BodySizeLimit(t *testing.T) {
 	// Bypass SSRF validation for this test
-	security.TestBypassSSRF = true
-	defer func() { security.TestBypassSSRF = false }()
+	security.SetTestBypassSSRF(true)
+	t.Cleanup(func() { security.SetTestBypassSSRF(false) })
 
 	state := &GenericState{}
 

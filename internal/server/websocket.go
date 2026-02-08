@@ -50,12 +50,20 @@ func checkWebSocketOrigin(r *http.Request, allowedOrigins []string) bool {
 		}
 	}
 
-	// Default: same-origin policy — origin host must match request host
+	// Default: same-origin policy — origin host must match request host,
+	// and scheme must match (http→ws, https→wss)
 	originURL, err := url.Parse(origin)
 	if err != nil {
 		return false
 	}
-	return originURL.Host == r.Host
+	if originURL.Host != r.Host {
+		return false
+	}
+	// Validate scheme consistency: reject http origins on TLS connections and vice versa
+	if r.TLS != nil && originURL.Scheme != "https" {
+		return false
+	}
+	return true
 }
 
 // ExpressionsBlockID is the special block ID used for routing expression update messages.

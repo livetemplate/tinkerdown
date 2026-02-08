@@ -18,10 +18,17 @@ import (
 
 // CORSMiddleware adds CORS headers to responses.
 // If origins is empty or nil, CORS headers are not added.
-func CORSMiddleware(origins []string) func(http.Handler) http.Handler {
+// authHeaderName is included in Access-Control-Allow-Headers when non-empty.
+func CORSMiddleware(origins []string, authHeaderName string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		if len(origins) == 0 {
 			return next
+		}
+
+		// Build allowed headers list, including the configured auth header
+		allowHeaders := "Content-Type, Authorization, X-API-Key"
+		if authHeaderName != "" && authHeaderName != "Authorization" && authHeaderName != "X-API-Key" {
+			allowHeaders += ", " + authHeaderName
 		}
 
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -50,7 +57,7 @@ func CORSMiddleware(origins []string) func(http.Handler) http.Handler {
 					w.Header().Set("Access-Control-Allow-Origin", origin)
 				}
 				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-				w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-API-Key")
+				w.Header().Set("Access-Control-Allow-Headers", allowHeaders)
 				w.Header().Set("Access-Control-Max-Age", "86400") // 24 hours
 			}
 
@@ -73,20 +80,25 @@ func SecurityHeadersMiddleware() func(http.Handler) http.Handler {
 			w.Header().Set("X-Content-Type-Options", "nosniff")
 			w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
 			// CSP: allow self, inline styles (needed for PicoCSS and LVT rendering),
-			// unsafe-eval (needed for Mermaid.js), WebSocket connections, and data: URIs for fonts/images
+			// unsafe-eval (needed for Mermaid.js), and data: URIs for fonts/images.
+			// connect-src 'self' covers same-origin WebSocket (ws/wss) connections.
 			w.Header().Set("Content-Security-Policy",
 				"default-src 'self'; "+
 					"script-src 'self' 'unsafe-inline' 'unsafe-eval'; "+
 					"style-src 'self' 'unsafe-inline'; "+
 					"img-src 'self' data: https:; "+
 					"font-src 'self' data:; "+
-					"connect-src 'self' ws: wss:; "+
+					"connect-src 'self'; "+
 					"frame-ancestors 'none'")
 
 			next.ServeHTTP(w, r)
 		})
 	}
 }
+
+// maxTrackedIPs is the maximum number of unique IPs tracked by the rate limiter
+// to prevent memory exhaustion from IP rotation attacks.
+const maxTrackedIPs = 10000
 
 // RateLimitMiddleware limits requests using a token bucket algorithm with per-IP tracking.
 // rps is the rate limit in requests per second, burst is the maximum burst size.
@@ -99,31 +111,39 @@ func RateLimitMiddleware(rps float64, burst int) func(http.Handler) http.Handler
 	var (
 		limiters = make(map[string]*ipLimiter)
 		mu       sync.Mutex
+		once     sync.Once
 	)
 
-	// Cleanup stale limiters every 5 minutes
-	go func() {
-		ticker := time.NewTicker(5 * time.Minute)
-		defer ticker.Stop()
-		for range ticker.C {
-			mu.Lock()
-			now := time.Now()
-			for ip, lim := range limiters {
-				if now.Sub(lim.lastSeen) > 10*time.Minute {
-					delete(limiters, ip)
-				}
-			}
-			mu.Unlock()
-		}
-	}()
-
 	return func(next http.Handler) http.Handler {
+		// Start cleanup goroutine only once, even if the middleware wrapper is called multiple times
+		once.Do(func() {
+			go func() {
+				ticker := time.NewTicker(5 * time.Minute)
+				defer ticker.Stop()
+				for range ticker.C {
+					mu.Lock()
+					now := time.Now()
+					for ip, lim := range limiters {
+						if now.Sub(lim.lastSeen) > 10*time.Minute {
+							delete(limiters, ip)
+						}
+					}
+					mu.Unlock()
+				}
+			}()
+		})
+
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ip := getClientIP(r)
 
 			mu.Lock()
 			lim, exists := limiters[ip]
 			if !exists {
+				if len(limiters) >= maxTrackedIPs {
+					mu.Unlock()
+					writeJSONError(w, http.StatusServiceUnavailable, "rate limiter capacity exceeded")
+					return
+				}
 				lim = &ipLimiter{
 					limiter:  rate.NewLimiter(rate.Limit(rps), burst),
 					lastSeen: time.Now(),
@@ -135,10 +155,8 @@ func RateLimitMiddleware(rps float64, burst int) func(http.Handler) http.Handler
 			mu.Unlock()
 
 			if !lim.limiter.Allow() {
-				w.Header().Set("Content-Type", "application/json")
 				w.Header().Set("Retry-After", "1")
-				w.WriteHeader(http.StatusTooManyRequests)
-				w.Write([]byte(`{"error": "rate limit exceeded"}`))
+				writeJSONError(w, http.StatusTooManyRequests, "rate limit exceeded")
 				return
 			}
 			next.ServeHTTP(w, r)
@@ -147,20 +165,32 @@ func RateLimitMiddleware(rps float64, burst int) func(http.Handler) http.Handler
 }
 
 // getClientIP extracts the client IP from the request.
+// It only trusts X-Forwarded-For / X-Real-IP when the immediate peer is a
+// loopback or private address (i.e., behind a reverse proxy).
 func getClientIP(r *http.Request) string {
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		if parts := strings.SplitN(xff, ",", 2); len(parts) > 0 {
-			return strings.TrimSpace(parts[0])
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+
+	peerIP := net.ParseIP(host)
+	trustedProxy := peerIP != nil && (peerIP.IsLoopback() || peerIP.IsPrivate())
+
+	if trustedProxy {
+		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+			if parts := strings.SplitN(xff, ",", 2); len(parts) > 0 {
+				return strings.TrimSpace(parts[0])
+			}
+		}
+		if xri := r.Header.Get("X-Real-IP"); xri != "" {
+			return strings.TrimSpace(xri)
 		}
 	}
-	if xri := r.Header.Get("X-Real-IP"); xri != "" {
-		return strings.TrimSpace(xri)
+
+	if peerIP != nil {
+		return peerIP.String()
 	}
-	ip, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-	return ip
+	return host
 }
 
 // authContextKey is the type for auth-related context keys.
@@ -291,5 +321,5 @@ func secureCompare(a, b string) bool {
 func writeJSONError(w http.ResponseWriter, status int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(map[string]string{"error": message})
+	_ = json.NewEncoder(w).Encode(map[string]string{"error": message})
 }

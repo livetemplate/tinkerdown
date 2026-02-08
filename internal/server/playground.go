@@ -5,6 +5,7 @@ import (
 	"embed"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -106,7 +107,13 @@ func (h *PlaygroundHandler) HandleRender(w http.ResponseWriter, r *http.Request)
 
 	var req RenderRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.jsonError(w, "Invalid JSON or request too large (max 1 MB)", http.StatusBadRequest)
+		// Distinguish between body too large (413) and malformed JSON (400)
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			h.jsonError(w, "Request too large (max 1 MB)", http.StatusRequestEntityTooLarge)
+		} else {
+			h.jsonError(w, "Invalid JSON", http.StatusBadRequest)
+		}
 		return
 	}
 

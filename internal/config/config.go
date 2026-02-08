@@ -549,12 +549,14 @@ func (c *APIConfig) GetRateLimitBurst() int {
 	return c.RateLimit.Burst
 }
 
-// IsAuthEnabled returns true if API authentication is configured
+// IsAuthEnabled returns true if API authentication is configured.
+// It checks the raw config value (not env-expanded) so that a configured
+// but missing env var is treated as "auth intended" rather than silently disabled.
 func (c *APIConfig) IsAuthEnabled() bool {
 	if c == nil || c.Auth == nil {
 		return false
 	}
-	return c.Auth.GetAPIKey() != "" || len(c.Auth.Keys) > 0
+	return c.Auth.APIKey != "" || len(c.Auth.Keys) > 0
 }
 
 // GetAPIKey returns the configured API key with environment variable expansion

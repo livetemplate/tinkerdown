@@ -6,16 +6,24 @@ import (
 	"net"
 	"net/url"
 	"strings"
+	"sync/atomic"
 )
 
-// TestBypassSSRF is a testing hook to bypass SSRF validation.
-// This should only be set in tests.
-var TestBypassSSRF bool
+// testBypassSSRF is a testing hook to bypass SSRF validation.
+// Use SetTestBypassSSRF to toggle it safely from tests.
+var testBypassSSRF atomic.Bool
+
+// SetTestBypassSSRF enables or disables the SSRF validation bypass for testing.
+// It is safe for concurrent use.
+func SetTestBypassSSRF(enabled bool) {
+	testBypassSSRF.Store(enabled)
+}
 
 // ValidateHTTPURL checks for SSRF vulnerabilities by blocking requests to internal networks.
 // It rejects localhost, private IP ranges, link-local addresses, and cloud metadata endpoints.
+// Hostnames are resolved to detect DNS rebinding attacks targeting internal addresses.
 func ValidateHTTPURL(rawURL string) error {
-	if TestBypassSSRF {
+	if testBypassSSRF.Load() {
 		return nil
 	}
 	parsed, err := url.Parse(rawURL)
@@ -41,31 +49,43 @@ func ValidateHTTPURL(rawURL string) error {
 
 	// Parse as IP address
 	ip := net.ParseIP(host)
-	if ip == nil {
-		// Not an IP address - could be a hostname that resolves to internal IP.
-		// A more complete solution would resolve the hostname and check the IP.
-		return nil
+	if ip != nil {
+		return validateIP(ip)
 	}
 
-	// Block loopback addresses (127.0.0.0/8, ::1)
+	// Hostname: resolve and check all resulting IPs to prevent DNS rebinding.
+	// If resolution fails (e.g., non-existent domain), allow the request — the
+	// actual HTTP call will fail anyway. Only block when resolved IPs are internal.
+	// Note: This does not fully prevent DNS rebinding with TTL=0 tricks where the
+	// DNS response changes between validation and the actual HTTP request.
+	addrs, err := net.LookupHost(host)
+	if err == nil {
+		for _, addr := range addrs {
+			resolved := net.ParseIP(addr)
+			if resolved != nil {
+				if err := validateIP(resolved); err != nil {
+					return fmt.Errorf("hostname resolves to blocked address: %w", err)
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+// validateIP checks a single IP against blocked ranges.
+func validateIP(ip net.IP) error {
 	if ip.IsLoopback() {
 		return fmt.Errorf("requests to loopback addresses are not allowed")
 	}
-
-	// Block private network addresses
 	if ip.IsPrivate() {
 		return fmt.Errorf("requests to private network addresses are not allowed")
 	}
-
-	// Block link-local addresses (169.254.0.0/16, fe80::/10)
 	if ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
 		return fmt.Errorf("requests to link-local addresses are not allowed")
 	}
-
-	// Block unspecified addresses (0.0.0.0, ::)
 	if ip.IsUnspecified() {
 		return fmt.Errorf("requests to unspecified addresses are not allowed")
 	}
-
 	return nil
 }

@@ -93,8 +93,12 @@ func NewWithConfig(rootDir string, cfg *config.Config) *Server {
 			cfg.API.GetRateLimitBurst(),
 		)(handler)
 
-		// Apply CORS middleware
-		handler = CORSMiddleware(cfg.API.GetCORSOrigins())(handler)
+		// Apply CORS middleware (pass auth header name for preflight)
+		authHeader := ""
+		if cfg.API.Auth != nil {
+			authHeader = cfg.API.Auth.GetHeaderName()
+		}
+		handler = CORSMiddleware(cfg.API.GetCORSOrigins(), authHeader)(handler)
 
 		// Apply security headers (outermost)
 		handler = SecurityHeadersMiddleware()(handler)
@@ -313,10 +317,19 @@ func (s *Server) Routes() []*Route {
 
 // ServeHTTP implements http.Handler.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// Security headers for all responses
+	// Security headers applied via SecurityHeadersMiddleware on API routes.
+	// Apply same headers to all other routes for consistency.
 	w.Header().Set("X-Frame-Options", "DENY")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+	w.Header().Set("Content-Security-Policy",
+		"default-src 'self'; "+
+			"script-src 'self' 'unsafe-inline' 'unsafe-eval'; "+
+			"style-src 'self' 'unsafe-inline'; "+
+			"img-src 'self' data: https:; "+
+			"font-src 'self' data:; "+
+			"connect-src 'self'; "+
+			"frame-ancestors 'none'")
 
 	// Health endpoint (always available, especially important in headless mode)
 	if r.URL.Path == "/health" {

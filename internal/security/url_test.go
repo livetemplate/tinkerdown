@@ -53,11 +53,19 @@ func TestValidateHTTPURL(t *testing.T) {
 }
 
 func TestValidateHTTPURL_TestBypass(t *testing.T) {
-	TestBypassSSRF = true
-	defer func() { TestBypassSSRF = false }()
+	SetTestBypassSSRF(true)
+	t.Cleanup(func() { SetTestBypassSSRF(false) })
 
 	// With bypass enabled, even localhost should be allowed
 	if err := ValidateHTTPURL("http://localhost/admin"); err != nil {
 		t.Errorf("ValidateHTTPURL() with bypass should allow localhost, got: %v", err)
+	}
+}
+
+func TestValidateHTTPURL_DNSRebinding(t *testing.T) {
+	// Hostnames that resolve to loopback should be blocked
+	err := ValidateHTTPURL("http://localhost.localdomain/admin")
+	if err == nil {
+		t.Error("ValidateHTTPURL() should block localhost.localdomain")
 	}
 }

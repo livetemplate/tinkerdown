@@ -489,7 +489,7 @@ func TestCORSMiddleware(t *testing.T) {
 
 	t.Run("specific origin", func(t *testing.T) {
 		// Test with specific origin (not wildcard)
-		wrapped := CORSMiddleware([]string{"http://localhost:3000"})(handler)
+		wrapped := CORSMiddleware([]string{"http://localhost:3000"}, "")(handler)
 
 		req := httptest.NewRequest("GET", "/api/sources/test", nil)
 		req.Header.Set("Origin", "http://localhost:3000")
@@ -504,7 +504,7 @@ func TestCORSMiddleware(t *testing.T) {
 
 	t.Run("wildcard origin", func(t *testing.T) {
 		// Test with wildcard - should use "*" header
-		wrapped := CORSMiddleware([]string{"*"})(handler)
+		wrapped := CORSMiddleware([]string{"*"}, "")(handler)
 
 		req := httptest.NewRequest("GET", "/api/sources/test", nil)
 		req.Header.Set("Origin", "http://example.com")
@@ -518,7 +518,7 @@ func TestCORSMiddleware(t *testing.T) {
 	})
 
 	t.Run("disallowed origin", func(t *testing.T) {
-		wrapped := CORSMiddleware([]string{"http://localhost:3000"})(handler)
+		wrapped := CORSMiddleware([]string{"http://localhost:3000"}, "")(handler)
 
 		req := httptest.NewRequest("GET", "/api/sources/test", nil)
 		req.Header.Set("Origin", "http://evil.com")
@@ -537,7 +537,7 @@ func TestCORSMiddleware_Preflight(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	wrapped := CORSMiddleware([]string{"*"})(handler)
+	wrapped := CORSMiddleware([]string{"*"}, "")(handler)
 
 	// Test OPTIONS preflight request
 	req := httptest.NewRequest("OPTIONS", "/api/sources/test", nil)
