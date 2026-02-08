@@ -105,6 +105,7 @@ import (
 	"time"
 
 	"github.com/livetemplate/tinkerdown/internal/config"
+	"github.com/livetemplate/tinkerdown/internal/security"
 	"github.com/livetemplate/tinkerdown/internal/source"
 
 	"golang.org/x/time/rate"
@@ -629,6 +630,11 @@ func (e *webhookActionExecutor) executeHTTPAction(action *config.Action, data ma
 	urlStr, err := e.expandTemplate(action.URL, data)
 	if err != nil {
 		return fmt.Errorf("failed to expand URL template: %w", err)
+	}
+
+	// Validate URL for SSRF protection
+	if err := security.ValidateHTTPURL(urlStr); err != nil {
+		return fmt.Errorf("URL validation failed: %w", err)
 	}
 
 	var body string

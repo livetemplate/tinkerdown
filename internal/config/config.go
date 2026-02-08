@@ -456,14 +456,62 @@ type APIConfig struct {
 	Auth      *AuthConfig      `yaml:"auth,omitempty"`
 }
 
+// Permission represents an API operation permission.
+type Permission string
+
+const (
+	PermRead   Permission = "read"
+	PermWrite  Permission = "write"
+	PermDelete Permission = "delete"
+)
+
+// APIKeyConfig represents a named API key with associated permissions.
+type APIKeyConfig struct {
+	Name        string       `yaml:"name"`
+	Key         string       `yaml:"key"`
+	Permissions []Permission `yaml:"permissions,omitempty"`
+}
+
+// HasPermission checks if this key has a specific permission.
+func (k *APIKeyConfig) HasPermission(perm Permission) bool {
+	for _, p := range k.Permissions {
+		if p == perm {
+			return true
+		}
+	}
+	return false
+}
+
 // AuthConfig holds authentication configuration for the API
 type AuthConfig struct {
-	// APIKey is the required API key for authentication.
-	// Supports environment variable expansion (e.g., "${API_KEY}" or "$API_KEY")
+	// APIKey is the legacy single API key for authentication (backward compatible).
+	// Supports environment variable expansion (e.g., "${API_KEY}" or "$API_KEY").
+	// Gets full permissions (read, write, delete) when used.
 	APIKey string `yaml:"api_key,omitempty"`
 	// HeaderName is the HTTP header name for the API key (default: "X-API-Key")
 	// Also supports "Authorization: Bearer <token>" format when set to "Authorization"
 	HeaderName string `yaml:"header_name,omitempty"`
+	// Keys is a list of named API keys with specific permissions.
+	Keys []APIKeyConfig `yaml:"keys,omitempty"`
+}
+
+// GetAPIKeys returns all configured API keys, normalizing legacy and new formats.
+// Legacy api_key gets full permissions for backward compatibility.
+func (c *AuthConfig) GetAPIKeys() []APIKeyConfig {
+	if c == nil {
+		return nil
+	}
+	var keys []APIKeyConfig
+	// Add legacy key with full permissions
+	if c.GetAPIKey() != "" {
+		keys = append(keys, APIKeyConfig{
+			Name:        "default",
+			Key:         c.APIKey, // Keep unexpanded; middleware does ExpandEnv
+			Permissions: []Permission{PermRead, PermWrite, PermDelete},
+		})
+	}
+	keys = append(keys, c.Keys...)
+	return keys
 }
 
 // CORSConfig holds CORS configuration for the API
@@ -506,7 +554,7 @@ func (c *APIConfig) IsAuthEnabled() bool {
 	if c == nil || c.Auth == nil {
 		return false
 	}
-	return c.Auth.GetAPIKey() != ""
+	return c.Auth.GetAPIKey() != "" || len(c.Auth.Keys) > 0
 }
 
 // GetAPIKey returns the configured API key with environment variable expansion

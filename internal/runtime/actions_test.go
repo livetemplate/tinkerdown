@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/livetemplate/tinkerdown/internal/config"
+	"github.com/livetemplate/tinkerdown/internal/security"
 	"github.com/livetemplate/tinkerdown/internal/source"
 )
 
@@ -488,8 +489,8 @@ func TestExecuteSQLAction_SourceNotFound(t *testing.T) {
 
 func TestExecuteHTTPAction(t *testing.T) {
 	// Bypass SSRF validation for mock server tests
-	testBypassSSRF = true
-	defer func() { testBypassSSRF = false }()
+	security.TestBypassSSRF = true
+	defer func() { security.TestBypassSSRF = false }()
 
 	tests := []struct {
 		name           string
@@ -600,8 +601,8 @@ func TestExecuteHTTPAction(t *testing.T) {
 
 func TestExecuteHTTPAction_BodySizeLimit(t *testing.T) {
 	// Bypass SSRF validation for this test
-	testBypassSSRF = true
-	defer func() { testBypassSSRF = false }()
+	security.TestBypassSSRF = true
+	defer func() { security.TestBypassSSRF = false }()
 
 	state := &GenericState{}
 
