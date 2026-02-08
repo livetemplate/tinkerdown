@@ -489,7 +489,7 @@ func TestCORSMiddleware(t *testing.T) {
 
 	t.Run("specific origin", func(t *testing.T) {
 		// Test with specific origin (not wildcard)
-		wrapped := CORSMiddleware([]string{"http://localhost:3000"})(handler)
+		wrapped := CORSMiddleware([]string{"http://localhost:3000"}, "")(handler)
 
 		req := httptest.NewRequest("GET", "/api/sources/test", nil)
 		req.Header.Set("Origin", "http://localhost:3000")
@@ -504,7 +504,7 @@ func TestCORSMiddleware(t *testing.T) {
 
 	t.Run("wildcard origin", func(t *testing.T) {
 		// Test with wildcard - should use "*" header
-		wrapped := CORSMiddleware([]string{"*"})(handler)
+		wrapped := CORSMiddleware([]string{"*"}, "")(handler)
 
 		req := httptest.NewRequest("GET", "/api/sources/test", nil)
 		req.Header.Set("Origin", "http://example.com")
@@ -518,7 +518,7 @@ func TestCORSMiddleware(t *testing.T) {
 	})
 
 	t.Run("disallowed origin", func(t *testing.T) {
-		wrapped := CORSMiddleware([]string{"http://localhost:3000"})(handler)
+		wrapped := CORSMiddleware([]string{"http://localhost:3000"}, "")(handler)
 
 		req := httptest.NewRequest("GET", "/api/sources/test", nil)
 		req.Header.Set("Origin", "http://evil.com")
@@ -537,7 +537,7 @@ func TestCORSMiddleware_Preflight(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	wrapped := CORSMiddleware([]string{"*"})(handler)
+	wrapped := CORSMiddleware([]string{"*"}, "")(handler)
 
 	// Test OPTIONS preflight request
 	req := httptest.NewRequest("OPTIONS", "/api/sources/test", nil)
@@ -652,7 +652,7 @@ func TestAuthMiddleware(t *testing.T) {
 	})
 
 	t.Run("no auth configured passes through", func(t *testing.T) {
-		wrapped := AuthMiddleware("", "X-API-Key")(handler)
+		wrapped := AuthMiddleware(nil)(handler)
 
 		req := httptest.NewRequest("GET", "/api/sources/test", nil)
 		w := httptest.NewRecorder()
@@ -665,7 +665,8 @@ func TestAuthMiddleware(t *testing.T) {
 	})
 
 	t.Run("valid API key with X-API-Key header", func(t *testing.T) {
-		wrapped := AuthMiddleware("secret-key-123", "X-API-Key")(handler)
+		cfg := &config.AuthConfig{APIKey: "secret-key-123"}
+		wrapped := AuthMiddleware(cfg)(handler)
 
 		req := httptest.NewRequest("GET", "/api/sources/test", nil)
 		req.Header.Set("X-API-Key", "secret-key-123")
@@ -679,7 +680,8 @@ func TestAuthMiddleware(t *testing.T) {
 	})
 
 	t.Run("invalid API key", func(t *testing.T) {
-		wrapped := AuthMiddleware("secret-key-123", "X-API-Key")(handler)
+		cfg := &config.AuthConfig{APIKey: "secret-key-123"}
+		wrapped := AuthMiddleware(cfg)(handler)
 
 		req := httptest.NewRequest("GET", "/api/sources/test", nil)
 		req.Header.Set("X-API-Key", "wrong-key")
@@ -701,7 +703,8 @@ func TestAuthMiddleware(t *testing.T) {
 	})
 
 	t.Run("missing API key", func(t *testing.T) {
-		wrapped := AuthMiddleware("secret-key-123", "X-API-Key")(handler)
+		cfg := &config.AuthConfig{APIKey: "secret-key-123"}
+		wrapped := AuthMiddleware(cfg)(handler)
 
 		req := httptest.NewRequest("GET", "/api/sources/test", nil)
 		w := httptest.NewRecorder()
@@ -722,7 +725,8 @@ func TestAuthMiddleware(t *testing.T) {
 	})
 
 	t.Run("valid Bearer token", func(t *testing.T) {
-		wrapped := AuthMiddleware("secret-key-123", "Authorization")(handler)
+		cfg := &config.AuthConfig{APIKey: "secret-key-123", HeaderName: "Authorization"}
+		wrapped := AuthMiddleware(cfg)(handler)
 
 		req := httptest.NewRequest("GET", "/api/sources/test", nil)
 		req.Header.Set("Authorization", "Bearer secret-key-123")
@@ -736,7 +740,8 @@ func TestAuthMiddleware(t *testing.T) {
 	})
 
 	t.Run("invalid Bearer format", func(t *testing.T) {
-		wrapped := AuthMiddleware("secret-key-123", "Authorization")(handler)
+		cfg := &config.AuthConfig{APIKey: "secret-key-123", HeaderName: "Authorization"}
+		wrapped := AuthMiddleware(cfg)(handler)
 
 		req := httptest.NewRequest("GET", "/api/sources/test", nil)
 		req.Header.Set("Authorization", "Basic secret-key-123")
@@ -758,7 +763,8 @@ func TestAuthMiddleware(t *testing.T) {
 	})
 
 	t.Run("custom header name", func(t *testing.T) {
-		wrapped := AuthMiddleware("my-token", "X-Custom-Token")(handler)
+		cfg := &config.AuthConfig{APIKey: "my-token", HeaderName: "X-Custom-Token"}
+		wrapped := AuthMiddleware(cfg)(handler)
 
 		req := httptest.NewRequest("GET", "/api/sources/test", nil)
 		req.Header.Set("X-Custom-Token", "my-token")
@@ -770,6 +776,83 @@ func TestAuthMiddleware(t *testing.T) {
 			t.Errorf("Expected custom header to work, got %d", w.Code)
 		}
 	})
+
+	t.Run("multiple keys with different permissions", func(t *testing.T) {
+		cfg := &config.AuthConfig{
+			Keys: []config.APIKeyConfig{
+				{Name: "readonly", Key: "ro-key", Permissions: []config.Permission{config.PermRead}},
+				{Name: "admin", Key: "admin-key", Permissions: []config.Permission{config.PermRead, config.PermWrite, config.PermDelete}},
+			},
+		}
+		wrapped := AuthMiddleware(cfg)(handler)
+
+		// readonly key should authenticate
+		req := httptest.NewRequest("GET", "/api/sources/test", nil)
+		req.Header.Set("X-API-Key", "ro-key")
+		w := httptest.NewRecorder()
+		wrapped.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected readonly key to authenticate, got %d", w.Code)
+		}
+
+		// admin key should authenticate
+		req = httptest.NewRequest("GET", "/api/sources/test", nil)
+		req.Header.Set("X-API-Key", "admin-key")
+		w = httptest.NewRecorder()
+		wrapped.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Errorf("Expected admin key to authenticate, got %d", w.Code)
+		}
+
+		// unknown key should fail
+		req = httptest.NewRequest("GET", "/api/sources/test", nil)
+		req.Header.Set("X-API-Key", "unknown")
+		w = httptest.NewRecorder()
+		wrapped.ServeHTTP(w, req)
+		if w.Code != http.StatusUnauthorized {
+			t.Errorf("Expected unknown key to return 401, got %d", w.Code)
+		}
+	})
+}
+
+func TestMethodPermissionMiddleware(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	tests := []struct {
+		name       string
+		method     string
+		perms      []config.Permission
+		wantStatus int
+	}{
+		{"GET with read", "GET", []config.Permission{config.PermRead}, http.StatusOK},
+		{"GET without read", "GET", []config.Permission{config.PermWrite}, http.StatusForbidden},
+		{"POST with write", "POST", []config.Permission{config.PermWrite}, http.StatusOK},
+		{"POST without write", "POST", []config.Permission{config.PermRead}, http.StatusForbidden},
+		{"DELETE with delete", "DELETE", []config.Permission{config.PermDelete}, http.StatusOK},
+		{"DELETE without delete", "DELETE", []config.Permission{config.PermRead}, http.StatusForbidden},
+		{"PUT with write", "PUT", []config.Permission{config.PermWrite}, http.StatusOK},
+		{"OPTIONS bypasses check", "OPTIONS", nil, http.StatusOK},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			wrapped := MethodPermissionMiddleware()(handler)
+
+			req := httptest.NewRequest(tt.method, "/api/sources/test", nil)
+			if tt.perms != nil {
+				ctx := context.WithValue(req.Context(), ctxKeyPermissions, tt.perms)
+				req = req.WithContext(ctx)
+			}
+			w := httptest.NewRecorder()
+			wrapped.ServeHTTP(w, req)
+
+			if w.Code != tt.wantStatus {
+				t.Errorf("method=%s perms=%v: got %d, want %d", tt.method, tt.perms, w.Code, tt.wantStatus)
+			}
+		})
+	}
 }
 
 func TestSecureCompare(t *testing.T) {

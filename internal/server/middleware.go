@@ -1,17 +1,34 @@
 package server
 
 import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"net"
 	"net/http"
+	"os"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/livetemplate/tinkerdown/internal/config"
 
 	"golang.org/x/time/rate"
 )
 
 // CORSMiddleware adds CORS headers to responses.
 // If origins is empty or nil, CORS headers are not added.
-func CORSMiddleware(origins []string) func(http.Handler) http.Handler {
+// authHeaderName is included in Access-Control-Allow-Headers when non-empty.
+func CORSMiddleware(origins []string, authHeaderName string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		if len(origins) == 0 {
 			return next
+		}
+
+		// Build allowed headers list, including the configured auth header
+		allowHeaders := "Content-Type, Authorization, X-API-Key"
+		if authHeaderName != "" && authHeaderName != "Authorization" && authHeaderName != "X-API-Key" {
+			allowHeaders += ", " + authHeaderName
 		}
 
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -40,7 +57,7 @@ func CORSMiddleware(origins []string) func(http.Handler) http.Handler {
 					w.Header().Set("Access-Control-Allow-Origin", origin)
 				}
 				w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-				w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+				w.Header().Set("Access-Control-Allow-Headers", allowHeaders)
 				w.Header().Set("Access-Control-Max-Age", "86400") // 24 hours
 			}
 
@@ -55,23 +72,91 @@ func CORSMiddleware(origins []string) func(http.Handler) http.Handler {
 	}
 }
 
-// RateLimitMiddleware limits requests using a token bucket algorithm.
-// rps is the rate limit in requests per second, burst is the maximum burst size.
-//
-// Note: This implementation uses a global rate limiter shared across all sources
-// and all clients. For production use cases requiring per-source or per-IP rate
-// limiting, consider extending this with a map of limiters keyed by source name
-// or client IP address.
-func RateLimitMiddleware(rps float64, burst int) func(http.Handler) http.Handler {
-	limiter := rate.NewLimiter(rate.Limit(rps), burst)
-
+// SecurityHeadersMiddleware adds security headers to all responses.
+func SecurityHeadersMiddleware() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if !limiter.Allow() {
-				w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("X-Frame-Options", "DENY")
+			w.Header().Set("X-Content-Type-Options", "nosniff")
+			w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+			// CSP: allow self, inline styles (needed for PicoCSS and LVT rendering),
+			// unsafe-eval (needed for Mermaid.js), and data: URIs for fonts/images.
+			// connect-src 'self' covers same-origin WebSocket (ws/wss) connections.
+			w.Header().Set("Content-Security-Policy",
+				"default-src 'self'; "+
+					"script-src 'self' 'unsafe-inline' 'unsafe-eval'; "+
+					"style-src 'self' 'unsafe-inline'; "+
+					"img-src 'self' data: https:; "+
+					"font-src 'self' data:; "+
+					"connect-src 'self'; "+
+					"frame-ancestors 'none'")
+
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// maxTrackedIPs is the maximum number of unique IPs tracked by the rate limiter
+// to prevent memory exhaustion from IP rotation attacks.
+const maxTrackedIPs = 10000
+
+// RateLimitMiddleware limits requests using a token bucket algorithm with per-IP tracking.
+// rps is the rate limit in requests per second, burst is the maximum burst size.
+func RateLimitMiddleware(rps float64, burst int) func(http.Handler) http.Handler {
+	type ipLimiter struct {
+		limiter  *rate.Limiter
+		lastSeen time.Time
+	}
+
+	var (
+		limiters = make(map[string]*ipLimiter)
+		mu       sync.Mutex
+		once     sync.Once
+	)
+
+	return func(next http.Handler) http.Handler {
+		// Start cleanup goroutine only once, even if the middleware wrapper is called multiple times
+		once.Do(func() {
+			go func() {
+				ticker := time.NewTicker(5 * time.Minute)
+				defer ticker.Stop()
+				for range ticker.C {
+					mu.Lock()
+					now := time.Now()
+					for ip, lim := range limiters {
+						if now.Sub(lim.lastSeen) > 10*time.Minute {
+							delete(limiters, ip)
+						}
+					}
+					mu.Unlock()
+				}
+			}()
+		})
+
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ip := getClientIP(r)
+
+			mu.Lock()
+			lim, exists := limiters[ip]
+			if !exists {
+				if len(limiters) >= maxTrackedIPs {
+					mu.Unlock()
+					writeJSONError(w, http.StatusServiceUnavailable, "rate limiter capacity exceeded")
+					return
+				}
+				lim = &ipLimiter{
+					limiter:  rate.NewLimiter(rate.Limit(rps), burst),
+					lastSeen: time.Now(),
+				}
+				limiters[ip] = lim
+			} else {
+				lim.lastSeen = time.Now()
+			}
+			mu.Unlock()
+
+			if !lim.limiter.Allow() {
 				w.Header().Set("Retry-After", "1")
-				w.WriteHeader(http.StatusTooManyRequests)
-				w.Write([]byte(`{"error": "rate limit exceeded"}`))
+				writeJSONError(w, http.StatusTooManyRequests, "rate limit exceeded")
 				return
 			}
 			next.ServeHTTP(w, r)
@@ -79,24 +164,62 @@ func RateLimitMiddleware(rps float64, burst int) func(http.Handler) http.Handler
 	}
 }
 
-// AuthMiddleware validates API key authentication.
-// If apiKey is empty, authentication is disabled and all requests are allowed.
-// The headerName specifies which HTTP header contains the API key (e.g., "X-API-Key").
-// When headerName is "Authorization", the middleware expects "Bearer <token>" format.
-func AuthMiddleware(apiKey, headerName string) func(http.Handler) http.Handler {
+// getClientIP extracts the client IP from the request.
+// It only trusts X-Forwarded-For / X-Real-IP when the immediate peer is a
+// loopback or private address (i.e., behind a reverse proxy).
+func getClientIP(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+
+	peerIP := net.ParseIP(host)
+	trustedProxy := peerIP != nil && (peerIP.IsLoopback() || peerIP.IsPrivate())
+
+	if trustedProxy {
+		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+			if parts := strings.SplitN(xff, ",", 2); len(parts) > 0 {
+				return strings.TrimSpace(parts[0])
+			}
+		}
+		if xri := r.Header.Get("X-Real-IP"); xri != "" {
+			return strings.TrimSpace(xri)
+		}
+	}
+
+	if peerIP != nil {
+		return peerIP.String()
+	}
+	return host
+}
+
+// authContextKey is the type for auth-related context keys.
+type authContextKey string
+
+const (
+	ctxKeyName        authContextKey = "auth_key_name"
+	ctxKeyPermissions authContextKey = "auth_permissions"
+)
+
+// AuthMiddleware validates API key authentication with support for multiple keys.
+// If no keys are configured, authentication is disabled and all requests pass through.
+func AuthMiddleware(authCfg *config.AuthConfig) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
-		// If no API key configured, skip authentication
-		if apiKey == "" {
+		if authCfg == nil {
 			return next
 		}
 
+		apiKeys := authCfg.GetAPIKeys()
+		if len(apiKeys) == 0 {
+			return next
+		}
+
+		headerName := authCfg.GetHeaderName()
+
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Extract token from header
 			token := r.Header.Get(headerName)
 			if token == "" {
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusUnauthorized)
-				w.Write([]byte(`{"error": "authentication required"}`))
+				writeJSONError(w, http.StatusUnauthorized, "authentication required")
 				return
 			}
 
@@ -106,18 +229,61 @@ func AuthMiddleware(apiKey, headerName string) func(http.Handler) http.Handler {
 				if len(token) > len(bearerPrefix) && token[:len(bearerPrefix)] == bearerPrefix {
 					token = token[len(bearerPrefix):]
 				} else {
-					w.Header().Set("Content-Type", "application/json")
-					w.WriteHeader(http.StatusUnauthorized)
-					w.Write([]byte(`{"error": "invalid authorization format, expected Bearer token"}`))
+					writeJSONError(w, http.StatusUnauthorized, "invalid authorization format, expected Bearer token")
 					return
 				}
 			}
 
-			// Validate token using constant-time comparison to prevent timing attacks
-			if !secureCompare(token, apiKey) {
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusUnauthorized)
-				w.Write([]byte(`{"error": "invalid API key"}`))
+			// Find matching key
+			var matched *config.APIKeyConfig
+			for i := range apiKeys {
+				expandedKey := os.ExpandEnv(apiKeys[i].Key)
+				if secureCompare(token, expandedKey) {
+					matched = &apiKeys[i]
+					break
+				}
+			}
+
+			if matched == nil {
+				writeJSONError(w, http.StatusUnauthorized, "invalid API key")
+				return
+			}
+
+			// Set auth context
+			ctx := context.WithValue(r.Context(), ctxKeyName, matched.Name)
+			ctx = context.WithValue(ctx, ctxKeyPermissions, matched.Permissions)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}
+
+// MethodPermissionMiddleware checks that the authenticated key has permission
+// for the requested HTTP method. Must be used after AuthMiddleware.
+func MethodPermissionMiddleware() func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// OPTIONS bypass (CORS preflight)
+			if r.Method == http.MethodOptions {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			var required config.Permission
+			switch r.Method {
+			case http.MethodGet, http.MethodHead:
+				required = config.PermRead
+			case http.MethodPost, http.MethodPut, http.MethodPatch:
+				required = config.PermWrite
+			case http.MethodDelete:
+				required = config.PermDelete
+			default:
+				writeJSONError(w, http.StatusMethodNotAllowed, "method not allowed")
+				return
+			}
+
+			if !HasPermission(r, required) {
+				writeJSONError(w, http.StatusForbidden,
+					fmt.Sprintf("insufficient permissions: %s required for %s", required, r.Method))
 				return
 			}
 
@@ -126,7 +292,21 @@ func AuthMiddleware(apiKey, headerName string) func(http.Handler) http.Handler {
 	}
 }
 
-// secureCompare performs a constant-time string comparison to prevent timing attacks
+// HasPermission checks if the request has a specific permission from auth context.
+func HasPermission(r *http.Request, perm config.Permission) bool {
+	perms, ok := r.Context().Value(ctxKeyPermissions).([]config.Permission)
+	if !ok {
+		return false
+	}
+	for _, p := range perms {
+		if p == perm {
+			return true
+		}
+	}
+	return false
+}
+
+// secureCompare performs a constant-time string comparison to prevent timing attacks.
 func secureCompare(a, b string) bool {
 	if len(a) != len(b) {
 		return false
@@ -136,4 +316,10 @@ func secureCompare(a, b string) bool {
 		result |= a[i] ^ b[i]
 	}
 	return result == 0
+}
+
+func writeJSONError(w http.ResponseWriter, status int, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(map[string]string{"error": message})
 }

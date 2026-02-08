@@ -16,6 +16,7 @@ import (
 	"net"
 	"net/http"
 	"os/exec"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -78,9 +79,13 @@ func SetupDockerChrome(t *testing.T, timeout time.Duration) (*DockerChromeContex
 }
 
 // GetChromeTestURL returns the URL for Chrome (in Docker) to access the test server.
-// With --network host mode, Chrome accesses localhost directly.
+// On Linux (--network host), Chrome accesses localhost directly.
+// On macOS, Chrome needs host.docker.internal to reach the host.
 func GetChromeTestURL(port int) string {
-	return fmt.Sprintf("http://localhost:%d", port)
+	if runtime.GOOS == "linux" {
+		return fmt.Sprintf("http://localhost:%d", port)
+	}
+	return fmt.Sprintf("http://host.docker.internal:%d", port)
 }
 
 // getFreePort asks the kernel for a free open port that is ready to use.
@@ -127,18 +132,22 @@ func startDockerChrome(t *testing.T, debugPort int) error {
 		t.Log("Docker image pulled successfully")
 	}
 
-	// Start the container with --network host for reliable localhost access on Linux CI
+	// Start the container:
+	// - Linux: use --network host so Chrome listens directly on the host's debugPort
+	// - macOS: --network host doesn't expose ports (Docker runs in a VM),
+	//   so use port mapping to the container's default port 9222 instead
 	t.Log("Starting Chrome headless Docker container...")
 
-	cmd := exec.Command("docker", "run", "-d",
-		"--rm",
-		"--network", "host",
-		"--memory", "512m",
-		"--cpus", "0.5",
-		"--name", containerName,
-		dockerImage,
-		"--remote-debugging-port="+fmt.Sprintf("%d", debugPort),
-	)
+	args := []string{"run", "-d", "--rm", "--memory", "512m", "--cpus", "0.5", "--name", containerName}
+	if runtime.GOOS == "linux" {
+		args = append(args, "--network", "host")
+		args = append(args, dockerImage, fmt.Sprintf("--remote-debugging-port=%d", debugPort))
+	} else {
+		// Map our dynamic port to the container's default 9222 (handled by entrypoint socat)
+		args = append(args, "-p", fmt.Sprintf("%d:9222", debugPort))
+		args = append(args, dockerImage)
+	}
+	cmd := exec.Command("docker", args...)
 
 	if _, err := cmd.Output(); err != nil {
 		return fmt.Errorf("failed to start Chrome Docker container: %w", err)
@@ -222,11 +231,18 @@ func WaitForServer(t *testing.T, serverURL string, timeout time.Duration) {
 }
 
 // ConvertURLForDockerChrome converts an httptest URL for Docker Chrome access.
-// With --network host mode, Chrome accesses localhost directly, so minimal conversion needed.
+// On Linux (--network host), Chrome shares the host network so localhost works.
+// On macOS, Chrome is in an isolated container and needs host.docker.internal.
 func ConvertURLForDockerChrome(httptestURL string) string {
 	// httptest URLs are like "http://127.0.0.1:12345" or "http://[::1]:12345"
-	// With --network host, we just normalize to localhost
-	url := strings.Replace(httptestURL, "127.0.0.1", "localhost", 1)
-	url = strings.Replace(url, "[::1]", "localhost", 1)
+	if runtime.GOOS == "linux" {
+		url := strings.Replace(httptestURL, "127.0.0.1", "localhost", 1)
+		url = strings.Replace(url, "[::1]", "localhost", 1)
+		return url
+	}
+	// macOS: container is isolated, use host.docker.internal to reach host
+	url := strings.Replace(httptestURL, "127.0.0.1", "host.docker.internal", 1)
+	url = strings.Replace(url, "[::1]", "host.docker.internal", 1)
+	url = strings.Replace(url, "localhost", "host.docker.internal", 1)
 	return url
 }

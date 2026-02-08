@@ -105,6 +105,7 @@ import (
 	"time"
 
 	"github.com/livetemplate/tinkerdown/internal/config"
+	"github.com/livetemplate/tinkerdown/internal/security"
 	"github.com/livetemplate/tinkerdown/internal/source"
 
 	"golang.org/x/time/rate"
@@ -631,6 +632,11 @@ func (e *webhookActionExecutor) executeHTTPAction(action *config.Action, data ma
 		return fmt.Errorf("failed to expand URL template: %w", err)
 	}
 
+	// Validate URL for SSRF protection
+	if err := security.ValidateHTTPURL(urlStr); err != nil {
+		return fmt.Errorf("URL validation failed: %w", err)
+	}
+
 	var body string
 	if action.Body != "" {
 		body, err = e.expandTemplate(action.Body, data)
@@ -664,8 +670,19 @@ func (e *webhookActionExecutor) executeHTTPAction(action *config.Action, data ma
 		}
 	}
 
-	// Execute request with timeout
-	client := &http.Client{Timeout: 30 * time.Second}
+	// Execute request with timeout and SSRF-safe redirect checking
+	client := &http.Client{
+		Timeout: 30 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 10 {
+				return fmt.Errorf("too many redirects")
+			}
+			if err := security.ValidateHTTPURL(req.URL.String()); err != nil {
+				return fmt.Errorf("redirect blocked: %w", err)
+			}
+			return nil
+		},
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("HTTP request failed: %w", err)
