@@ -2410,8 +2410,13 @@ func (s *Server) EnableWatch(debug bool) error {
 
 		// Check if this is a page file or a source file
 		isPageFile := s.isPageFile(filePath)
+		isSourceFile := s.isTrackedSourceFile(filePath)
 
-		if isPageFile {
+		if isPageFile && isSourceFile {
+			// Same-file source (e.g., auto-tasks): refresh sources only, no full reload.
+			// This prevents a full page reload on every checkbox toggle.
+			s.RefreshSourcesForFile(filePath)
+		} else if isPageFile {
 			// Re-discover pages for page file changes
 			if err := s.Discover(); err != nil {
 				return fmt.Errorf("failed to re-discover pages: %w", err)
@@ -2445,6 +2450,20 @@ func (s *Server) isPageFile(filePath string) bool {
 
 	for _, route := range s.routes {
 		if route.FilePath == filePath {
+			return true
+		}
+	}
+	return false
+}
+
+// isTrackedSourceFile checks if any active WebSocket connection tracks this file as a source.
+// Used to detect same-file sources (e.g., auto-tasks where the page file is also the data source).
+func (s *Server) isTrackedSourceFile(filePath string) bool {
+	s.connMu.RLock()
+	defer s.connMu.RUnlock()
+
+	for _, handler := range s.connections {
+		if handler != nil && handler.TracksSourceFile(filePath) {
 			return true
 		}
 	}

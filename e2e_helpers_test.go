@@ -16,6 +16,7 @@ import (
 	"net"
 	"net/http"
 	"os/exec"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -127,18 +128,36 @@ func startDockerChrome(t *testing.T, debugPort int) error {
 		t.Log("Docker image pulled successfully")
 	}
 
-	// Start the container with --network host for reliable localhost access on Linux CI
+	// Start the container.
+	// On Linux: --network host gives Chrome direct access to localhost ports.
+	// On macOS: Docker Desktop doesn't support --network host, so we use
+	//   -p PORT:9222 to map the host port to the container's socat listener
+	//   (the image's entrypoint uses socat 9222→9223, Chrome listens on 9223).
 	t.Log("Starting Chrome headless Docker container...")
 
-	cmd := exec.Command("docker", "run", "-d",
-		"--rm",
-		"--network", "host",
-		"--memory", "512m",
-		"--cpus", "0.5",
-		"--name", containerName,
-		dockerImage,
-		"--remote-debugging-port="+fmt.Sprintf("%d", debugPort),
-	)
+	var cmd *exec.Cmd
+	if runtime.GOOS == "darwin" {
+		// macOS: use port mapping, don't override the debugging port
+		cmd = exec.Command("docker", "run", "-d",
+			"--rm",
+			"-p", fmt.Sprintf("%d:9222", debugPort),
+			"--memory", "512m",
+			"--cpus", "0.5",
+			"--name", containerName,
+			dockerImage,
+		)
+	} else {
+		// Linux: use --network host for reliable localhost access
+		cmd = exec.Command("docker", "run", "-d",
+			"--rm",
+			"--network", "host",
+			"--memory", "512m",
+			"--cpus", "0.5",
+			"--name", containerName,
+			dockerImage,
+			"--remote-debugging-port="+fmt.Sprintf("%d", debugPort),
+		)
+	}
 
 	if _, err := cmd.Output(); err != nil {
 		return fmt.Errorf("failed to start Chrome Docker container: %w", err)
@@ -224,8 +243,13 @@ func WaitForServer(t *testing.T, serverURL string, timeout time.Duration) {
 // ConvertURLForDockerChrome converts an httptest URL for Docker Chrome access.
 // With --network host mode, Chrome accesses localhost directly, so minimal conversion needed.
 func ConvertURLForDockerChrome(httptestURL string) string {
-	// httptest URLs are like "http://127.0.0.1:12345" or "http://[::1]:12345"
-	// With --network host, we just normalize to localhost
+	if runtime.GOOS == "darwin" {
+		// macOS: Chrome in Docker needs host.docker.internal to reach host services
+		url := strings.Replace(httptestURL, "127.0.0.1", "host.docker.internal", 1)
+		url = strings.Replace(url, "[::1]", "host.docker.internal", 1)
+		return url
+	}
+	// Linux: --network host, Chrome accesses localhost directly
 	url := strings.Replace(httptestURL, "127.0.0.1", "localhost", 1)
 	url = strings.Replace(url, "[::1]", "localhost", 1)
 	return url

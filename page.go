@@ -43,9 +43,12 @@ func ParseFile(path string) (*Page, error) {
 		absPath = path
 	}
 
+	// Pre-process: detect task list sections and replace with lvt blocks (in-memory only)
+	processedContent, autoSources := preprocessAutoTasks(content, absPath)
+
 	// Parse markdown with partial support
 	baseDir := filepath.Dir(absPath)
-	fm, codeBlocks, staticHTML, err := ParseMarkdownWithPartials(content, baseDir)
+	fm, codeBlocks, staticHTML, err := ParseMarkdownWithPartials(processedContent, baseDir)
 	if err != nil {
 		// Wrap with file context
 		return nil, NewParseError(absPath, 1, fmt.Sprintf("Failed to parse markdown: %v", err))
@@ -66,6 +69,18 @@ func ParseFile(path string) (*Page, error) {
 
 	// Apply frontmatter config options (sources, styling, blocks, features)
 	page.Config.MergeFromFrontmatter(fm)
+
+	// Inject auto-generated sources (skip any that conflict with existing frontmatter sources)
+	if len(autoSources) > 0 {
+		if page.Config.Sources == nil {
+			page.Config.Sources = make(map[string]SourceConfig)
+		}
+		for name, src := range autoSources {
+			if _, exists := page.Config.Sources[name]; !exists {
+				page.Config.Sources[name] = src
+			}
+		}
+	}
 
 	// Store computed expressions from parsing
 	if fm.Expressions != nil {

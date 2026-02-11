@@ -1010,6 +1010,22 @@ func (h *WebSocketHandler) RefreshSourcesForFile(filePath string) {
 	}
 }
 
+// TracksSourceFile returns true if any source in this handler's sourceFiles map
+// matches the given file path. Used to detect same-file sources (auto-tasks).
+func (h *WebSocketHandler) TracksSourceFile(filePath string) bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	for _, files := range h.sourceFiles {
+		for _, f := range files {
+			if f == filePath {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // getPageActions converts page-level actions from parser types to config types.
 // Returns nil if no actions are defined.
 func (h *WebSocketHandler) getPageActions() map[string]*config.Action {
