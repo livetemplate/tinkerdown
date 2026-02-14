@@ -189,7 +189,7 @@ func generateAutoTaskLvtBlock(sourceName string) string {
   <input type="text" name="text" placeholder="Add new task..." required
          style="flex: 1; min-width: 0; padding: 6px 8px; border: 1px solid #ccc; border-radius: 4px;">
   <button type="submit"
-          style="flex-shrink: 0; padding: 6px 12px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">
+          style="flex-shrink: 0; width: auto; padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer;">
     Add
   </button>
 </form>

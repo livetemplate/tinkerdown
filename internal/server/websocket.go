@@ -62,6 +62,7 @@ type CacheMeta struct {
 type WebSocketHandler struct {
 	page           *tinkerdown.Page
 	mu             sync.RWMutex
+	writeMu        sync.Mutex                      // Serializes all writes to the websocket connection
 	instances      map[string]*BlockInstance      // blockID -> instance
 	sourceFiles    map[string][]string            // blockID -> source file paths (for file watching)
 	debug          bool
@@ -598,6 +599,7 @@ func (h *WebSocketHandler) sendUpdate(instance *BlockInstance) {
 }
 
 // sendMessage sends a message envelope over WebSocket.
+// Uses writeMu to serialize concurrent writes (e.g., watcher refresh + action response).
 func (h *WebSocketHandler) sendMessage(conn *websocket.Conn, envelope MessageEnvelope) {
 	data, err := json.Marshal(envelope)
 	if err != nil {
@@ -605,7 +607,11 @@ func (h *WebSocketHandler) sendMessage(conn *websocket.Conn, envelope MessageEnv
 		return
 	}
 
-	if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
+	h.writeMu.Lock()
+	err = conn.WriteMessage(websocket.TextMessage, data)
+	h.writeMu.Unlock()
+
+	if err != nil {
 		log.Printf("[WS] Failed to send message: %v", err)
 		return
 	}
