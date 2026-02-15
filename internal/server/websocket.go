@@ -555,6 +555,20 @@ func (h *WebSocketHandler) handleMessage(conn *websocket.Conn, message []byte) {
 		return
 	}
 
+	// Mark source files as recently written by this action, so the file
+	// watcher knows to skip a full page reload for this change.
+	if h.server != nil {
+		h.mu.RLock()
+		for _, sb := range h.page.ServerBlocks {
+			if files, ok := h.sourceFiles[sb.ID]; ok {
+				for _, f := range files {
+					h.server.MarkSourceWrite(f)
+				}
+			}
+		}
+		h.mu.RUnlock()
+	}
+
 	// Re-render and send update
 	h.sendUpdate(instance)
 }

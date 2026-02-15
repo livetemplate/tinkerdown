@@ -18,9 +18,10 @@ type taskListSection struct {
 
 // Pre-compiled patterns for task list detection
 var (
-	taskItemPattern    = regexp.MustCompile(`^\s*-\s+\[([ xX])\]\s+`)
-	headingPattern     = regexp.MustCompile(`^(#{1,6})\s+(.+?)\s*$`)
-	frontmatterPattern = regexp.MustCompile(`(?s)\A---\n(.+?)\n---\n`)
+	taskItemPattern       = regexp.MustCompile(`^\s*-\s+\[([ xX])\]\s+`)
+	headingPattern        = regexp.MustCompile(`^(#{1,6})\s+(.+?)\s*$`)
+	frontmatterPattern    = regexp.MustCompile(`(?s)\A---\n(.+?)\n---\n`)
+	explicitAnchorPattern = regexp.MustCompile(`\s*\{#([^}]+)\}\s*$`)
 )
 
 // detectTaskListSections scans markdown content (after frontmatter) and finds
@@ -68,10 +69,9 @@ func detectTaskListSections(content []byte) []taskListSection {
 			headingText := strings.TrimSpace(matches[2])
 
 			// Check for explicit anchor syntax {#anchor}
-			explicitAnchorRe := regexp.MustCompile(`\s*\{#([^}]+)\}\s*$`)
-			if anchorMatch := explicitAnchorRe.FindStringSubmatch(headingText); anchorMatch != nil {
+			if anchorMatch := explicitAnchorPattern.FindStringSubmatch(headingText); anchorMatch != nil {
 				currentAnchor = anchorMatch[1]
-				headingText = explicitAnchorRe.ReplaceAllString(headingText, "")
+				headingText = explicitAnchorPattern.ReplaceAllString(headingText, "")
 			} else {
 				currentAnchor = slugifyHeading(headingText)
 			}
@@ -135,10 +135,13 @@ func preprocessAutoTasks(content []byte, absPath string) ([]byte, map[string]Sou
 	// Process sections in reverse order to preserve line numbers
 	for i := len(sections) - 1; i >= 0; i-- {
 		sec := sections[i]
-		sourceName := "_auto_" + sec.anchor
 
-		// Skip if this anchor already has a manually configured source
-		// (checked later during injection in ParseFile)
+		// Skip sections with empty anchors (headings with no alphanumeric chars)
+		if sec.anchor == "" {
+			continue
+		}
+
+		sourceName := "_auto_" + sec.anchor
 
 		// Build the lvt code block replacement
 		lvtBlock := generateAutoTaskLvtBlock(sourceName)
