@@ -1,0 +1,65 @@
+# Binaries
+/livepage
+/tinkerdown
+/tinkerdown-test
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+.github/
+
+# Worktrees
+.worktrees/
+
+# Test artifacts
+testdata/tmp/
+*.sqlite
+*.sqlite-*
+coverage.out
+coverage.html
+*.log
+.env*
+
+# Development files
+.claude/
+CLAUDE.md
+
+# Client dependencies (will be installed in Docker)
+client/node_modules/
+client/dist/
+
+# Documentation (not needed in image)
+docs/
+README.md
+LICENSE
+
+# Examples (user will mount their own files)
+examples/
+
+# Skills
+skills/
+
+# Desktop app (not needed for CLI)
+desktop/
+
+# Build artifacts
+dist/
+build/

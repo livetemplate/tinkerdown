@@ -78,29 +78,30 @@ func NewWithConfig(rootDir string, cfg *config.Config) *Server {
 		srv.apiHandler = NewAPIHandler(cfg, rootDir)
 
 		// Wrap API handler with middleware
-		// Order matters (execution is outer to inner):
-		// 1. CORS - handle preflight requests without auth/rate limiting
-		// 2. Rate Limit - protect against brute force attacks
-		// 3. Auth - validate API key
-		// 4. Handler - process the request
+		// Order (outer to inner): SecurityHeaders → CORS → RateLimit → Auth → MethodPerm → Handler
 		var handler http.Handler = srv.apiHandler
 
-		// Apply auth middleware (innermost - after rate limiting protects against brute force)
+		// Apply auth + authorization middleware (innermost)
 		if cfg.API.IsAuthEnabled() {
-			handler = AuthMiddleware(
-				cfg.API.Auth.GetAPIKey(),
-				cfg.API.Auth.GetHeaderName(),
-			)(handler)
+			handler = MethodPermissionMiddleware()(handler)
+			handler = AuthMiddleware(cfg.API.Auth)(handler)
 		}
 
-		// Apply rate limiting middleware
+		// Apply per-IP rate limiting
 		handler = RateLimitMiddleware(
 			cfg.API.GetRateLimitRPS(),
 			cfg.API.GetRateLimitBurst(),
 		)(handler)
 
-		// Apply CORS middleware (outermost - must be first to handle preflight)
-		handler = CORSMiddleware(cfg.API.GetCORSOrigins())(handler)
+		// Apply CORS middleware (pass auth header name for preflight)
+		authHeader := ""
+		if cfg.API.Auth != nil {
+			authHeader = cfg.API.Auth.GetHeaderName()
+		}
+		handler = CORSMiddleware(cfg.API.GetCORSOrigins(), authHeader)(handler)
+
+		// Apply security headers (outermost)
+		handler = SecurityHeadersMiddleware()(handler)
 
 		srv.apiRoutes = handler
 	}
@@ -316,6 +317,20 @@ func (s *Server) Routes() []*Route {
 
 // ServeHTTP implements http.Handler.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// Security headers applied via SecurityHeadersMiddleware on API routes.
+	// Apply same headers to all other routes for consistency.
+	w.Header().Set("X-Frame-Options", "DENY")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+	w.Header().Set("Content-Security-Policy",
+		"default-src 'self'; "+
+			"script-src 'self' 'unsafe-inline' 'unsafe-eval'; "+
+			"style-src 'self' 'unsafe-inline'; "+
+			"img-src 'self' data: https:; "+
+			"font-src 'self' data:; "+
+			"connect-src 'self'; "+
+			"frame-ancestors 'none'")
+
 	// Health endpoint (always available, especially important in headless mode)
 	if r.URL.Path == "/health" {
 		s.serveHealth(w, r)

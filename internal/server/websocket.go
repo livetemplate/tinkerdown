@@ -7,6 +7,7 @@ import (
 	"html/template"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sync"
@@ -21,10 +22,48 @@ import (
 	"github.com/livetemplate/tinkerdown/internal/source"
 )
 
-var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool {
-		return true // Allow all origins in development
-	},
+// newUpgrader creates a WebSocket upgrader with origin validation.
+// If allowedOrigins is empty, it defaults to same-origin policy.
+func newUpgrader(allowedOrigins []string) websocket.Upgrader {
+	return websocket.Upgrader{
+		CheckOrigin: func(r *http.Request) bool {
+			return checkWebSocketOrigin(r, allowedOrigins)
+		},
+	}
+}
+
+// checkWebSocketOrigin validates the Origin header of a WebSocket upgrade request.
+func checkWebSocketOrigin(r *http.Request, allowedOrigins []string) bool {
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		// Non-browser clients (CLI tools, etc.) may not send Origin
+		return true
+	}
+
+	// Check explicit allow list
+	for _, allowed := range allowedOrigins {
+		if allowed == "*" {
+			return true
+		}
+		if allowed == origin {
+			return true
+		}
+	}
+
+	// Default: same-origin policy — origin host must match request host,
+	// and scheme must match (http→ws, https→wss)
+	originURL, err := url.Parse(origin)
+	if err != nil {
+		return false
+	}
+	if originURL.Host != r.Host {
+		return false
+	}
+	// Validate scheme consistency: reject http origins on TLS connections and vice versa
+	if r.TLS != nil && originURL.Scheme != "https" {
+		return false
+	}
+	return true
 }
 
 // ExpressionsBlockID is the special block ID used for routing expression update messages.
@@ -295,8 +334,15 @@ func (h *WebSocketHandler) getEffectiveSource(name string) (config.SourceConfig,
 
 // ServeHTTP handles WebSocket upgrade and message routing.
 func (h *WebSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// Create upgrader with origin validation from config
+	var allowedOrigins []string
+	if h.config != nil && h.config.API != nil {
+		allowedOrigins = h.config.API.GetCORSOrigins()
+	}
+	wsUpgrader := newUpgrader(allowedOrigins)
+
 	// Upgrade connection
-	conn, err := upgrader.Upgrade(w, r, nil)
+	conn, err := wsUpgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Printf("[WS] Failed to upgrade connection: %v", err)
 		return
