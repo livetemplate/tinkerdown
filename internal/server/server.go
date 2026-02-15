@@ -2505,6 +2505,10 @@ func (s *Server) isTrackedSourceFile(filePath string) bool {
 	return false
 }
 
+// sourceWriteDebounceWindow is how long after a source action write we consider
+// a file change to be "from the source" rather than an external edit.
+const sourceWriteDebounceWindow = 2 * time.Second
+
 // MarkSourceWrite records that a source action just wrote to this file.
 // Used by the watcher to distinguish source writes (e.g., checkbox toggle)
 // from external edits that require a full page reload.
@@ -2515,15 +2519,18 @@ func (s *Server) MarkSourceWrite(filePath string) {
 }
 
 // isRecentSourceWrite returns true if the file was written by a source action
-// within the last 2 seconds.
+// within sourceWriteDebounceWindow. Does not delete the entry so that multiple
+// watcher events for the same file change are all handled correctly.
 func (s *Server) isRecentSourceWrite(filePath string) bool {
 	s.sourceWriteMu.Lock()
 	t, ok := s.recentSourceWrites[filePath]
-	if ok {
+	if ok && time.Since(t) >= sourceWriteDebounceWindow {
+		// Expired — clean up
 		delete(s.recentSourceWrites, filePath)
+		ok = false
 	}
 	s.sourceWriteMu.Unlock()
-	return ok && time.Since(t) < 2*time.Second
+	return ok
 }
 
 // RefreshSourcesForFile triggers a refresh on all sources that use the given file.
