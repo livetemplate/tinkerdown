@@ -189,6 +189,9 @@ func RateLimitMiddleware(rps float64, burst int, maxIPs int) func(http.Handler) 
 			lim := elem.Value.(*ipLimiter)
 			mu.Unlock()
 
+			// Safe to call Allow() without the lock: rate.Limiter is internally
+			// thread-safe. If this IP gets evicted concurrently, the worst case
+			// is one extra allowed request — acceptable for rate limiting.
 			if !lim.limiter.Allow() {
 				w.Header().Set("Retry-After", "1")
 				writeJSONError(w, http.StatusTooManyRequests, "rate limit exceeded")
