@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/livetemplate/tinkerdown"
@@ -29,28 +30,31 @@ type Route struct {
 
 // Server is the tinkerdown development server.
 type Server struct {
-	rootDir        string
-	config         *config.Config
-	routes         []*Route
-	siteManager    *site.Manager // For multi-page documentation sites
-	mu             sync.RWMutex
-	connections    map[*websocket.Conn]*WebSocketHandler // Track connected WebSocket clients with their handlers
-	connMu         sync.RWMutex                          // Separate mutex for connections
-	watcher        *Watcher                              // File watcher for live reload
-	playground     *PlaygroundHandler                    // Playground for testing AI-generated apps
-	apiHandler     *APIHandler                           // REST API handler for sources
-	apiRoutes      http.Handler                          // Wrapped API handler with middleware
-	webhookHandler *WebhookHandler                       // Webhook handler for external triggers
-	scheduleRunner *schedule.Runner                      // Schedule runner for timed jobs
+	rootDir            string
+	config             *config.Config
+	routes             []*Route
+	siteManager        *site.Manager // For multi-page documentation sites
+	mu                 sync.RWMutex
+	connections        map[*websocket.Conn]*WebSocketHandler // Track connected WebSocket clients with their handlers
+	connMu             sync.RWMutex                          // Separate mutex for connections
+	watcher            *Watcher                              // File watcher for live reload
+	playground         *PlaygroundHandler                    // Playground for testing AI-generated apps
+	apiHandler         *APIHandler                           // REST API handler for sources
+	apiRoutes          http.Handler                          // Wrapped API handler with middleware
+	webhookHandler     *WebhookHandler                       // Webhook handler for external triggers
+	scheduleRunner     *schedule.Runner                      // Schedule runner for timed jobs
+	recentSourceWrites map[string]time.Time                  // Files recently written by source actions
+	sourceWriteMu      sync.Mutex                            // Protects recentSourceWrites
 }
 
 // New creates a new server for the given root directory.
 func New(rootDir string) *Server {
 	srv := &Server{
-		rootDir:     rootDir,
-		config:      config.DefaultConfig(),
-		routes:      make([]*Route, 0),
-		connections: make(map[*websocket.Conn]*WebSocketHandler),
+		rootDir:            rootDir,
+		config:             config.DefaultConfig(),
+		routes:             make([]*Route, 0),
+		connections:        make(map[*websocket.Conn]*WebSocketHandler),
+		recentSourceWrites: make(map[string]time.Time),
 	}
 	srv.playground = NewPlaygroundHandler(srv)
 	return srv
@@ -59,10 +63,11 @@ func New(rootDir string) *Server {
 // NewWithConfig creates a new server with a specific configuration.
 func NewWithConfig(rootDir string, cfg *config.Config) *Server {
 	srv := &Server{
-		rootDir:     rootDir,
-		config:      cfg,
-		routes:      make([]*Route, 0),
-		connections: make(map[*websocket.Conn]*WebSocketHandler),
+		rootDir:            rootDir,
+		config:             cfg,
+		routes:             make([]*Route, 0),
+		connections:        make(map[*websocket.Conn]*WebSocketHandler),
+		recentSourceWrites: make(map[string]time.Time),
 	}
 
 	// Initialize site manager if in site mode
@@ -2411,9 +2416,19 @@ func (s *Server) BroadcastReload(filePath string) {
 
 	log.Printf("[Server] Broadcasting reload for %s to %d connections", filePath, len(s.connections))
 
-	for conn := range s.connections {
-		if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
-			log.Printf("[Server] Failed to send reload to connection: %v", err)
+	for conn, handler := range s.connections {
+		if handler != nil {
+			// Use handler's writeMu to serialize with other WebSocket writes
+			handler.writeMu.Lock()
+			err := conn.WriteMessage(websocket.TextMessage, data)
+			handler.writeMu.Unlock()
+			if err != nil {
+				log.Printf("[Server] Failed to send reload to connection: %v", err)
+			}
+		} else {
+			if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
+				log.Printf("[Server] Failed to send reload to connection: %v", err)
+			}
 		}
 	}
 }
@@ -2425,8 +2440,18 @@ func (s *Server) EnableWatch(debug bool) error {
 
 		// Check if this is a page file or a source file
 		isPageFile := s.isPageFile(filePath)
+		isSourceFile := s.isTrackedSourceFile(filePath)
 
-		if isPageFile {
+		if isPageFile && isSourceFile && s.isRecentSourceWrite(filePath) {
+			// File was modified by a source action (e.g., checkbox toggle).
+			// Only refresh sources — no full page reload needed.
+			s.RefreshSourcesForFile(filePath)
+		} else if isPageFile {
+			// External edit to page file (user or other tool).
+			// Refresh any tracked sources, then do full Discover + reload.
+			if isSourceFile {
+				s.RefreshSourcesForFile(filePath)
+			}
 			// Re-discover pages for page file changes
 			if err := s.Discover(); err != nil {
 				return fmt.Errorf("failed to re-discover pages: %w", err)
@@ -2464,6 +2489,48 @@ func (s *Server) isPageFile(filePath string) bool {
 		}
 	}
 	return false
+}
+
+// isTrackedSourceFile checks if any active WebSocket connection tracks this file as a source.
+// Used to detect same-file sources (e.g., auto-tasks where the page file is also the data source).
+func (s *Server) isTrackedSourceFile(filePath string) bool {
+	s.connMu.RLock()
+	defer s.connMu.RUnlock()
+
+	for _, handler := range s.connections {
+		if handler != nil && handler.TracksSourceFile(filePath) {
+			return true
+		}
+	}
+	return false
+}
+
+// sourceWriteDebounceWindow is how long after a source action write we consider
+// a file change to be "from the source" rather than an external edit.
+const sourceWriteDebounceWindow = 2 * time.Second
+
+// MarkSourceWrite records that a source action just wrote to this file.
+// Used by the watcher to distinguish source writes (e.g., checkbox toggle)
+// from external edits that require a full page reload.
+func (s *Server) MarkSourceWrite(filePath string) {
+	s.sourceWriteMu.Lock()
+	s.recentSourceWrites[filePath] = time.Now()
+	s.sourceWriteMu.Unlock()
+}
+
+// isRecentSourceWrite returns true if the file was written by a source action
+// within sourceWriteDebounceWindow. Does not delete the entry so that multiple
+// watcher events for the same file change are all handled correctly.
+func (s *Server) isRecentSourceWrite(filePath string) bool {
+	s.sourceWriteMu.Lock()
+	t, ok := s.recentSourceWrites[filePath]
+	if ok && time.Since(t) >= sourceWriteDebounceWindow {
+		// Expired — clean up
+		delete(s.recentSourceWrites, filePath)
+		ok = false
+	}
+	s.sourceWriteMu.Unlock()
+	return ok
 }
 
 // RefreshSourcesForFile triggers a refresh on all sources that use the given file.

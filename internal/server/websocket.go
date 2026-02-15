@@ -101,6 +101,7 @@ type CacheMeta struct {
 type WebSocketHandler struct {
 	page           *tinkerdown.Page
 	mu             sync.RWMutex
+	writeMu        sync.Mutex                      // Serializes all writes to the websocket connection
 	instances      map[string]*BlockInstance      // blockID -> instance
 	sourceFiles    map[string][]string            // blockID -> source file paths (for file watching)
 	debug          bool
@@ -554,6 +555,20 @@ func (h *WebSocketHandler) handleMessage(conn *websocket.Conn, message []byte) {
 		return
 	}
 
+	// Mark source files as recently written by this action, so the file
+	// watcher knows to skip a full page reload for this change.
+	if h.server != nil {
+		h.mu.RLock()
+		for _, sb := range h.page.ServerBlocks {
+			if files, ok := h.sourceFiles[sb.ID]; ok {
+				for _, f := range files {
+					h.server.MarkSourceWrite(f)
+				}
+			}
+		}
+		h.mu.RUnlock()
+	}
+
 	// Re-render and send update
 	h.sendUpdate(instance)
 }
@@ -644,6 +659,7 @@ func (h *WebSocketHandler) sendUpdate(instance *BlockInstance) {
 }
 
 // sendMessage sends a message envelope over WebSocket.
+// Uses writeMu to serialize concurrent writes (e.g., watcher refresh + action response).
 func (h *WebSocketHandler) sendMessage(conn *websocket.Conn, envelope MessageEnvelope) {
 	data, err := json.Marshal(envelope)
 	if err != nil {
@@ -651,7 +667,11 @@ func (h *WebSocketHandler) sendMessage(conn *websocket.Conn, envelope MessageEnv
 		return
 	}
 
-	if err := conn.WriteMessage(websocket.TextMessage, data); err != nil {
+	h.writeMu.Lock()
+	err = conn.WriteMessage(websocket.TextMessage, data)
+	h.writeMu.Unlock()
+
+	if err != nil {
 		log.Printf("[WS] Failed to send message: %v", err)
 		return
 	}
@@ -1054,6 +1074,22 @@ func (h *WebSocketHandler) RefreshSourcesForFile(filePath string) {
 			}
 		}
 	}
+}
+
+// TracksSourceFile returns true if any source in this handler's sourceFiles map
+// matches the given file path. Used to detect same-file sources (auto-tasks).
+func (h *WebSocketHandler) TracksSourceFile(filePath string) bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	for _, files := range h.sourceFiles {
+		for _, f := range files {
+			if f == filePath {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // getPageActions converts page-level actions from parser types to config types.
