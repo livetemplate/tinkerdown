@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 
 	"github.com/livetemplate/tinkerdown/internal/config"
@@ -133,6 +134,28 @@ func TestRateLimitNo503AtCapacity(t *testing.T) {
 			t.Errorf("IP %s: expected 200, got %d", ip, w.Code)
 		}
 	}
+}
+
+// TestRateLimitConcurrentAccess verifies no races or panics under concurrent load.
+func TestRateLimitConcurrentAccess(t *testing.T) {
+	wrapped := RateLimitMiddleware(1000, 1000, 100)(okHandler())
+
+	var wg sync.WaitGroup
+	for i := 0; i < 100; i++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			ip := fmt.Sprintf("10.0.%d.%d", id/256, id%256)
+			for j := 0; j < 10; j++ {
+				w := httptest.NewRecorder()
+				wrapped.ServeHTTP(w, reqFromIP(ip))
+				if w.Code == http.StatusServiceUnavailable {
+					t.Errorf("IP %s: got 503 under concurrent load", ip)
+				}
+			}
+		}(i)
+	}
+	wg.Wait()
 }
 
 // TestGetMaxTrackedIPs tests the config accessor with defaults and explicit values.

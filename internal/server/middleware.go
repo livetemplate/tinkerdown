@@ -112,13 +112,17 @@ type ipLimiter struct {
 // rps is the rate limit in requests per second, burst is the maximum burst size,
 // and maxIPs is the maximum number of unique IPs to track (LRU eviction when full).
 func RateLimitMiddleware(rps float64, burst int, maxIPs int) func(http.Handler) http.Handler {
+	if maxIPs <= 0 {
+		maxIPs = 10000
+	}
+
 	var (
 		items = make(map[string]*list.Element)
 		order = list.New() // front = most recent, back = oldest
 		mu    sync.Mutex
 		once  sync.Once
 
-		// Throttled eviction logging
+		// Eviction logging state (always accessed under mu)
 		lastEvictLog time.Time
 		evictCount   int
 	)
