@@ -1,9 +1,11 @@
 package server
 
 import (
+	"container/list"
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -96,26 +98,30 @@ func SecurityHeadersMiddleware() func(http.Handler) http.Handler {
 	}
 }
 
-// maxTrackedIPs is the maximum number of unique IPs tracked by the rate limiter
-// to prevent memory exhaustion from IP rotation attacks.
-const maxTrackedIPs = 10000
+// ipLimiter tracks a per-IP token bucket and its position in the LRU list.
+type ipLimiter struct {
+	ip       string
+	limiter  *rate.Limiter
+	lastSeen time.Time
+}
 
 // RateLimitMiddleware limits requests using a token bucket algorithm with per-IP tracking.
-// rps is the rate limit in requests per second, burst is the maximum burst size.
-func RateLimitMiddleware(rps float64, burst int) func(http.Handler) http.Handler {
-	type ipLimiter struct {
-		limiter  *rate.Limiter
-		lastSeen time.Time
-	}
-
+// rps is the rate limit in requests per second, burst is the maximum burst size,
+// and maxIPs is the maximum number of unique IPs to track (LRU eviction when full).
+func RateLimitMiddleware(rps float64, burst int, maxIPs int) func(http.Handler) http.Handler {
 	var (
-		limiters = make(map[string]*ipLimiter)
-		mu       sync.Mutex
-		once     sync.Once
+		items = make(map[string]*list.Element)
+		order = list.New() // front = most recent, back = oldest
+		mu    sync.Mutex
+		once  sync.Once
+
+		// Throttled eviction logging: at most once per 30s
+		lastEvictLog time.Time
+		evictCount   int
 	)
 
 	return func(next http.Handler) http.Handler {
-		// Start cleanup goroutine only once, even if the middleware wrapper is called multiple times
+		// Start cleanup goroutine only once
 		once.Do(func() {
 			go func() {
 				ticker := time.NewTicker(5 * time.Minute)
@@ -123,9 +129,16 @@ func RateLimitMiddleware(rps float64, burst int) func(http.Handler) http.Handler
 				for range ticker.C {
 					mu.Lock()
 					now := time.Now()
-					for ip, lim := range limiters {
+					// Iterate from back (oldest) and remove stale entries
+					for e := order.Back(); e != nil; {
+						lim := e.Value.(*ipLimiter)
 						if now.Sub(lim.lastSeen) > 10*time.Minute {
-							delete(limiters, ip)
+							prev := e.Prev()
+							order.Remove(e)
+							delete(items, lim.ip)
+							e = prev
+						} else {
+							break // entries toward front are newer, stop early
 						}
 					}
 					mu.Unlock()
@@ -137,21 +150,36 @@ func RateLimitMiddleware(rps float64, burst int) func(http.Handler) http.Handler
 			ip := getClientIP(r)
 
 			mu.Lock()
-			lim, exists := limiters[ip]
-			if !exists {
-				if len(limiters) >= maxTrackedIPs {
-					mu.Unlock()
-					writeJSONError(w, http.StatusServiceUnavailable, "rate limiter capacity exceeded")
-					return
+			elem, exists := items[ip]
+			if exists {
+				// Move to front (most recently used) and update lastSeen
+				order.MoveToFront(elem)
+				elem.Value.(*ipLimiter).lastSeen = time.Now()
+			} else {
+				// Evict least recently used if at capacity
+				if order.Len() >= maxIPs {
+					back := order.Back()
+					if back != nil {
+						evicted := back.Value.(*ipLimiter)
+						order.Remove(back)
+						delete(items, evicted.ip)
+						evictCount++
+						if time.Since(lastEvictLog) >= 30*time.Second {
+							log.Printf("[RateLimit] Evicted %d least-recent IP(s) (at capacity: %d IPs)", evictCount, maxIPs)
+							lastEvictLog = time.Now()
+							evictCount = 0
+						}
+					}
 				}
-				lim = &ipLimiter{
+				lim := &ipLimiter{
+					ip:       ip,
 					limiter:  rate.NewLimiter(rate.Limit(rps), burst),
 					lastSeen: time.Now(),
 				}
-				limiters[ip] = lim
-			} else {
-				lim.lastSeen = time.Now()
+				elem = order.PushFront(lim)
+				items[ip] = elem
 			}
+			lim := elem.Value.(*ipLimiter)
 			mu.Unlock()
 
 			if !lim.limiter.Allow() {
