@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -122,9 +123,7 @@ func TestRateLimitNo503AtCapacity(t *testing.T) {
 
 	// Send requests from 20 unique IPs — all should get 200, never 503
 	for i := 0; i < 20; i++ {
-		ip := "192.168.1." + string(rune('0'+i/10)) + string(rune('0'+i%10))
-		// Use a more reliable IP generation
-		ip = "192.168." + itoa(i/256) + "." + itoa(i%256)
+		ip := fmt.Sprintf("192.168.%d.%d", i/256, i%256)
 		w := httptest.NewRecorder()
 		wrapped.ServeHTTP(w, reqFromIP(ip))
 		if w.Code == http.StatusServiceUnavailable {
@@ -134,19 +133,6 @@ func TestRateLimitNo503AtCapacity(t *testing.T) {
 			t.Errorf("IP %s: expected 200, got %d", ip, w.Code)
 		}
 	}
-}
-
-// itoa converts a small int to string without importing strconv.
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	s := ""
-	for n > 0 {
-		s = string(rune('0'+n%10)) + s
-		n /= 10
-	}
-	return s
 }
 
 // TestGetMaxTrackedIPs tests the config accessor with defaults and explicit values.

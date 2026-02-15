@@ -98,6 +98,9 @@ func SecurityHeadersMiddleware() func(http.Handler) http.Handler {
 	}
 }
 
+// evictionLogInterval is the minimum time between eviction log messages.
+const evictionLogInterval = 30 * time.Second
+
 // ipLimiter tracks a per-IP token bucket and its position in the LRU list.
 type ipLimiter struct {
 	ip       string
@@ -115,7 +118,7 @@ func RateLimitMiddleware(rps float64, burst int, maxIPs int) func(http.Handler) 
 		mu    sync.Mutex
 		once  sync.Once
 
-		// Throttled eviction logging: at most once per 30s
+		// Throttled eviction logging
 		lastEvictLog time.Time
 		evictCount   int
 	)
@@ -129,17 +132,17 @@ func RateLimitMiddleware(rps float64, burst int, maxIPs int) func(http.Handler) 
 				for range ticker.C {
 					mu.Lock()
 					now := time.Now()
-					// Iterate from back (oldest) and remove stale entries
+					// Iterate all entries and remove stale ones.
+					// Cannot break early: LRU order tracks access recency,
+					// not lastSeen time, so stale entries may appear anywhere.
 					for e := order.Back(); e != nil; {
 						lim := e.Value.(*ipLimiter)
+						prev := e.Prev()
 						if now.Sub(lim.lastSeen) > 10*time.Minute {
-							prev := e.Prev()
 							order.Remove(e)
 							delete(items, lim.ip)
-							e = prev
-						} else {
-							break // entries toward front are newer, stop early
 						}
+						e = prev
 					}
 					mu.Unlock()
 				}
@@ -164,7 +167,7 @@ func RateLimitMiddleware(rps float64, burst int, maxIPs int) func(http.Handler) 
 						order.Remove(back)
 						delete(items, evicted.ip)
 						evictCount++
-						if time.Since(lastEvictLog) >= 30*time.Second {
+						if time.Since(lastEvictLog) >= evictionLogInterval {
 							log.Printf("[RateLimit] Evicted %d least-recent IP(s) (at capacity: %d IPs)", evictCount, maxIPs)
 							lastEvictLog = time.Now()
 							evictCount = 0
