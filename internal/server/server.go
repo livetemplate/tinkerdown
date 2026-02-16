@@ -96,6 +96,7 @@ func NewWithConfig(rootDir string, cfg *config.Config) *Server {
 		handler = RateLimitMiddleware(
 			cfg.API.GetRateLimitRPS(),
 			cfg.API.GetRateLimitBurst(),
+			cfg.API.GetMaxTrackedIPs(),
 		)(handler)
 
 		// Apply CORS middleware (pass auth header name for preflight)

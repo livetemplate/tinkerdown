@@ -523,6 +523,7 @@ type CORSConfig struct {
 type RateLimitConfig struct {
 	RequestsPerSecond float64 `yaml:"requests_per_second,omitempty"` // Rate limit in requests per second (default: 10)
 	Burst             int     `yaml:"burst,omitempty"`               // Burst size (default: 20)
+	MaxTrackedIPs     int     `yaml:"max_tracked_ips,omitempty"`     // Maximum unique IPs to track (default: 10000)
 }
 
 // GetCORSOrigins returns the configured CORS origins, or nil if not configured
@@ -547,6 +548,14 @@ func (c *APIConfig) GetRateLimitBurst() int {
 		return 20
 	}
 	return c.RateLimit.Burst
+}
+
+// GetMaxTrackedIPs returns the maximum number of unique IPs tracked by the rate limiter (default: 10000)
+func (c *APIConfig) GetMaxTrackedIPs() int {
+	if c == nil || c.RateLimit == nil || c.RateLimit.MaxTrackedIPs <= 0 {
+		return 10000
+	}
+	return c.RateLimit.MaxTrackedIPs
 }
 
 // IsAuthEnabled returns true if API authentication is configured.

@@ -1,9 +1,11 @@
 package server
 
 import (
+	"container/list"
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -96,26 +98,37 @@ func SecurityHeadersMiddleware() func(http.Handler) http.Handler {
 	}
 }
 
-// maxTrackedIPs is the maximum number of unique IPs tracked by the rate limiter
-// to prevent memory exhaustion from IP rotation attacks.
-const maxTrackedIPs = 10000
+// evictionLogInterval is the minimum time between eviction log messages.
+const evictionLogInterval = 30 * time.Second
+
+// ipLimiter tracks a per-IP token bucket and its position in the LRU list.
+type ipLimiter struct {
+	ip       string
+	limiter  *rate.Limiter
+	lastSeen time.Time
+}
 
 // RateLimitMiddleware limits requests using a token bucket algorithm with per-IP tracking.
-// rps is the rate limit in requests per second, burst is the maximum burst size.
-func RateLimitMiddleware(rps float64, burst int) func(http.Handler) http.Handler {
-	type ipLimiter struct {
-		limiter  *rate.Limiter
-		lastSeen time.Time
+// rps is the rate limit in requests per second, burst is the maximum burst size,
+// and maxIPs is the maximum number of unique IPs to track (LRU eviction when full).
+func RateLimitMiddleware(rps float64, burst int, maxIPs int) func(http.Handler) http.Handler {
+	if maxIPs <= 0 {
+		maxIPs = 10000
 	}
 
 	var (
-		limiters = make(map[string]*ipLimiter)
-		mu       sync.Mutex
-		once     sync.Once
+		items = make(map[string]*list.Element)
+		order = list.New() // front = most recent, back = oldest
+		mu    sync.Mutex
+		once  sync.Once
+
+		// Eviction logging state (always accessed under mu)
+		lastEvictLog time.Time
+		evictCount   int
 	)
 
 	return func(next http.Handler) http.Handler {
-		// Start cleanup goroutine only once, even if the middleware wrapper is called multiple times
+		// Start cleanup goroutine only once
 		once.Do(func() {
 			go func() {
 				ticker := time.NewTicker(5 * time.Minute)
@@ -123,10 +136,17 @@ func RateLimitMiddleware(rps float64, burst int) func(http.Handler) http.Handler
 				for range ticker.C {
 					mu.Lock()
 					now := time.Now()
-					for ip, lim := range limiters {
+					// Iterate all entries and remove stale ones.
+					// Cannot break early: LRU order tracks access recency,
+					// not lastSeen time, so stale entries may appear anywhere.
+					for e := order.Back(); e != nil; {
+						lim := e.Value.(*ipLimiter)
+						prev := e.Prev()
 						if now.Sub(lim.lastSeen) > 10*time.Minute {
-							delete(limiters, ip)
+							order.Remove(e)
+							delete(items, lim.ip)
 						}
+						e = prev
 					}
 					mu.Unlock()
 				}
@@ -137,24 +157,39 @@ func RateLimitMiddleware(rps float64, burst int) func(http.Handler) http.Handler
 			ip := getClientIP(r)
 
 			mu.Lock()
-			lim, exists := limiters[ip]
-			if !exists {
-				if len(limiters) >= maxTrackedIPs {
-					mu.Unlock()
-					writeJSONError(w, http.StatusServiceUnavailable, "rate limiter capacity exceeded")
-					return
+			elem, exists := items[ip]
+			if exists {
+				// Move to front (most recently used) and update lastSeen
+				order.MoveToFront(elem)
+				elem.Value.(*ipLimiter).lastSeen = time.Now()
+			} else {
+				// Evict least recently used if at capacity
+				if order.Len() >= maxIPs {
+					back := order.Back()
+					if back != nil {
+						evicted := back.Value.(*ipLimiter)
+						order.Remove(back)
+						delete(items, evicted.ip)
+						evictCount++
+						if time.Since(lastEvictLog) >= evictionLogInterval {
+							log.Printf("[RateLimit] Evicted %d least-recent IP(s) (at capacity: %d IPs)", evictCount, maxIPs)
+							lastEvictLog = time.Now()
+							evictCount = 0
+						}
+					}
 				}
-				lim = &ipLimiter{
+				lim := &ipLimiter{
+					ip:       ip,
 					limiter:  rate.NewLimiter(rate.Limit(rps), burst),
 					lastSeen: time.Now(),
 				}
-				limiters[ip] = lim
-			} else {
-				lim.lastSeen = time.Now()
+				elem = order.PushFront(lim)
+				items[ip] = elem
 			}
+			allowed := elem.Value.(*ipLimiter).limiter.Allow()
 			mu.Unlock()
 
-			if !lim.limiter.Allow() {
+			if !allowed {
 				w.Header().Set("Retry-After", "1")
 				writeJSONError(w, http.StatusTooManyRequests, "rate limit exceeded")
 				return
