@@ -2587,7 +2587,7 @@ func (s *Server) StopSchedules() error {
 // StopRateLimiter cancels the rate limiter's background cleanup goroutine
 // and waits for it to exit.
 func (s *Server) StopRateLimiter() {
-	if s.rateLimitCancel == nil {
+	if s.rateLimitCancel == nil || s.rateLimitDone == nil {
 		return
 	}
 	s.rateLimitCancel()
