@@ -2587,12 +2587,11 @@ func (s *Server) StopSchedules() error {
 // StopRateLimiter cancels the rate limiter's background cleanup goroutine
 // and waits for it to exit.
 func (s *Server) StopRateLimiter() {
-	if s.rateLimitCancel != nil {
-		s.rateLimitCancel()
+	if s.rateLimitCancel == nil {
+		return
 	}
-	if s.rateLimitDone != nil {
-		<-s.rateLimitDone
-	}
+	s.rateLimitCancel()
+	<-s.rateLimitDone
 }
 
 // GetScheduledJobCount returns the number of scheduled jobs.
