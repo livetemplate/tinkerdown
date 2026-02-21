@@ -9,7 +9,7 @@ COPY client/ ./
 RUN npm run build
 
 # Build stage 2: Build Go binary
-FROM golang:1.25-alpine AS go-builder
+FROM golang:1.26-alpine AS go-builder
 
 # Install git for version info and ca-certificates for HTTPS
 RUN apk add --no-cache git ca-certificates
