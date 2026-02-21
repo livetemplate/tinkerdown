@@ -113,9 +113,8 @@ type ipLimiter struct {
 // and maxIPs is the maximum number of unique IPs to track (LRU eviction when full).
 //
 // The cleanup goroutine starts immediately when this function is called.
-// The ctx parameter controls its lifetime; cancel ctx to stop it.
-// The returned channel is closed when the goroutine exits,
-// allowing callers to wait for a clean shutdown.
+// Callers must cancel ctx and then receive from the returned channel
+// to guarantee the goroutine has exited.
 func RateLimitMiddleware(ctx context.Context, rps float64, burst int, maxIPs int) (func(http.Handler) http.Handler, <-chan struct{}) {
 	if maxIPs <= 0 {
 		maxIPs = 10000
