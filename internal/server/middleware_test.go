@@ -25,10 +25,19 @@ func reqFromIP(ip string) *http.Request {
 	return r
 }
 
+// rateLimitCtx returns a cancellable context whose cleanup goroutine is
+// stopped when the test finishes, preventing goroutine leaks across tests.
+func rateLimitCtx(t *testing.T) context.Context {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	return ctx
+}
+
 // TestRateLimitLRUEviction verifies that when the IP map is full, a new IP
 // evicts the least-recently-used entry instead of returning 503.
 func TestRateLimitLRUEviction(t *testing.T) {
-	wrapped := RateLimitMiddleware(context.Background(),100, 100, 3)(okHandler())
+	wrapped := RateLimitMiddleware(rateLimitCtx(t), 100, 100, 3)(okHandler())
 
 	// Fill to capacity with 3 IPs
 	for _, ip := range []string{"1.1.1.1", "2.2.2.2", "3.3.3.3"} {
@@ -51,7 +60,7 @@ func TestRateLimitLRUEviction(t *testing.T) {
 // gets a fresh token bucket, not a stale one.
 func TestRateLimitEvictedIPGetsFreshLimiter(t *testing.T) {
 	// burst=1 so the first request consumes the token
-	wrapped := RateLimitMiddleware(context.Background(),100, 1, 2)(okHandler())
+	wrapped := RateLimitMiddleware(rateLimitCtx(t), 100, 1, 2)(okHandler())
 
 	// IP "1.1.1.1" uses its burst token
 	w := httptest.NewRecorder()
@@ -87,7 +96,7 @@ func TestRateLimitEvictedIPGetsFreshLimiter(t *testing.T) {
 // TestRateLimitMRUNotEvicted verifies that accessing an IP moves it to the
 // front of the LRU, protecting it from eviction.
 func TestRateLimitMRUNotEvicted(t *testing.T) {
-	wrapped := RateLimitMiddleware(context.Background(),100, 100, 3)(okHandler())
+	wrapped := RateLimitMiddleware(rateLimitCtx(t), 100, 100, 3)(okHandler())
 
 	// Fill: A, B, C (order: C=front, B, A=back)
 	for _, ip := range []string{"10.0.0.1", "10.0.0.2", "10.0.0.3"} {
@@ -123,7 +132,7 @@ func TestRateLimitMRUNotEvicted(t *testing.T) {
 // TestRateLimitNo503AtCapacity is a regression test ensuring that 503 is never
 // returned when the rate limiter is at capacity.
 func TestRateLimitNo503AtCapacity(t *testing.T) {
-	wrapped := RateLimitMiddleware(context.Background(),100, 100, 5)(okHandler())
+	wrapped := RateLimitMiddleware(rateLimitCtx(t), 100, 100, 5)(okHandler())
 
 	// Send requests from 20 unique IPs — all should get 200, never 503
 	for i := 0; i < 20; i++ {
@@ -141,7 +150,7 @@ func TestRateLimitNo503AtCapacity(t *testing.T) {
 
 // TestRateLimitConcurrentAccess verifies no races or panics under concurrent load.
 func TestRateLimitConcurrentAccess(t *testing.T) {
-	wrapped := RateLimitMiddleware(context.Background(),1000, 1000, 100)(okHandler())
+	wrapped := RateLimitMiddleware(rateLimitCtx(t), 1000, 1000, 100)(okHandler())
 
 	var wg sync.WaitGroup
 	for i := 0; i < 100; i++ {
@@ -201,8 +210,8 @@ func TestRateLimitCleanupStopsOnCancel(t *testing.T) {
 
 	// The middleware should have spawned exactly one goroutine.
 	afterStart := runtime.NumGoroutine()
-	if afterStart <= before {
-		t.Fatalf("expected goroutine count to increase: before=%d, afterStart=%d", before, afterStart)
+	if afterStart != before+1 {
+		t.Fatalf("expected exactly 1 new goroutine: before=%d, afterStart=%d", before, afterStart)
 	}
 
 	cancel()

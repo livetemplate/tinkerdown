@@ -157,7 +157,6 @@ func RateLimitMiddleware(ctx context.Context, rps float64, burst int, maxIPs int
 	}()
 
 	return func(next http.Handler) http.Handler {
-
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ip := getClientIP(r)
 
