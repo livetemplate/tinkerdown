@@ -2584,9 +2584,9 @@ func (s *Server) StopSchedules() error {
 	return nil
 }
 
-// StopRateLimiter cancels the rate limiter's background cleanup goroutine
-// and blocks until it has fully exited. Unlike StopSchedules/StopWatch,
-// this method is synchronous — callers should account for a brief delay.
+// StopRateLimiter cancels the rate limiter's background cleanup goroutine and
+// blocks until it exits. If a cleanup sweep is in progress, this may block
+// briefly until the sweep finishes and the goroutine observes the cancellation.
 func (s *Server) StopRateLimiter() {
 	if s.rateLimitCancel == nil || s.rateLimitDone == nil {
 		return

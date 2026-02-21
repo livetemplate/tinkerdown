@@ -29,8 +29,11 @@ func reqFromIP(ip string) *http.Request {
 func rateLimitWrap(t *testing.T, rps float64, burst, maxIPs int, next http.Handler) http.Handler {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
-	mw, _ := RateLimitMiddleware(ctx, rps, burst, maxIPs)
+	mw, done := RateLimitMiddleware(ctx, rps, burst, maxIPs)
+	t.Cleanup(func() {
+		cancel()
+		<-done
+	})
 	return mw(next)
 }
 
