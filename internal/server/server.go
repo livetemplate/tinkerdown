@@ -44,6 +44,7 @@ type Server struct {
 	webhookHandler     *WebhookHandler                       // Webhook handler for external triggers
 	scheduleRunner     *schedule.Runner                      // Schedule runner for timed jobs
 	rateLimitCancel    context.CancelFunc                    // Stops the rate limiter cleanup goroutine
+	rateLimitDone      <-chan struct{}                        // Closed when rate limiter goroutine exits
 	recentSourceWrites map[string]time.Time                  // Files recently written by source actions
 	sourceWriteMu      sync.Mutex                            // Protects recentSourceWrites
 }
@@ -96,12 +97,13 @@ func NewWithConfig(rootDir string, cfg *config.Config) *Server {
 		// Apply per-IP rate limiting (context controls cleanup goroutine lifetime)
 		rateLimitCtx, rateLimitCancel := context.WithCancel(context.Background())
 		srv.rateLimitCancel = rateLimitCancel
-		rateLimitMW, _ := RateLimitMiddleware(
+		rateLimitMW, rateLimitDone := RateLimitMiddleware(
 			rateLimitCtx,
 			cfg.API.GetRateLimitRPS(),
 			cfg.API.GetRateLimitBurst(),
 			cfg.API.GetMaxTrackedIPs(),
 		)
+		srv.rateLimitDone = rateLimitDone
 		handler = rateLimitMW(handler)
 
 		// Apply CORS middleware (pass auth header name for preflight)
@@ -2582,10 +2584,14 @@ func (s *Server) StopSchedules() error {
 	return nil
 }
 
-// StopRateLimiter cancels the rate limiter's background cleanup goroutine.
+// StopRateLimiter cancels the rate limiter's background cleanup goroutine
+// and waits for it to exit.
 func (s *Server) StopRateLimiter() {
 	if s.rateLimitCancel != nil {
 		s.rateLimitCancel()
+	}
+	if s.rateLimitDone != nil {
+		<-s.rateLimitDone
 	}
 }
 
