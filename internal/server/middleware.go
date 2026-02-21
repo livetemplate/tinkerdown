@@ -111,10 +111,10 @@ type ipLimiter struct {
 // RateLimitMiddleware limits requests using a token bucket algorithm with per-IP tracking.
 // rps is the rate limit in requests per second, burst is the maximum burst size,
 // and maxIPs is the maximum number of unique IPs to track (LRU eviction when full).
-// The ctx parameter controls the lifetime of the background cleanup goroutine;
-// cancelling it stops the goroutine gracefully.
 //
-// The returned channel is closed when the cleanup goroutine exits,
+// The cleanup goroutine starts immediately when this function is called.
+// The ctx parameter controls its lifetime; cancel ctx to stop it.
+// The returned channel is closed when the goroutine exits,
 // allowing callers to wait for a clean shutdown.
 func RateLimitMiddleware(ctx context.Context, rps float64, burst int, maxIPs int) (func(http.Handler) http.Handler, <-chan struct{}) {
 	if maxIPs <= 0 {
