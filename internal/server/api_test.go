@@ -564,7 +564,9 @@ func TestRateLimitMiddleware(t *testing.T) {
 	})
 
 	// Very low rate limit for testing: 1 request per second, burst of 1
-	wrapped := RateLimitMiddleware(context.Background(), 1, 1, 10000)(handler)
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	wrapped := RateLimitMiddleware(ctx, 1, 1, 10000)(handler)
 
 	// First request should succeed
 	req1 := httptest.NewRequest("GET", "/api/sources/test", nil)
