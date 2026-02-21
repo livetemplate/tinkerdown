@@ -43,6 +43,7 @@ type Server struct {
 	apiRoutes          http.Handler                          // Wrapped API handler with middleware
 	webhookHandler     *WebhookHandler                       // Webhook handler for external triggers
 	scheduleRunner     *schedule.Runner                      // Schedule runner for timed jobs
+	rateLimitCancel    context.CancelFunc                    // Stops the rate limiter cleanup goroutine
 	recentSourceWrites map[string]time.Time                  // Files recently written by source actions
 	sourceWriteMu      sync.Mutex                            // Protects recentSourceWrites
 }
@@ -92,8 +93,11 @@ func NewWithConfig(rootDir string, cfg *config.Config) *Server {
 			handler = AuthMiddleware(cfg.API.Auth)(handler)
 		}
 
-		// Apply per-IP rate limiting
+		// Apply per-IP rate limiting (context controls cleanup goroutine lifetime)
+		rateLimitCtx, rateLimitCancel := context.WithCancel(context.Background())
+		srv.rateLimitCancel = rateLimitCancel
 		handler = RateLimitMiddleware(
+			rateLimitCtx,
 			cfg.API.GetRateLimitRPS(),
 			cfg.API.GetRateLimitBurst(),
 			cfg.API.GetMaxTrackedIPs(),
@@ -2575,6 +2579,13 @@ func (s *Server) StopSchedules() error {
 		return s.scheduleRunner.Stop()
 	}
 	return nil
+}
+
+// StopRateLimiter cancels the rate limiter's background cleanup goroutine.
+func (s *Server) StopRateLimiter() {
+	if s.rateLimitCancel != nil {
+		s.rateLimitCancel()
+	}
 }
 
 // GetScheduledJobCount returns the number of scheduled jobs.

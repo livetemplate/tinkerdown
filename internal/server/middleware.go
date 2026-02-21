@@ -111,7 +111,9 @@ type ipLimiter struct {
 // RateLimitMiddleware limits requests using a token bucket algorithm with per-IP tracking.
 // rps is the rate limit in requests per second, burst is the maximum burst size,
 // and maxIPs is the maximum number of unique IPs to track (LRU eviction when full).
-func RateLimitMiddleware(rps float64, burst int, maxIPs int) func(http.Handler) http.Handler {
+// The ctx parameter controls the lifetime of the background cleanup goroutine;
+// cancelling it stops the goroutine gracefully.
+func RateLimitMiddleware(ctx context.Context, rps float64, burst int, maxIPs int) func(http.Handler) http.Handler {
 	if maxIPs <= 0 {
 		maxIPs = 10000
 	}
@@ -120,38 +122,41 @@ func RateLimitMiddleware(rps float64, burst int, maxIPs int) func(http.Handler) 
 		items = make(map[string]*list.Element)
 		order = list.New() // front = most recent, back = oldest
 		mu    sync.Mutex
-		once  sync.Once
 
 		// Eviction logging state (always accessed under mu)
 		lastEvictLog time.Time
 		evictCount   int
 	)
 
-	return func(next http.Handler) http.Handler {
-		// Start cleanup goroutine only once
-		once.Do(func() {
-			go func() {
-				ticker := time.NewTicker(5 * time.Minute)
-				defer ticker.Stop()
-				for range ticker.C {
-					mu.Lock()
-					now := time.Now()
-					// Iterate all entries and remove stale ones.
-					// Cannot break early: LRU order tracks access recency,
-					// not lastSeen time, so stale entries may appear anywhere.
-					for e := order.Back(); e != nil; {
-						lim := e.Value.(*ipLimiter)
-						prev := e.Prev()
-						if now.Sub(lim.lastSeen) > 10*time.Minute {
-							order.Remove(e)
-							delete(items, lim.ip)
-						}
-						e = prev
+	// Start cleanup goroutine — exits when ctx is cancelled.
+	go func() {
+		ticker := time.NewTicker(5 * time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				mu.Lock()
+				now := time.Now()
+				// Iterate all entries and remove stale ones.
+				// Cannot break early: LRU order tracks access recency,
+				// not lastSeen time, so stale entries may appear anywhere.
+				for e := order.Back(); e != nil; {
+					lim := e.Value.(*ipLimiter)
+					prev := e.Prev()
+					if now.Sub(lim.lastSeen) > 10*time.Minute {
+						order.Remove(e)
+						delete(items, lim.ip)
 					}
-					mu.Unlock()
+					e = prev
 				}
-			}()
-		})
+				mu.Unlock()
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
+	return func(next http.Handler) http.Handler {
 
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ip := getClientIP(r)
