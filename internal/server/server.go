@@ -43,6 +43,8 @@ type Server struct {
 	apiRoutes          http.Handler                          // Wrapped API handler with middleware
 	webhookHandler     *WebhookHandler                       // Webhook handler for external triggers
 	scheduleRunner     *schedule.Runner                      // Schedule runner for timed jobs
+	rateLimitCancel    context.CancelFunc                    // Stops the rate limiter cleanup goroutine
+	rateLimitDone      <-chan struct{}                        // Closed when rate limiter goroutine exits
 	recentSourceWrites map[string]time.Time                  // Files recently written by source actions
 	sourceWriteMu      sync.Mutex                            // Protects recentSourceWrites
 }
@@ -92,12 +94,17 @@ func NewWithConfig(rootDir string, cfg *config.Config) *Server {
 			handler = AuthMiddleware(cfg.API.Auth)(handler)
 		}
 
-		// Apply per-IP rate limiting
-		handler = RateLimitMiddleware(
+		// Apply per-IP rate limiting (context controls cleanup goroutine lifetime)
+		rateLimitCtx, rateLimitCancel := context.WithCancel(context.Background())
+		srv.rateLimitCancel = rateLimitCancel
+		rateLimitMW, rateLimitDone := RateLimitMiddleware(
+			rateLimitCtx,
 			cfg.API.GetRateLimitRPS(),
 			cfg.API.GetRateLimitBurst(),
 			cfg.API.GetMaxTrackedIPs(),
-		)(handler)
+		)
+		srv.rateLimitDone = rateLimitDone
+		handler = rateLimitMW(handler)
 
 		// Apply CORS middleware (pass auth header name for preflight)
 		authHeader := ""
@@ -2575,6 +2582,17 @@ func (s *Server) StopSchedules() error {
 		return s.scheduleRunner.Stop()
 	}
 	return nil
+}
+
+// StopRateLimiter cancels the rate limiter's background cleanup goroutine and
+// blocks until it exits. If a cleanup sweep is in progress, this may block
+// briefly until the sweep finishes and the goroutine observes the cancellation.
+func (s *Server) StopRateLimiter() {
+	if s.rateLimitCancel == nil || s.rateLimitDone == nil {
+		return
+	}
+	s.rateLimitCancel()
+	<-s.rateLimitDone
 }
 
 // GetScheduledJobCount returns the number of scheduled jobs.

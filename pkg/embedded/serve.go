@@ -148,6 +148,9 @@ func ServeWithOptions(opts Options) error {
 		if err := srv.StopSchedules(); err != nil {
 			log.Printf("Warning: Failed to stop schedules: %v\n", err)
 		}
+
+		// Stop rate limiter cleanup goroutine
+		srv.StopRateLimiter()
 	}()
 
 	// Call OnReady callback if provided
