@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -25,19 +24,20 @@ func reqFromIP(ip string) *http.Request {
 	return r
 }
 
-// rateLimitCtx returns a cancellable context whose cleanup goroutine is
-// stopped when the test finishes, preventing goroutine leaks across tests.
-func rateLimitCtx(t *testing.T) context.Context {
+// rateLimitWrap creates a rate-limited handler with a context that is
+// cancelled when the test finishes, preventing goroutine leaks.
+func rateLimitWrap(t *testing.T, rps float64, burst, maxIPs int, next http.Handler) http.Handler {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	t.Cleanup(cancel)
-	return ctx
+	mw, _ := RateLimitMiddleware(ctx, rps, burst, maxIPs)
+	return mw(next)
 }
 
 // TestRateLimitLRUEviction verifies that when the IP map is full, a new IP
 // evicts the least-recently-used entry instead of returning 503.
 func TestRateLimitLRUEviction(t *testing.T) {
-	wrapped := RateLimitMiddleware(rateLimitCtx(t), 100, 100, 3)(okHandler())
+	wrapped := rateLimitWrap(t, 100, 100, 3, okHandler())
 
 	// Fill to capacity with 3 IPs
 	for _, ip := range []string{"1.1.1.1", "2.2.2.2", "3.3.3.3"} {
@@ -60,7 +60,7 @@ func TestRateLimitLRUEviction(t *testing.T) {
 // gets a fresh token bucket, not a stale one.
 func TestRateLimitEvictedIPGetsFreshLimiter(t *testing.T) {
 	// burst=1 so the first request consumes the token
-	wrapped := RateLimitMiddleware(rateLimitCtx(t), 100, 1, 2)(okHandler())
+	wrapped := rateLimitWrap(t, 100, 1, 2, okHandler())
 
 	// IP "1.1.1.1" uses its burst token
 	w := httptest.NewRecorder()
@@ -96,7 +96,7 @@ func TestRateLimitEvictedIPGetsFreshLimiter(t *testing.T) {
 // TestRateLimitMRUNotEvicted verifies that accessing an IP moves it to the
 // front of the LRU, protecting it from eviction.
 func TestRateLimitMRUNotEvicted(t *testing.T) {
-	wrapped := RateLimitMiddleware(rateLimitCtx(t), 100, 100, 3)(okHandler())
+	wrapped := rateLimitWrap(t, 100, 100, 3, okHandler())
 
 	// Fill: A, B, C (order: C=front, B, A=back)
 	for _, ip := range []string{"10.0.0.1", "10.0.0.2", "10.0.0.3"} {
@@ -132,7 +132,7 @@ func TestRateLimitMRUNotEvicted(t *testing.T) {
 // TestRateLimitNo503AtCapacity is a regression test ensuring that 503 is never
 // returned when the rate limiter is at capacity.
 func TestRateLimitNo503AtCapacity(t *testing.T) {
-	wrapped := RateLimitMiddleware(rateLimitCtx(t), 100, 100, 5)(okHandler())
+	wrapped := rateLimitWrap(t, 100, 100, 5, okHandler())
 
 	// Send requests from 20 unique IPs — all should get 200, never 503
 	for i := 0; i < 20; i++ {
@@ -150,7 +150,7 @@ func TestRateLimitNo503AtCapacity(t *testing.T) {
 
 // TestRateLimitConcurrentAccess verifies no races or panics under concurrent load.
 func TestRateLimitConcurrentAccess(t *testing.T) {
-	wrapped := RateLimitMiddleware(rateLimitCtx(t), 1000, 1000, 100)(okHandler())
+	wrapped := rateLimitWrap(t, 1000, 1000, 100, okHandler())
 
 	var wg sync.WaitGroup
 	for i := 0; i < 100; i++ {
@@ -198,30 +198,17 @@ func TestGetMaxTrackedIPs(t *testing.T) {
 }
 
 // TestRateLimitCleanupStopsOnCancel verifies that cancelling the context
-// causes the cleanup goroutine to exit, confirmed by goroutine count.
+// causes the cleanup goroutine to exit, confirmed via the done channel.
 func TestRateLimitCleanupStopsOnCancel(t *testing.T) {
-	// Stabilise goroutine count: let background work from prior tests settle.
-	runtime.GC()
-	time.Sleep(50 * time.Millisecond)
-	before := runtime.NumGoroutine()
-
 	ctx, cancel := context.WithCancel(context.Background())
-	_ = RateLimitMiddleware(ctx, 100, 100, 100)(okHandler())
-
-	// The middleware should have spawned exactly one goroutine.
-	afterStart := runtime.NumGoroutine()
-	if afterStart != before+1 {
-		t.Fatalf("expected exactly 1 new goroutine: before=%d, afterStart=%d", before, afterStart)
-	}
+	_, done := RateLimitMiddleware(ctx, 100, 100, 100)
 
 	cancel()
 
-	// Poll until the goroutine exits (should be nearly instant).
-	deadline := time.Now().Add(2 * time.Second)
-	for runtime.NumGoroutine() > before {
-		if time.Now().After(deadline) {
-			t.Fatalf("cleanup goroutine did not exit within 2s: before=%d, now=%d", before, runtime.NumGoroutine())
-		}
-		time.Sleep(10 * time.Millisecond)
+	select {
+	case <-done:
+		// Goroutine exited cleanly.
+	case <-time.After(2 * time.Second):
+		t.Fatal("cleanup goroutine did not exit within 2s")
 	}
 }

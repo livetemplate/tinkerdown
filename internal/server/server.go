@@ -96,12 +96,13 @@ func NewWithConfig(rootDir string, cfg *config.Config) *Server {
 		// Apply per-IP rate limiting (context controls cleanup goroutine lifetime)
 		rateLimitCtx, rateLimitCancel := context.WithCancel(context.Background())
 		srv.rateLimitCancel = rateLimitCancel
-		handler = RateLimitMiddleware(
+		rateLimitMW, _ := RateLimitMiddleware(
 			rateLimitCtx,
 			cfg.API.GetRateLimitRPS(),
 			cfg.API.GetRateLimitBurst(),
 			cfg.API.GetMaxTrackedIPs(),
-		)(handler)
+		)
+		handler = rateLimitMW(handler)
 
 		// Apply CORS middleware (pass auth header name for preflight)
 		authHeader := ""

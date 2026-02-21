@@ -113,7 +113,10 @@ type ipLimiter struct {
 // and maxIPs is the maximum number of unique IPs to track (LRU eviction when full).
 // The ctx parameter controls the lifetime of the background cleanup goroutine;
 // cancelling it stops the goroutine gracefully.
-func RateLimitMiddleware(ctx context.Context, rps float64, burst int, maxIPs int) func(http.Handler) http.Handler {
+//
+// The returned channel is closed when the cleanup goroutine exits,
+// allowing callers to wait for a clean shutdown.
+func RateLimitMiddleware(ctx context.Context, rps float64, burst int, maxIPs int) (func(http.Handler) http.Handler, <-chan struct{}) {
 	if maxIPs <= 0 {
 		maxIPs = 10000
 	}
@@ -129,7 +132,9 @@ func RateLimitMiddleware(ctx context.Context, rps float64, burst int, maxIPs int
 	)
 
 	// Start cleanup goroutine — exits when ctx is cancelled.
+	done := make(chan struct{})
 	go func() {
+		defer close(done)
 		ticker := time.NewTicker(5 * time.Minute)
 		defer ticker.Stop()
 		for {
@@ -156,7 +161,7 @@ func RateLimitMiddleware(ctx context.Context, rps float64, burst int, maxIPs int
 		}
 	}()
 
-	return func(next http.Handler) http.Handler {
+	middleware := func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ip := getClientIP(r)
 
@@ -201,6 +206,8 @@ func RateLimitMiddleware(ctx context.Context, rps float64, burst int, maxIPs int
 			next.ServeHTTP(w, r)
 		})
 	}
+
+	return middleware, done
 }
 
 // getClientIP extracts the client IP from the request.
