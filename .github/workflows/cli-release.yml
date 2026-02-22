@@ -70,8 +70,9 @@ jobs:
 
       - name: Smoke test
         run: |
-          ./tinkerdown version
-          ./tinkerdown version | grep -q "${{ steps.version.outputs.version }}"
+          VERSION_OUT=$(./tinkerdown version)
+          echo "$VERSION_OUT"
+          echo "$VERSION_OUT" | grep -Fq "${{ steps.version.outputs.version }}"
           ./tinkerdown help
 
       - name: Create archive
