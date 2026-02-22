@@ -355,7 +355,8 @@ func TestRateLimitEvictionLogThrottling(t *testing.T) {
 	// Wait for throttle window to expire
 	time.Sleep(150 * time.Millisecond)
 
-	// Trigger more evictions
+	// Trigger more evictions. These in-memory operations complete well within
+	// the 100ms evictLogInterval, so exactly one additional log line is expected.
 	for i := 10; i < 16; i++ {
 		ip := fmt.Sprintf("20.0.0.%d", i)
 		w := httptest.NewRecorder()
