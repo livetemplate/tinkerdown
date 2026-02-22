@@ -294,7 +294,7 @@ func TestRateLimitCleanupKeepsActiveEntries(t *testing.T) {
 		0.001, 1, 100,
 		50*time.Millisecond,  // sweepInterval
 		300*time.Millisecond, // staleThreshold (wide margin for CI)
-		time.Hour,            // evictionLogInterval (irrelevant here)
+		time.Hour,            // evictLogInterval (irrelevant here)
 		okHandler(),
 	)
 
