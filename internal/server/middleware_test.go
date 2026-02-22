@@ -222,13 +222,13 @@ func TestRateLimitCleanupStopsOnCancel(t *testing.T) {
 // rateLimitWrapInternal creates a rate-limited handler using the internal
 // constructor with configurable durations, for testing cleanup and logging.
 func rateLimitWrapInternal(t *testing.T, rps float64, burst, maxIPs int,
-	sweepInterval, staleThreshold, evictionLogThreshold time.Duration,
+	sweepInterval, staleThreshold, evictionLogInterval time.Duration,
 	next http.Handler,
 ) http.Handler {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	mw, done := rateLimitMiddlewareInternal(ctx, rps, burst, maxIPs,
-		sweepInterval, staleThreshold, evictionLogThreshold)
+		sweepInterval, staleThreshold, evictionLogInterval)
 	t.Cleanup(func() {
 		cancel()
 		<-done
@@ -292,8 +292,8 @@ func TestRateLimitCleanupKeepsActiveEntries(t *testing.T) {
 	wrapped := rateLimitWrapInternal(t,
 		0.001, 1, 100,
 		50*time.Millisecond,  // sweepInterval
-		150*time.Millisecond, // staleThreshold
-		time.Hour,            // evictLogInterval (irrelevant here)
+		300*time.Millisecond, // staleThreshold (wide margin for CI)
+		time.Hour,            // evictionLogInterval (irrelevant here)
 		okHandler(),
 	)
 
@@ -304,10 +304,10 @@ func TestRateLimitCleanupKeepsActiveEntries(t *testing.T) {
 		t.Fatalf("initial request: expected 200, got %d", w.Code)
 	}
 
-	// Keep entry alive by sending requests every 60ms (< 150ms staleThreshold)
+	// Keep entry alive by sending requests every 100ms (< 300ms staleThreshold)
 	// across multiple sweep cycles (each 50ms)
 	for i := 0; i < 4; i++ {
-		time.Sleep(60 * time.Millisecond)
+		time.Sleep(100 * time.Millisecond)
 		w = httptest.NewRecorder()
 		wrapped.ServeHTTP(w, reqFromIP("6.6.6.6"))
 		// Should stay 429 — same exhausted limiter, not a fresh one
@@ -318,7 +318,7 @@ func TestRateLimitCleanupKeepsActiveEntries(t *testing.T) {
 }
 
 // TestRateLimitEvictionLogThrottling verifies that eviction log messages
-// are throttled: at most one message per evictionLogThreshold window.
+// are throttled: at most one message per evictionLogInterval window.
 // NOTE: log.SetOutput mutates global state; this test cannot use t.Parallel().
 func TestRateLimitEvictionLogThrottling(t *testing.T) {
 	var buf bytes.Buffer
@@ -330,7 +330,7 @@ func TestRateLimitEvictionLogThrottling(t *testing.T) {
 		100, 100, 1,
 		time.Hour,             // sweepInterval (irrelevant here)
 		time.Hour,             // staleThreshold (irrelevant here)
-		100*time.Millisecond,  // evictionLogThreshold
+		100*time.Millisecond,  // evictionLogInterval
 		okHandler(),
 	)
 
