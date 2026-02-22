@@ -219,10 +219,10 @@ func rateLimitMiddlewareInternal(
 				elem = order.PushFront(lim)
 				items[ip] = elem
 			}
-			allowed := elem.Value.(*ipLimiter).limiter.Allow()
+			lim := elem.Value.(*ipLimiter).limiter
 			mu.Unlock()
 
-			if !allowed {
+			if !lim.Allow() {
 				w.Header().Set("Retry-After", "1")
 				writeJSONError(w, http.StatusTooManyRequests, "rate limit exceeded")
 				return
@@ -245,7 +245,7 @@ type shard struct {
 	maxIPs       int
 	lastEvictLog time.Time
 	evictCount   int
-	_            [64]byte // pad to 128 bytes (2 cache lines) to prevent false sharing
+	_            [64]byte // pad to 128 bytes (2 cache lines) to reduce false sharing
 }
 
 // shardedRateLimiter distributes IPs across multiple shards to reduce
@@ -374,10 +374,10 @@ func shardedRateLimitMiddlewareInternal(
 				elem = s.order.PushFront(lim)
 				s.items[ip] = elem
 			}
-			allowed := elem.Value.(*ipLimiter).limiter.Allow()
+			lim := elem.Value.(*ipLimiter).limiter
 			s.mu.Unlock()
 
-			if !allowed {
+			if !lim.Allow() {
 				w.Header().Set("Retry-After", "1")
 				writeJSONError(w, http.StatusTooManyRequests, "rate limit exceeded")
 				return
