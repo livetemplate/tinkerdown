@@ -68,6 +68,13 @@ jobs:
           go build -ldflags="-s -w -X main.version=${{ steps.version.outputs.version }}" \
             -o tinkerdown ./cmd/tinkerdown
 
+      - name: Smoke test
+        run: |
+          VERSION_OUT=$(./tinkerdown version)
+          echo "$VERSION_OUT"
+          echo "$VERSION_OUT" | grep -Fq "${{ steps.version.outputs.version }}"
+          ./tinkerdown help
+
       - name: Create archive
         run: |
           mkdir -p dist
