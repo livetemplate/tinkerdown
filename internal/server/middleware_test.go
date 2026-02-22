@@ -1,10 +1,13 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -213,5 +216,159 @@ func TestRateLimitCleanupStopsOnCancel(t *testing.T) {
 		// Goroutine exited cleanly.
 	case <-time.After(2 * time.Second):
 		t.Fatal("cleanup goroutine did not exit within 2s")
+	}
+}
+
+// rateLimitWrapInternal creates a rate-limited handler using the internal
+// constructor with configurable durations, for testing cleanup and logging.
+func rateLimitWrapInternal(t *testing.T, rps float64, burst, maxIPs int,
+	sweepInterval, staleThreshold, evictLogInterval time.Duration,
+	next http.Handler,
+) http.Handler {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	mw, done := rateLimitMiddlewareInternal(ctx, rps, burst, maxIPs,
+		sweepInterval, staleThreshold, evictLogInterval)
+	t.Cleanup(func() {
+		cancel()
+		<-done
+	})
+	return mw(next)
+}
+
+// countLogLines returns the number of lines in output that contain substr.
+func countLogLines(output, substr string) int {
+	n := 0
+	for _, line := range strings.Split(output, "\n") {
+		if strings.Contains(line, substr) {
+			n++
+		}
+	}
+	return n
+}
+
+// TestRateLimitCleanupRemovesStaleEntries verifies that the cleanup goroutine
+// removes IP entries that haven't been seen for longer than the stale threshold.
+func TestRateLimitCleanupRemovesStaleEntries(t *testing.T) {
+	// rps=0.001 ensures the token bucket won't refill naturally (1 token/1000s),
+	// so a 200 after sleeping proves the cleanup created a fresh limiter.
+	wrapped := rateLimitWrapInternal(t,
+		0.001, 1, 100,
+		50*time.Millisecond,  // sweepInterval
+		100*time.Millisecond, // staleThreshold
+		time.Hour,            // evictLogInterval (irrelevant here)
+		okHandler(),
+	)
+
+	// First request uses the burst token → 200
+	w := httptest.NewRecorder()
+	wrapped.ServeHTTP(w, reqFromIP("5.5.5.5"))
+	if w.Code != http.StatusOK {
+		t.Fatalf("first request: expected 200, got %d", w.Code)
+	}
+
+	// Second request from same IP → 429 (burst exhausted, rps too low to refill)
+	w = httptest.NewRecorder()
+	wrapped.ServeHTTP(w, reqFromIP("5.5.5.5"))
+	if w.Code != http.StatusTooManyRequests {
+		t.Fatalf("second request: expected 429, got %d", w.Code)
+	}
+
+	// Wait for cleanup to fire. The stale clock starts from the second request
+	// (which returned 429) because lastSeen is refreshed on every access.
+	// Using 400ms for CI resilience (staleThreshold=100ms + sweepInterval=50ms + margin).
+	time.Sleep(400 * time.Millisecond)
+
+	// Entry should be gone — new request gets a fresh limiter with burst token → 200
+	w = httptest.NewRecorder()
+	wrapped.ServeHTTP(w, reqFromIP("5.5.5.5"))
+	if w.Code != http.StatusOK {
+		t.Errorf("after cleanup: expected 200 (fresh limiter), got %d", w.Code)
+	}
+}
+
+// TestRateLimitCleanupKeepsActiveEntries verifies that entries accessed
+// recently (within the stale threshold) survive the cleanup goroutine.
+func TestRateLimitCleanupKeepsActiveEntries(t *testing.T) {
+	// burst=1, rps=0.001 — once burst is used, only a fresh limiter gives 200
+	wrapped := rateLimitWrapInternal(t,
+		0.001, 1, 100,
+		50*time.Millisecond,  // sweepInterval
+		300*time.Millisecond, // staleThreshold (wide margin for CI)
+		time.Hour,            // evictLogInterval (irrelevant here)
+		okHandler(),
+	)
+
+	// Use burst token → 200
+	w := httptest.NewRecorder()
+	wrapped.ServeHTTP(w, reqFromIP("6.6.6.6"))
+	if w.Code != http.StatusOK {
+		t.Fatalf("initial request: expected 200, got %d", w.Code)
+	}
+
+	// Keep entry alive by sending requests every 100ms (< 300ms staleThreshold)
+	// across multiple sweep cycles (each 50ms)
+	for i := 0; i < 4; i++ {
+		time.Sleep(100 * time.Millisecond)
+		w = httptest.NewRecorder()
+		wrapped.ServeHTTP(w, reqFromIP("6.6.6.6"))
+		// Should stay 429 — same exhausted limiter, not a fresh one
+		if w.Code != http.StatusTooManyRequests {
+			t.Errorf("tick %d: expected 429 (entry kept alive), got %d", i, w.Code)
+		}
+	}
+}
+
+// TestRateLimitEvictionLogThrottling verifies that eviction log messages
+// are throttled: at most one message per evictLogInterval window.
+// NOTE: log.SetOutput mutates global state; this test cannot use t.Parallel().
+func TestRateLimitEvictionLogThrottling(t *testing.T) {
+	var buf bytes.Buffer
+	origWriter := log.Writer()
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(origWriter) })
+
+	wrapped := rateLimitWrapInternal(t,
+		100, 100, 1,
+		time.Hour,             // sweepInterval (irrelevant here)
+		time.Hour,             // staleThreshold (irrelevant here)
+		100*time.Millisecond,  // evictLogInterval
+		okHandler(),
+	)
+
+	// 6 requests: 1st populates the slot, next 5 each evict the previous IP
+	for i := 0; i < 6; i++ {
+		ip := fmt.Sprintf("20.0.0.%d", i)
+		w := httptest.NewRecorder()
+		wrapped.ServeHTTP(w, reqFromIP(ip))
+		if w.Code != http.StatusOK {
+			t.Fatalf("IP %s: expected 200, got %d", ip, w.Code)
+		}
+	}
+
+	// First batch: only 1 log line (first eviction triggers it, rest are throttled)
+	lines := countLogLines(buf.String(), "[RateLimit] Evicted")
+	if lines != 1 {
+		t.Errorf("first batch: expected 1 log line, got %d\nlog output:\n%s", lines, buf.String())
+	}
+
+	// Wait for throttle window to expire
+	time.Sleep(150 * time.Millisecond)
+
+	// Trigger more evictions. These in-memory operations complete well within
+	// the 100ms evictLogInterval, so exactly one additional log line is expected.
+	for i := 10; i < 16; i++ {
+		ip := fmt.Sprintf("20.0.0.%d", i)
+		w := httptest.NewRecorder()
+		wrapped.ServeHTTP(w, reqFromIP(ip))
+		if w.Code != http.StatusOK {
+			t.Fatalf("IP %s: expected 200, got %d", ip, w.Code)
+		}
+	}
+
+	// Cumulative total should now be 2 log lines
+	lines = countLogLines(buf.String(), "[RateLimit] Evicted")
+	if lines != 2 {
+		t.Errorf("second batch: expected 2 total log lines, got %d\nlog output:\n%s", lines, buf.String())
 	}
 }
