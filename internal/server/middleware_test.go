@@ -410,7 +410,7 @@ func benchShardedRateLimitHandler(b *testing.B, rps float64, burst, maxIPs, numS
 }
 
 // ---------------------------------------------------------------------------
-// Step 2: Single-mutex baseline benchmarks (#154)
+// Single-mutex baseline benchmarks (#154)
 // ---------------------------------------------------------------------------
 
 // BenchmarkRateLimit_SingleIP measures hot-path cost: one goroutine, same IP.
@@ -472,7 +472,7 @@ func BenchmarkRateLimit_Parallel(b *testing.B) {
 }
 
 // ---------------------------------------------------------------------------
-// Step 4: Sharded benchmarks — comparison and varying shard counts
+// Sharded benchmarks — comparison and varying shard counts
 // ---------------------------------------------------------------------------
 
 // BenchmarkRateLimit_Comparison runs single-mutex vs sharded-16 side by side.
@@ -549,8 +549,19 @@ func BenchmarkShardedRateLimit_VaryingShards(b *testing.B) {
 }
 
 // ---------------------------------------------------------------------------
-// Step 5: Functional tests for sharded variant
+// Functional tests for sharded variant
 // ---------------------------------------------------------------------------
+
+// fnv1aShard computes the shard index for an IP using the same FNV-1a hash
+// as shardedRateLimiter.shardFor, for deterministic test setup.
+func fnv1aShard(ip string, numShards uint32) uint32 {
+	h := uint32(2166136261)
+	for i := 0; i < len(ip); i++ {
+		h ^= uint32(ip[i])
+		h *= 16777619
+	}
+	return h % numShards
+}
 
 // shardedRateLimitWrapInternal creates a sharded rate-limited handler for testing.
 func shardedRateLimitWrapInternal(t *testing.T, rps float64, burst, maxIPs int,
@@ -594,6 +605,22 @@ func TestShardedRateLimitTotalCapacity(t *testing.T) {
 	}
 
 	// Part 2: Verify evicted IP gets a fresh limiter (burst=1).
+	// Deterministically find an IP that hashes to the same shard as "1.1.1.1"
+	// so eviction is guaranteed with a single request.
+	const targetIP = "1.1.1.1"
+	targetShard := fnv1aShard(targetIP, numShards)
+	var evictorIP string
+	for i := 0; i < 10000; i++ {
+		candidate := fmt.Sprintf("10.%d.%d.%d", (i>>16)&0xFF, (i>>8)&0xFF, i&0xFF)
+		if candidate != targetIP && fnv1aShard(candidate, numShards) == targetShard {
+			evictorIP = candidate
+			break
+		}
+	}
+	if evictorIP == "" {
+		t.Fatal("could not find an IP that hashes to the same shard as 1.1.1.1")
+	}
+
 	ctx2, cancel2 := context.WithCancel(context.Background())
 	mw2, done2 := shardedRateLimitMiddlewareInternal(ctx2, 0.001, 1, maxIPs,
 		time.Hour, time.Hour, time.Hour, numShards)
@@ -603,30 +630,31 @@ func TestShardedRateLimitTotalCapacity(t *testing.T) {
 	})
 	handler2 := mw2(okHandler())
 
-	// Use burst token for IP "1.1.1.1"
+	// Use burst token for target IP
 	w := httptest.NewRecorder()
-	handler2.ServeHTTP(w, reqFromIP("1.1.1.1"))
+	handler2.ServeHTTP(w, reqFromIP(targetIP))
 	if w.Code != http.StatusOK {
 		t.Fatalf("burst token: expected 200, got %d", w.Code)
 	}
 
 	// Should be rate-limited now
 	w = httptest.NewRecorder()
-	handler2.ServeHTTP(w, reqFromIP("1.1.1.1"))
+	handler2.ServeHTTP(w, reqFromIP(targetIP))
 	if w.Code != http.StatusTooManyRequests {
 		t.Fatalf("burst exhausted: expected 429, got %d", w.Code)
 	}
 
-	// Push out "1.1.1.1" by sending many IPs to guarantee its shard evicts it.
-	for i := 0; i < 100; i++ {
-		ip := fmt.Sprintf("10.%d.%d.%d", (i>>16)&0xFF, (i>>8)&0xFF, i&0xFF)
-		w = httptest.NewRecorder()
-		handler2.ServeHTTP(w, reqFromIP(ip))
+	// Evict target IP by sending a single IP to the same shard
+	// (each shard has capacity 1 with maxIPs=16, numShards=16).
+	w = httptest.NewRecorder()
+	handler2.ServeHTTP(w, reqFromIP(evictorIP))
+	if w.Code != http.StatusOK {
+		t.Fatalf("evictor IP: expected 200, got %d", w.Code)
 	}
 
-	// "1.1.1.1" should get a fresh limiter with a full burst token
+	// Target IP should get a fresh limiter with a full burst token
 	w = httptest.NewRecorder()
-	handler2.ServeHTTP(w, reqFromIP("1.1.1.1"))
+	handler2.ServeHTTP(w, reqFromIP(targetIP))
 	if w.Code != http.StatusOK {
 		t.Errorf("after eviction: expected 200 (fresh limiter), got %d", w.Code)
 	}

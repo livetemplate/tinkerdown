@@ -102,7 +102,7 @@ func SecurityHeadersMiddleware() func(http.Handler) http.Handler {
 const evictionLogInterval = 30 * time.Second
 
 // defaultNumShards is the number of shards used by the sharded rate limiter.
-// 16 reduces lock contention by ~16x on parallel workloads while keeping
+// Sharding reduces lock contention under parallel workloads while keeping
 // memory overhead minimal (16 mutexes + 16 small maps).
 const defaultNumShards = 16
 
@@ -234,6 +234,8 @@ func rateLimitMiddlewareInternal(
 
 // shard holds a subset of IP limiters behind its own mutex,
 // reducing contention compared to a single global lock.
+// The padding field ensures each shard occupies its own CPU cache line,
+// preventing false sharing when adjacent shards are accessed by different cores.
 type shard struct {
 	mu           sync.Mutex
 	items        map[string]*list.Element
@@ -241,6 +243,7 @@ type shard struct {
 	maxIPs       int
 	lastEvictLog time.Time
 	evictCount   int
+	_            [64]byte // cache-line padding to prevent false sharing
 }
 
 // shardedRateLimiter distributes IPs across multiple shards to reduce
@@ -264,6 +267,9 @@ func (sl *shardedRateLimiter) shardFor(ip string) *shard {
 }
 
 // shardedRateLimitMiddlewareInternal creates a sharded rate limiter.
+// Precondition: numShards must not exceed maxIPs (after defaulting),
+// otherwise some shards will have zero capacity. The public API enforces
+// this by falling back to single-mutex for maxIPs < defaultNumShards.
 func shardedRateLimitMiddlewareInternal(
 	ctx context.Context, rps float64, burst int, maxIPs int,
 	sweepInterval, staleThreshold, evictLogInterval time.Duration,
@@ -285,14 +291,14 @@ func shardedRateLimitMiddlewareInternal(
 	base := maxIPs / numShards
 	remainder := maxIPs % numShards
 	for i := range sl.shards {
-		cap := base
+		shardCap := base
 		if i < remainder {
-			cap++
+			shardCap++
 		}
 		sl.shards[i] = shard{
 			items:  make(map[string]*list.Element),
 			order:  list.New(),
-			maxIPs: cap,
+			maxIPs: shardCap,
 		}
 	}
 
@@ -326,6 +332,7 @@ func shardedRateLimitMiddlewareInternal(
 		}
 	}()
 
+	// Hot path mirrors rateLimitMiddlewareInternal; keep in sync.
 	middleware := func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ip := getClientIP(r)
