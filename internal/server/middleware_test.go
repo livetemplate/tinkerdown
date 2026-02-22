@@ -319,6 +319,7 @@ func TestRateLimitCleanupKeepsActiveEntries(t *testing.T) {
 
 // TestRateLimitEvictionLogThrottling verifies that eviction log messages
 // are throttled: at most one message per evictionLogThreshold window.
+// NOTE: log.SetOutput mutates global state; this test cannot use t.Parallel().
 func TestRateLimitEvictionLogThrottling(t *testing.T) {
 	var buf bytes.Buffer
 	origWriter := log.Writer()
@@ -333,7 +334,7 @@ func TestRateLimitEvictionLogThrottling(t *testing.T) {
 		okHandler(),
 	)
 
-	// Send 6 requests to trigger 5 evictions: maxIPs=1, so each new IP evicts the previous
+	// 6 requests: 1st populates the slot, next 5 each evict the previous IP
 	for i := 0; i < 6; i++ {
 		ip := fmt.Sprintf("20.0.0.%d", i)
 		w := httptest.NewRecorder()
