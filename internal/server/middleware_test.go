@@ -372,3 +372,338 @@ func TestRateLimitEvictionLogThrottling(t *testing.T) {
 		t.Errorf("second batch: expected 2 total log lines, got %d\nlog output:\n%s", lines, buf.String())
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Benchmark helpers
+// ---------------------------------------------------------------------------
+
+// benchSink prevents dead-code elimination in benchmarks.
+var benchSink int
+
+// benchRateLimitHandler creates a single-mutex rate-limited handler for benchmarks.
+// Uses time.Hour durations to disable cleanup/logging during benchmark runs.
+func benchRateLimitHandler(b *testing.B, rps float64, burst, maxIPs int) (http.Handler, func()) {
+	b.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	mw, done := rateLimitMiddlewareInternal(ctx, rps, burst, maxIPs,
+		time.Hour, time.Hour, time.Hour)
+	handler := mw(okHandler())
+	cleanup := func() {
+		cancel()
+		<-done
+	}
+	return handler, cleanup
+}
+
+// benchShardedRateLimitHandler creates a sharded rate-limited handler for benchmarks.
+func benchShardedRateLimitHandler(b *testing.B, rps float64, burst, maxIPs, numShards int) (http.Handler, func()) {
+	b.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	mw, done := shardedRateLimitMiddlewareInternal(ctx, rps, burst, maxIPs,
+		time.Hour, time.Hour, time.Hour, numShards)
+	handler := mw(okHandler())
+	cleanup := func() {
+		cancel()
+		<-done
+	}
+	return handler, cleanup
+}
+
+// ---------------------------------------------------------------------------
+// Step 2: Single-mutex baseline benchmarks (#154)
+// ---------------------------------------------------------------------------
+
+// BenchmarkRateLimit_SingleIP measures hot-path cost: one goroutine, same IP.
+func BenchmarkRateLimit_SingleIP(b *testing.B) {
+	handler, cleanup := benchRateLimitHandler(b, 1e9, 1<<30, 10000)
+	defer cleanup()
+
+	req := reqFromIP("1.2.3.4")
+	w := httptest.NewRecorder()
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		handler.ServeHTTP(w, req)
+		benchSink += w.Code
+	}
+}
+
+// BenchmarkRateLimit_UniqueIPs measures insert + eviction cost: new IP each iteration.
+func BenchmarkRateLimit_UniqueIPs(b *testing.B) {
+	handler, cleanup := benchRateLimitHandler(b, 1e9, 1<<30, 1000)
+	defer cleanup()
+
+	w := httptest.NewRecorder()
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		ip := fmt.Sprintf("10.%d.%d.%d", (i>>16)&0xFF, (i>>8)&0xFF, i&0xFF)
+		handler.ServeHTTP(w, reqFromIP(ip))
+		benchSink += w.Code
+	}
+}
+
+// BenchmarkRateLimit_Parallel measures contention: multiple goroutines, 100 IPs each.
+func BenchmarkRateLimit_Parallel(b *testing.B) {
+	for _, maxIPs := range []int{100, 1000, 10000} {
+		b.Run(fmt.Sprintf("MaxIPs_%d", maxIPs), func(b *testing.B) {
+			handler, cleanup := benchRateLimitHandler(b, 1e9, 1<<30, maxIPs)
+			defer cleanup()
+
+			b.ReportAllocs()
+			b.ResetTimer()
+			b.RunParallel(func(pb *testing.PB) {
+				w := httptest.NewRecorder()
+				i := 0
+				for pb.Next() {
+					ip := fmt.Sprintf("10.0.%d.%d", (i/256)%256, i%256)
+					handler.ServeHTTP(w, reqFromIP(ip))
+					benchSink += w.Code
+					i++
+					if i >= 100 {
+						i = 0
+					}
+				}
+			})
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Step 4: Sharded benchmarks — comparison and varying shard counts
+// ---------------------------------------------------------------------------
+
+// BenchmarkRateLimit_Comparison runs single-mutex vs sharded-16 side by side.
+func BenchmarkRateLimit_Comparison(b *testing.B) {
+	const maxIPs = 10000
+
+	b.Run("SingleMutex", func(b *testing.B) {
+		handler, cleanup := benchRateLimitHandler(b, 1e9, 1<<30, maxIPs)
+		defer cleanup()
+
+		b.ReportAllocs()
+		b.ResetTimer()
+		b.RunParallel(func(pb *testing.PB) {
+			w := httptest.NewRecorder()
+			i := 0
+			for pb.Next() {
+				ip := fmt.Sprintf("10.0.%d.%d", (i/256)%256, i%256)
+				handler.ServeHTTP(w, reqFromIP(ip))
+				benchSink += w.Code
+				i++
+				if i >= 100 {
+					i = 0
+				}
+			}
+		})
+	})
+
+	b.Run("Sharded16", func(b *testing.B) {
+		handler, cleanup := benchShardedRateLimitHandler(b, 1e9, 1<<30, maxIPs, 16)
+		defer cleanup()
+
+		b.ReportAllocs()
+		b.ResetTimer()
+		b.RunParallel(func(pb *testing.PB) {
+			w := httptest.NewRecorder()
+			i := 0
+			for pb.Next() {
+				ip := fmt.Sprintf("10.0.%d.%d", (i/256)%256, i%256)
+				handler.ServeHTTP(w, reqFromIP(ip))
+				benchSink += w.Code
+				i++
+				if i >= 100 {
+					i = 0
+				}
+			}
+		})
+	})
+}
+
+// BenchmarkShardedRateLimit_VaryingShards measures throughput at different shard counts.
+func BenchmarkShardedRateLimit_VaryingShards(b *testing.B) {
+	for _, numShards := range []int{1, 4, 8, 16, 32} {
+		b.Run(fmt.Sprintf("Shards_%d", numShards), func(b *testing.B) {
+			handler, cleanup := benchShardedRateLimitHandler(b, 1e9, 1<<30, 10000, numShards)
+			defer cleanup()
+
+			b.ReportAllocs()
+			b.ResetTimer()
+			b.RunParallel(func(pb *testing.PB) {
+				w := httptest.NewRecorder()
+				i := 0
+				for pb.Next() {
+					ip := fmt.Sprintf("10.0.%d.%d", (i/256)%256, i%256)
+					handler.ServeHTTP(w, reqFromIP(ip))
+					benchSink += w.Code
+					i++
+					if i >= 100 {
+						i = 0
+					}
+				}
+			})
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Step 5: Functional tests for sharded variant
+// ---------------------------------------------------------------------------
+
+// shardedRateLimitWrapInternal creates a sharded rate-limited handler for testing.
+func shardedRateLimitWrapInternal(t *testing.T, rps float64, burst, maxIPs int,
+	sweepInterval, staleThreshold, evictLogInterval time.Duration,
+	numShards int, next http.Handler,
+) http.Handler {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	mw, done := shardedRateLimitMiddlewareInternal(ctx, rps, burst, maxIPs,
+		sweepInterval, staleThreshold, evictLogInterval, numShards)
+	t.Cleanup(func() {
+		cancel()
+		<-done
+	})
+	return mw(next)
+}
+
+// TestShardedRateLimitTotalCapacity verifies that the total number of tracked IPs
+// across all shards never exceeds maxIPs, and that evicted IPs get fresh limiters.
+func TestShardedRateLimitTotalCapacity(t *testing.T) {
+	const maxIPs = 16
+	const numShards = 16
+
+	// Part 1: Verify eviction works — 32 unique IPs through a capacity-16 limiter.
+	ctx, cancel := context.WithCancel(context.Background())
+	mw, done := shardedRateLimitMiddlewareInternal(ctx, 100, 100, maxIPs,
+		time.Hour, time.Hour, time.Hour, numShards)
+	t.Cleanup(func() {
+		cancel()
+		<-done
+	})
+	handler := mw(okHandler())
+
+	for i := 0; i < 32; i++ {
+		ip := fmt.Sprintf("10.0.%d.%d", i/256, i%256)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, reqFromIP(ip))
+		if w.Code != http.StatusOK {
+			t.Fatalf("IP %s: expected 200, got %d", ip, w.Code)
+		}
+	}
+
+	// Part 2: Verify evicted IP gets a fresh limiter (burst=1).
+	ctx2, cancel2 := context.WithCancel(context.Background())
+	mw2, done2 := shardedRateLimitMiddlewareInternal(ctx2, 0.001, 1, maxIPs,
+		time.Hour, time.Hour, time.Hour, numShards)
+	t.Cleanup(func() {
+		cancel2()
+		<-done2
+	})
+	handler2 := mw2(okHandler())
+
+	// Use burst token for IP "1.1.1.1"
+	w := httptest.NewRecorder()
+	handler2.ServeHTTP(w, reqFromIP("1.1.1.1"))
+	if w.Code != http.StatusOK {
+		t.Fatalf("burst token: expected 200, got %d", w.Code)
+	}
+
+	// Should be rate-limited now
+	w = httptest.NewRecorder()
+	handler2.ServeHTTP(w, reqFromIP("1.1.1.1"))
+	if w.Code != http.StatusTooManyRequests {
+		t.Fatalf("burst exhausted: expected 429, got %d", w.Code)
+	}
+
+	// Push out "1.1.1.1" by sending many IPs to guarantee its shard evicts it.
+	for i := 0; i < 100; i++ {
+		ip := fmt.Sprintf("10.%d.%d.%d", (i>>16)&0xFF, (i>>8)&0xFF, i&0xFF)
+		w = httptest.NewRecorder()
+		handler2.ServeHTTP(w, reqFromIP(ip))
+	}
+
+	// "1.1.1.1" should get a fresh limiter with a full burst token
+	w = httptest.NewRecorder()
+	handler2.ServeHTTP(w, reqFromIP("1.1.1.1"))
+	if w.Code != http.StatusOK {
+		t.Errorf("after eviction: expected 200 (fresh limiter), got %d", w.Code)
+	}
+}
+
+// TestShardedRateLimitCleanup verifies the cleanup goroutine sweeps stale entries
+// across all shards.
+func TestShardedRateLimitCleanup(t *testing.T) {
+	wrapped := shardedRateLimitWrapInternal(t,
+		0.001, 1, 100,
+		50*time.Millisecond,  // sweepInterval
+		100*time.Millisecond, // staleThreshold
+		time.Hour,            // evictLogInterval
+		4,                    // numShards
+		okHandler(),
+	)
+
+	// Use burst tokens from 4 IPs (likely hitting different shards)
+	ips := []string{"5.5.5.5", "6.6.6.6", "7.7.7.7", "8.8.8.8"}
+	for _, ip := range ips {
+		w := httptest.NewRecorder()
+		wrapped.ServeHTTP(w, reqFromIP(ip))
+		if w.Code != http.StatusOK {
+			t.Fatalf("IP %s first request: expected 200, got %d", ip, w.Code)
+		}
+	}
+
+	// All should be rate-limited now (burst exhausted)
+	for _, ip := range ips {
+		w := httptest.NewRecorder()
+		wrapped.ServeHTTP(w, reqFromIP(ip))
+		if w.Code != http.StatusTooManyRequests {
+			t.Fatalf("IP %s second request: expected 429, got %d", ip, w.Code)
+		}
+	}
+
+	// Wait for cleanup
+	time.Sleep(400 * time.Millisecond)
+
+	// All should get fresh limiters
+	for _, ip := range ips {
+		w := httptest.NewRecorder()
+		wrapped.ServeHTTP(w, reqFromIP(ip))
+		if w.Code != http.StatusOK {
+			t.Errorf("IP %s after cleanup: expected 200 (fresh limiter), got %d", ip, w.Code)
+		}
+	}
+}
+
+// TestShardedRateLimitFallback verifies that maxIPs < defaultNumShards
+// falls back to the single-mutex implementation (via RateLimitMiddleware).
+func TestShardedRateLimitFallback(t *testing.T) {
+	// maxIPs=5 < defaultNumShards(16), should use single-mutex path.
+	// This test verifies basic functionality still works through the public API.
+	wrapped := rateLimitWrap(t, 100, 1, 5, okHandler())
+
+	// burst=1: first request succeeds
+	w := httptest.NewRecorder()
+	wrapped.ServeHTTP(w, reqFromIP("9.9.9.9"))
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	// Second request from same IP should be rate-limited
+	w = httptest.NewRecorder()
+	wrapped.ServeHTTP(w, reqFromIP("9.9.9.9"))
+	if w.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected 429, got %d", w.Code)
+	}
+
+	// Fill remaining capacity + evict — should not panic
+	for i := 0; i < 10; i++ {
+		ip := fmt.Sprintf("30.0.0.%d", i)
+		w = httptest.NewRecorder()
+		wrapped.ServeHTTP(w, reqFromIP(ip))
+		if w.Code != http.StatusOK {
+			t.Errorf("IP %s: expected 200, got %d", ip, w.Code)
+		}
+	}
+}

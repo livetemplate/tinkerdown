@@ -101,6 +101,11 @@ func SecurityHeadersMiddleware() func(http.Handler) http.Handler {
 // evictionLogInterval is the minimum time between eviction log messages.
 const evictionLogInterval = 30 * time.Second
 
+// defaultNumShards is the number of shards used by the sharded rate limiter.
+// 16 reduces lock contention by ~16x on parallel workloads while keeping
+// memory overhead minimal (16 mutexes + 16 small maps).
+const defaultNumShards = 16
+
 // ipLimiter tracks a per-IP token bucket and its position in the LRU list.
 type ipLimiter struct {
 	ip       string
@@ -112,12 +117,20 @@ type ipLimiter struct {
 // rps is the rate limit in requests per second, burst is the maximum burst size,
 // and maxIPs is the maximum number of unique IPs to track (LRU eviction when full).
 //
+// For maxIPs >= defaultNumShards, a sharded implementation is used to reduce
+// lock contention under parallel load. For smaller values, a single-mutex
+// implementation is used to avoid zero-capacity shards.
+//
 // The cleanup goroutine starts immediately when this function is called.
 // Callers must cancel ctx and then receive from the returned channel
 // to guarantee the goroutine has exited.
 func RateLimitMiddleware(ctx context.Context, rps float64, burst int, maxIPs int) (func(http.Handler) http.Handler, <-chan struct{}) {
-	return rateLimitMiddlewareInternal(ctx, rps, burst, maxIPs,
-		5*time.Minute, 10*time.Minute, evictionLogInterval)
+	if maxIPs > 0 && maxIPs < defaultNumShards {
+		return rateLimitMiddlewareInternal(ctx, rps, burst, maxIPs,
+			5*time.Minute, 10*time.Minute, evictionLogInterval)
+	}
+	return shardedRateLimitMiddlewareInternal(ctx, rps, burst, maxIPs,
+		5*time.Minute, 10*time.Minute, evictionLogInterval, defaultNumShards)
 }
 
 // rateLimitMiddlewareInternal accepts configurable durations for testing.
@@ -206,6 +219,149 @@ func rateLimitMiddlewareInternal(
 			}
 			allowed := elem.Value.(*ipLimiter).limiter.Allow()
 			mu.Unlock()
+
+			if !allowed {
+				w.Header().Set("Retry-After", "1")
+				writeJSONError(w, http.StatusTooManyRequests, "rate limit exceeded")
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+
+	return middleware, done
+}
+
+// shard holds a subset of IP limiters behind its own mutex,
+// reducing contention compared to a single global lock.
+type shard struct {
+	mu           sync.Mutex
+	items        map[string]*list.Element
+	order        *list.List
+	maxIPs       int
+	lastEvictLog time.Time
+	evictCount   int
+}
+
+// shardedRateLimiter distributes IPs across multiple shards to reduce
+// mutex contention under parallel load.
+type shardedRateLimiter struct {
+	shards           []shard
+	numShards        uint32
+	rps              float64
+	burst            int
+	evictLogInterval time.Duration
+}
+
+// shardFor returns the shard responsible for the given IP using inline FNV-1a.
+func (sl *shardedRateLimiter) shardFor(ip string) *shard {
+	h := uint32(2166136261)
+	for i := 0; i < len(ip); i++ {
+		h ^= uint32(ip[i])
+		h *= 16777619
+	}
+	return &sl.shards[h%sl.numShards]
+}
+
+// shardedRateLimitMiddlewareInternal creates a sharded rate limiter.
+func shardedRateLimitMiddlewareInternal(
+	ctx context.Context, rps float64, burst int, maxIPs int,
+	sweepInterval, staleThreshold, evictLogInterval time.Duration,
+	numShards int,
+) (func(http.Handler) http.Handler, <-chan struct{}) {
+	if maxIPs <= 0 {
+		maxIPs = 10000
+	}
+
+	sl := &shardedRateLimiter{
+		shards:           make([]shard, numShards),
+		numShards:        uint32(numShards),
+		rps:              rps,
+		burst:            burst,
+		evictLogInterval: evictLogInterval,
+	}
+
+	// Distribute maxIPs across shards; remainder goes to early shards.
+	base := maxIPs / numShards
+	remainder := maxIPs % numShards
+	for i := range sl.shards {
+		cap := base
+		if i < remainder {
+			cap++
+		}
+		sl.shards[i] = shard{
+			items:  make(map[string]*list.Element),
+			order:  list.New(),
+			maxIPs: cap,
+		}
+	}
+
+	// Single cleanup goroutine iterates all shards, locking each briefly.
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		ticker := time.NewTicker(sweepInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				now := time.Now()
+				for i := range sl.shards {
+					s := &sl.shards[i]
+					s.mu.Lock()
+					for e := s.order.Back(); e != nil; {
+						lim := e.Value.(*ipLimiter)
+						prev := e.Prev()
+						if now.Sub(lim.lastSeen) > staleThreshold {
+							s.order.Remove(e)
+							delete(s.items, lim.ip)
+						}
+						e = prev
+					}
+					s.mu.Unlock()
+				}
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
+	middleware := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ip := getClientIP(r)
+			s := sl.shardFor(ip)
+
+			s.mu.Lock()
+			elem, exists := s.items[ip]
+			if exists {
+				s.order.MoveToFront(elem)
+				elem.Value.(*ipLimiter).lastSeen = time.Now()
+			} else {
+				if s.order.Len() >= s.maxIPs {
+					back := s.order.Back()
+					if back != nil {
+						evicted := back.Value.(*ipLimiter)
+						s.order.Remove(back)
+						delete(s.items, evicted.ip)
+						s.evictCount++
+						if time.Since(s.lastEvictLog) >= sl.evictLogInterval {
+							log.Printf("[RateLimit] Evicted %d least-recent IP(s) (shard at capacity: %d IPs)",
+								s.evictCount, s.maxIPs)
+							s.lastEvictLog = time.Now()
+							s.evictCount = 0
+						}
+					}
+				}
+				lim := &ipLimiter{
+					ip:       ip,
+					limiter:  rate.NewLimiter(rate.Limit(sl.rps), sl.burst),
+					lastSeen: time.Now(),
+				}
+				elem = s.order.PushFront(lim)
+				s.items[ip] = elem
+			}
+			allowed := elem.Value.(*ipLimiter).limiter.Allow()
+			s.mu.Unlock()
 
 			if !allowed {
 				w.Header().Set("Retry-After", "1")
