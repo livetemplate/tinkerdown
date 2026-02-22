@@ -49,6 +49,7 @@ func (a *App) stopServer() {
 	}
 	if a.server != nil {
 		a.server.StopSchedules()
+		a.server.StopRateLimiter()
 		a.server.StopWatch()
 		a.server = nil
 	}

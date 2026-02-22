@@ -238,6 +238,9 @@ func ServeCommand(args []string) error {
 		if err := srv.StopSchedules(); err != nil {
 			fmt.Printf("Warning: Failed to stop schedules: %v\n", err)
 		}
+
+		// Stop rate limiter cleanup goroutine
+		srv.StopRateLimiter()
 	}()
 
 	if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
