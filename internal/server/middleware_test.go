@@ -276,7 +276,8 @@ func TestRateLimitCleanupRemovesStaleEntries(t *testing.T) {
 
 	// Wait for cleanup to fire. The stale clock starts from the second request
 	// (which returned 429) because lastSeen is refreshed on every access.
-	time.Sleep(250 * time.Millisecond)
+	// Using 400ms for CI resilience (staleThreshold=100ms + sweepInterval=50ms + margin).
+	time.Sleep(400 * time.Millisecond)
 
 	// Entry should be gone — new request gets a fresh limiter with burst token → 200
 	w = httptest.NewRecorder()
@@ -364,7 +365,7 @@ func TestRateLimitEvictionLogThrottling(t *testing.T) {
 		}
 	}
 
-	// Second batch: should produce 1 more log line
+	// Cumulative total should now be 2 log lines
 	lines = countLogLines(buf.String(), "[RateLimit] Evicted")
 	if lines != 2 {
 		t.Errorf("second batch: expected 2 total log lines, got %d\nlog output:\n%s", lines, buf.String())
