@@ -116,6 +116,15 @@ type ipLimiter struct {
 // Callers must cancel ctx and then receive from the returned channel
 // to guarantee the goroutine has exited.
 func RateLimitMiddleware(ctx context.Context, rps float64, burst int, maxIPs int) (func(http.Handler) http.Handler, <-chan struct{}) {
+	return rateLimitMiddlewareInternal(ctx, rps, burst, maxIPs,
+		5*time.Minute, 10*time.Minute, evictionLogInterval)
+}
+
+// rateLimitMiddlewareInternal accepts configurable durations for testing.
+func rateLimitMiddlewareInternal(
+	ctx context.Context, rps float64, burst int, maxIPs int,
+	sweepInterval, staleThreshold, evictLogInterval time.Duration,
+) (func(http.Handler) http.Handler, <-chan struct{}) {
 	if maxIPs <= 0 {
 		maxIPs = 10000
 	}
@@ -134,7 +143,7 @@ func RateLimitMiddleware(ctx context.Context, rps float64, burst int, maxIPs int
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		ticker := time.NewTicker(5 * time.Minute)
+		ticker := time.NewTicker(sweepInterval)
 		defer ticker.Stop()
 		for {
 			select {
@@ -147,7 +156,7 @@ func RateLimitMiddleware(ctx context.Context, rps float64, burst int, maxIPs int
 				for e := order.Back(); e != nil; {
 					lim := e.Value.(*ipLimiter)
 					prev := e.Prev()
-					if now.Sub(lim.lastSeen) > 10*time.Minute {
+					if now.Sub(lim.lastSeen) > staleThreshold {
 						order.Remove(e)
 						delete(items, lim.ip)
 					}
@@ -179,7 +188,7 @@ func RateLimitMiddleware(ctx context.Context, rps float64, burst int, maxIPs int
 						order.Remove(back)
 						delete(items, evicted.ip)
 						evictCount++
-						if time.Since(lastEvictLog) >= evictionLogInterval {
+						if time.Since(lastEvictLog) >= evictLogInterval {
 							log.Printf("[RateLimit] Evicted %d least-recent IP(s) (at capacity: %d IPs)", evictCount, maxIPs)
 							lastEvictLog = time.Now()
 							evictCount = 0
