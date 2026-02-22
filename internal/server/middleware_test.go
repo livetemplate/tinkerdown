@@ -222,13 +222,13 @@ func TestRateLimitCleanupStopsOnCancel(t *testing.T) {
 // rateLimitWrapInternal creates a rate-limited handler using the internal
 // constructor with configurable durations, for testing cleanup and logging.
 func rateLimitWrapInternal(t *testing.T, rps float64, burst, maxIPs int,
-	sweepInterval, staleThreshold, evictionLogInterval time.Duration,
+	sweepInterval, staleThreshold, evictLogInterval time.Duration,
 	next http.Handler,
 ) http.Handler {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	mw, done := rateLimitMiddlewareInternal(ctx, rps, burst, maxIPs,
-		sweepInterval, staleThreshold, evictionLogInterval)
+		sweepInterval, staleThreshold, evictLogInterval)
 	t.Cleanup(func() {
 		cancel()
 		<-done
@@ -274,7 +274,8 @@ func TestRateLimitCleanupRemovesStaleEntries(t *testing.T) {
 		t.Fatalf("second request: expected 429, got %d", w.Code)
 	}
 
-	// Wait for staleThreshold + sweepInterval + margin so the cleanup fires
+	// Wait for cleanup to fire. The stale clock starts from the second request
+	// (which returned 429) because lastSeen is refreshed on every access.
 	time.Sleep(250 * time.Millisecond)
 
 	// Entry should be gone — new request gets a fresh limiter with burst token → 200
@@ -318,7 +319,7 @@ func TestRateLimitCleanupKeepsActiveEntries(t *testing.T) {
 }
 
 // TestRateLimitEvictionLogThrottling verifies that eviction log messages
-// are throttled: at most one message per evictionLogInterval window.
+// are throttled: at most one message per evictLogInterval window.
 // NOTE: log.SetOutput mutates global state; this test cannot use t.Parallel().
 func TestRateLimitEvictionLogThrottling(t *testing.T) {
 	var buf bytes.Buffer
@@ -330,7 +331,7 @@ func TestRateLimitEvictionLogThrottling(t *testing.T) {
 		100, 100, 1,
 		time.Hour,             // sweepInterval (irrelevant here)
 		time.Hour,             // staleThreshold (irrelevant here)
-		100*time.Millisecond,  // evictionLogInterval
+		100*time.Millisecond,  // evictLogInterval
 		okHandler(),
 	)
 
