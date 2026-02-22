@@ -448,8 +448,10 @@ func BenchmarkRateLimit_UniqueIPs(b *testing.B) {
 	}
 }
 
-// BenchmarkRateLimit_Parallel measures contention: multiple goroutines, 100 IPs each.
-func BenchmarkRateLimit_Parallel(b *testing.B) {
+// BenchmarkRateLimit_Parallel_SingleMutex measures single-mutex contention:
+// multiple goroutines, 100 IPs each. Uses the single-mutex path directly
+// (not the public API) to establish a baseline for comparison with sharded.
+func BenchmarkRateLimit_Parallel_SingleMutex(b *testing.B) {
 	for _, maxIPs := range []int{100, 1000, 10000} {
 		b.Run(fmt.Sprintf("MaxIPs_%d", maxIPs), func(b *testing.B) {
 			handler, cleanup := benchRateLimitHandler(b, 1e9, 1<<30, maxIPs)

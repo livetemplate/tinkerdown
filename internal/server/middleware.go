@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unsafe"
 
 	"github.com/livetemplate/tinkerdown/internal/config"
 
@@ -247,6 +248,10 @@ type shard struct {
 	evictCount   int
 	_            [64]byte // pad to 128 bytes (2 cache lines) to reduce false sharing
 }
+
+// Compile-time assertion: shard struct must be exactly 128 bytes.
+// If a field is added/changed, adjust the padding to maintain cache-line alignment.
+const _ = uint(128 - unsafe.Sizeof(shard{}))
 
 // shardedRateLimiter distributes IPs across multiple shards to reduce
 // mutex contention under parallel load.
