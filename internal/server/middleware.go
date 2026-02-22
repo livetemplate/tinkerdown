@@ -253,6 +253,7 @@ type shardedRateLimiter struct {
 	numShards        uint32
 	rps              float64
 	burst            int
+	totalMaxIPs      int
 	evictLogInterval time.Duration
 }
 
@@ -284,6 +285,7 @@ func shardedRateLimitMiddlewareInternal(
 		numShards:        uint32(numShards),
 		rps:              rps,
 		burst:            burst,
+		totalMaxIPs:      maxIPs,
 		evictLogInterval: evictLogInterval,
 	}
 
@@ -352,8 +354,8 @@ func shardedRateLimitMiddlewareInternal(
 						delete(s.items, evicted.ip)
 						s.evictCount++
 						if time.Since(s.lastEvictLog) >= sl.evictLogInterval {
-							log.Printf("[RateLimit] Evicted %d least-recent IP(s) (shard at capacity: %d IPs)",
-								s.evictCount, s.maxIPs)
+							log.Printf("[RateLimit] Evicted %d least-recent IP(s) (at capacity: %d IPs)",
+								s.evictCount, sl.totalMaxIPs)
 							s.lastEvictLog = time.Now()
 							s.evictCount = 0
 						}

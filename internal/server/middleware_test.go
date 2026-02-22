@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -378,7 +379,8 @@ func TestRateLimitEvictionLogThrottling(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 // benchSink prevents dead-code elimination in benchmarks.
-var benchSink int
+// Uses atomic to avoid data races in parallel benchmarks.
+var benchSink atomic.Int64
 
 // benchRateLimitHandler creates a single-mutex rate-limited handler for benchmarks.
 // Uses time.Hour durations to disable cleanup/logging during benchmark runs.
@@ -425,7 +427,7 @@ func BenchmarkRateLimit_SingleIP(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		handler.ServeHTTP(w, req)
-		benchSink += w.Code
+		benchSink.Add(int64(w.Code))
 	}
 }
 
@@ -441,7 +443,7 @@ func BenchmarkRateLimit_UniqueIPs(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		ip := fmt.Sprintf("10.%d.%d.%d", (i>>16)&0xFF, (i>>8)&0xFF, i&0xFF)
 		handler.ServeHTTP(w, reqFromIP(ip))
-		benchSink += w.Code
+		benchSink.Add(int64(w.Code))
 	}
 }
 
@@ -460,7 +462,7 @@ func BenchmarkRateLimit_Parallel(b *testing.B) {
 				for pb.Next() {
 					ip := fmt.Sprintf("10.0.%d.%d", (i/256)%256, i%256)
 					handler.ServeHTTP(w, reqFromIP(ip))
-					benchSink += w.Code
+					benchSink.Add(int64(w.Code))
 					i++
 					if i >= 100 {
 						i = 0
@@ -491,7 +493,7 @@ func BenchmarkRateLimit_Comparison(b *testing.B) {
 			for pb.Next() {
 				ip := fmt.Sprintf("10.0.%d.%d", (i/256)%256, i%256)
 				handler.ServeHTTP(w, reqFromIP(ip))
-				benchSink += w.Code
+				benchSink.Add(int64(w.Code))
 				i++
 				if i >= 100 {
 					i = 0
@@ -512,7 +514,7 @@ func BenchmarkRateLimit_Comparison(b *testing.B) {
 			for pb.Next() {
 				ip := fmt.Sprintf("10.0.%d.%d", (i/256)%256, i%256)
 				handler.ServeHTTP(w, reqFromIP(ip))
-				benchSink += w.Code
+				benchSink.Add(int64(w.Code))
 				i++
 				if i >= 100 {
 					i = 0
@@ -537,7 +539,7 @@ func BenchmarkShardedRateLimit_VaryingShards(b *testing.B) {
 				for pb.Next() {
 					ip := fmt.Sprintf("10.0.%d.%d", (i/256)%256, i%256)
 					handler.ServeHTTP(w, reqFromIP(ip))
-					benchSink += w.Code
+					benchSink.Add(int64(w.Code))
 					i++
 					if i >= 100 {
 						i = 0
