@@ -123,7 +123,7 @@ func RateLimitMiddleware(ctx context.Context, rps float64, burst int, maxIPs int
 // rateLimitMiddlewareInternal accepts configurable durations for testing.
 func rateLimitMiddlewareInternal(
 	ctx context.Context, rps float64, burst int, maxIPs int,
-	sweepInterval, staleThreshold, evictLogInterval time.Duration,
+	sweepInterval, staleThreshold, evictionLogThreshold time.Duration,
 ) (func(http.Handler) http.Handler, <-chan struct{}) {
 	if maxIPs <= 0 {
 		maxIPs = 10000
@@ -188,7 +188,7 @@ func rateLimitMiddlewareInternal(
 						order.Remove(back)
 						delete(items, evicted.ip)
 						evictCount++
-						if time.Since(lastEvictLog) >= evictLogInterval {
+						if time.Since(lastEvictLog) >= evictionLogThreshold {
 							log.Printf("[RateLimit] Evicted %d least-recent IP(s) (at capacity: %d IPs)", evictCount, maxIPs)
 							lastEvictLog = time.Now()
 							evictCount = 0

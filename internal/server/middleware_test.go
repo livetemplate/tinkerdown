@@ -7,7 +7,6 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -223,13 +222,13 @@ func TestRateLimitCleanupStopsOnCancel(t *testing.T) {
 // rateLimitWrapInternal creates a rate-limited handler using the internal
 // constructor with configurable durations, for testing cleanup and logging.
 func rateLimitWrapInternal(t *testing.T, rps float64, burst, maxIPs int,
-	sweepInterval, staleThreshold, evictLogInterval time.Duration,
+	sweepInterval, staleThreshold, evictionLogThreshold time.Duration,
 	next http.Handler,
 ) http.Handler {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	mw, done := rateLimitMiddlewareInternal(ctx, rps, burst, maxIPs,
-		sweepInterval, staleThreshold, evictLogInterval)
+		sweepInterval, staleThreshold, evictionLogThreshold)
 	t.Cleanup(func() {
 		cancel()
 		<-done
@@ -319,21 +318,22 @@ func TestRateLimitCleanupKeepsActiveEntries(t *testing.T) {
 }
 
 // TestRateLimitEvictionLogThrottling verifies that eviction log messages
-// are throttled: at most one message per evictLogInterval window.
+// are throttled: at most one message per evictionLogThreshold window.
 func TestRateLimitEvictionLogThrottling(t *testing.T) {
 	var buf bytes.Buffer
+	origWriter := log.Writer()
 	log.SetOutput(&buf)
-	defer log.SetOutput(os.Stderr)
+	t.Cleanup(func() { log.SetOutput(origWriter) })
 
 	wrapped := rateLimitWrapInternal(t,
 		100, 100, 1,
 		time.Hour,             // sweepInterval (irrelevant here)
 		time.Hour,             // staleThreshold (irrelevant here)
-		100*time.Millisecond,  // evictLogInterval
+		100*time.Millisecond,  // evictionLogThreshold
 		okHandler(),
 	)
 
-	// Trigger 5 rapid evictions: maxIPs=1, so each new IP evicts the previous
+	// Send 6 requests to trigger 5 evictions: maxIPs=1, so each new IP evicts the previous
 	for i := 0; i < 6; i++ {
 		ip := fmt.Sprintf("20.0.0.%d", i)
 		w := httptest.NewRecorder()
