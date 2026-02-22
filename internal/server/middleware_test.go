@@ -426,6 +426,7 @@ func BenchmarkRateLimit_SingleIP(b *testing.B) {
 	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
+		w.Body.Reset()
 		handler.ServeHTTP(w, req)
 		benchSink.Add(int64(w.Code))
 	}
@@ -702,6 +703,33 @@ func TestShardedRateLimitCleanup(t *testing.T) {
 		wrapped.ServeHTTP(w, reqFromIP(ip))
 		if w.Code != http.StatusOK {
 			t.Errorf("IP %s after cleanup: expected 200 (fresh limiter), got %d", ip, w.Code)
+		}
+	}
+}
+
+// TestShardedRateLimitBoundary verifies that maxIPs == defaultNumShards
+// (exactly 1 IP per shard) works correctly through the public API.
+func TestShardedRateLimitBoundary(t *testing.T) {
+	// maxIPs == 16 routes to sharded with base capacity 1 per shard.
+	wrapped := rateLimitWrap(t, 100, 100, defaultNumShards, okHandler())
+
+	// All 16 unique IPs should succeed
+	for i := 0; i < defaultNumShards; i++ {
+		ip := fmt.Sprintf("10.0.0.%d", i)
+		w := httptest.NewRecorder()
+		wrapped.ServeHTTP(w, reqFromIP(ip))
+		if w.Code != http.StatusOK {
+			t.Fatalf("IP %s: expected 200, got %d", ip, w.Code)
+		}
+	}
+
+	// Additional IPs should still succeed (eviction)
+	for i := defaultNumShards; i < defaultNumShards+10; i++ {
+		ip := fmt.Sprintf("10.0.0.%d", i)
+		w := httptest.NewRecorder()
+		wrapped.ServeHTTP(w, reqFromIP(ip))
+		if w.Code != http.StatusOK {
+			t.Errorf("IP %s beyond capacity: expected 200, got %d", ip, w.Code)
 		}
 	}
 }

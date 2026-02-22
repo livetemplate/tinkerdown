@@ -117,9 +117,10 @@ type ipLimiter struct {
 // rps is the rate limit in requests per second, burst is the maximum burst size,
 // and maxIPs is the maximum number of unique IPs to track (LRU eviction when full).
 //
-// For maxIPs >= defaultNumShards, a sharded implementation is used to reduce
-// lock contention under parallel load. For smaller values, a single-mutex
-// implementation is used to avoid zero-capacity shards.
+// For maxIPs >= defaultNumShards (or maxIPs == 0, which defaults to 10000),
+// a sharded implementation is used to reduce lock contention under parallel
+// load. For 0 < maxIPs < defaultNumShards, a single-mutex implementation
+// is used to avoid zero-capacity shards.
 //
 // The cleanup goroutine starts immediately when this function is called.
 // Callers must cancel ctx and then receive from the returned channel
@@ -354,8 +355,8 @@ func shardedRateLimitMiddlewareInternal(
 						delete(s.items, evicted.ip)
 						s.evictCount++
 						if time.Since(s.lastEvictLog) >= sl.evictLogInterval {
-							log.Printf("[RateLimit] Evicted %d least-recent IP(s) (at capacity: %d IPs)",
-								s.evictCount, sl.totalMaxIPs)
+							log.Printf("[RateLimit] Evicted %d least-recent IP(s) (shard capacity: %d, total: %d IPs)",
+								s.evictCount, s.maxIPs, sl.totalMaxIPs)
 							s.lastEvictLog = time.Now()
 							s.evictCount = 0
 						}
