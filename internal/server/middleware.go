@@ -116,6 +116,7 @@ type ipLimiter struct {
 // RateLimitMiddleware limits requests using a token bucket algorithm with per-IP tracking.
 // rps is the rate limit in requests per second, burst is the maximum burst size,
 // and maxIPs is the maximum number of unique IPs to track (LRU eviction when full).
+// maxIPs <= 0 defaults to 10000.
 //
 // For maxIPs >= defaultNumShards (or maxIPs == 0, which defaults to 10000),
 // a sharded implementation is used to reduce lock contention under parallel
