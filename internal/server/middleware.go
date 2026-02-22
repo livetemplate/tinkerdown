@@ -244,7 +244,7 @@ type shard struct {
 	maxIPs       int
 	lastEvictLog time.Time
 	evictCount   int
-	_            [64]byte // cache-line padding to prevent false sharing
+	_            [64]byte // pad to 128 bytes (2 cache lines) to prevent false sharing
 }
 
 // shardedRateLimiter distributes IPs across multiple shards to reduce
@@ -277,6 +277,9 @@ func shardedRateLimitMiddlewareInternal(
 	sweepInterval, staleThreshold, evictLogInterval time.Duration,
 	numShards int,
 ) (func(http.Handler) http.Handler, <-chan struct{}) {
+	if numShards <= 0 {
+		panic("shardedRateLimitMiddlewareInternal: numShards must be > 0")
+	}
 	if maxIPs <= 0 {
 		maxIPs = 10000
 	}
