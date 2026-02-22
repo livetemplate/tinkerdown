@@ -461,6 +461,7 @@ func BenchmarkRateLimit_Parallel(b *testing.B) {
 				w := httptest.NewRecorder()
 				i := 0
 				for pb.Next() {
+					w.Body.Reset()
 					ip := fmt.Sprintf("10.0.%d.%d", (i/256)%256, i%256)
 					handler.ServeHTTP(w, reqFromIP(ip))
 					benchSink.Add(int64(w.Code))
@@ -492,6 +493,7 @@ func BenchmarkRateLimit_Comparison(b *testing.B) {
 			w := httptest.NewRecorder()
 			i := 0
 			for pb.Next() {
+				w.Body.Reset()
 				ip := fmt.Sprintf("10.0.%d.%d", (i/256)%256, i%256)
 				handler.ServeHTTP(w, reqFromIP(ip))
 				benchSink.Add(int64(w.Code))
@@ -513,6 +515,7 @@ func BenchmarkRateLimit_Comparison(b *testing.B) {
 			w := httptest.NewRecorder()
 			i := 0
 			for pb.Next() {
+				w.Body.Reset()
 				ip := fmt.Sprintf("10.0.%d.%d", (i/256)%256, i%256)
 				handler.ServeHTTP(w, reqFromIP(ip))
 				benchSink.Add(int64(w.Code))
@@ -538,6 +541,7 @@ func BenchmarkShardedRateLimit_VaryingShards(b *testing.B) {
 				w := httptest.NewRecorder()
 				i := 0
 				for pb.Next() {
+					w.Body.Reset()
 					ip := fmt.Sprintf("10.0.%d.%d", (i/256)%256, i%256)
 					handler.ServeHTTP(w, reqFromIP(ip))
 					benchSink.Add(int64(w.Code))
