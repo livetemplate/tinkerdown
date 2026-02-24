@@ -85,14 +85,15 @@ jobs:
       - name: Verify image size
         run: |
           SIZE_BYTES=$(docker image inspect tinkerdown:ci-test --format '{{.Size}}')
-          SIZE_MB=$(( SIZE_BYTES / 1048576 ))
+          SIZE_LIMIT_BYTES=$((50 * 1048576))
+          SIZE_MB=$(( (SIZE_BYTES + 1048575) / 1048576 ))
           echo "Image size: ${SIZE_MB}MB (${SIZE_BYTES} bytes)"
-          if [ "$SIZE_MB" -gt 50 ]; then
-            echo "::error::Docker image exceeds 50MB limit (${SIZE_MB}MB)"
+          if [ "$SIZE_BYTES" -gt "$SIZE_LIMIT_BYTES" ]; then
+            echo "::error::Docker image exceeds 50MB limit (${SIZE_MB}MB, ${SIZE_BYTES} bytes)"
             exit 1
           fi
 
       - name: Smoke test container
         run: |
-          docker run --rm tinkerdown:ci-test tinkerdown version
-          docker run --rm tinkerdown:ci-test tinkerdown help
+          docker run --rm tinkerdown:ci-test version
+          docker run --rm tinkerdown:ci-test help
