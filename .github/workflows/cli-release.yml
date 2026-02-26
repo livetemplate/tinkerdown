@@ -18,8 +18,27 @@ env:
   GO_VERSION: '1.26.0'
 
 jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Run tests
+        env:
+          GOWORK: off
+        run: go test -tags=ci -skip='E2E|e2e' ./...
+
   build:
     name: Build ${{ matrix.os }}-${{ matrix.arch }}
+    needs: [test]
     runs-on: ${{ matrix.runner }}
     strategy:
       matrix:
