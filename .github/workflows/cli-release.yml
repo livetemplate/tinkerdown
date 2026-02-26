@@ -34,7 +34,7 @@ jobs:
       - name: Run tests
         env:
           GOWORK: off
-        run: go test -short ./internal/...
+        run: go test -tags=ci -skip='E2E|e2e' ./...
 
   build:
     name: Build ${{ matrix.os }}-${{ matrix.arch }}
