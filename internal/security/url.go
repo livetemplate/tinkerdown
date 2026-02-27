@@ -27,7 +27,7 @@ type dnsCacheEntry struct {
 }
 
 type dnsCache struct {
-	mu      sync.RWMutex
+	mu      sync.Mutex
 	entries map[string]dnsCacheEntry
 	ttl     time.Duration
 	maxSize int
@@ -40,25 +40,39 @@ var hostCache = &dnsCache{
 }
 
 func (c *dnsCache) get(host string) (error, bool) {
-	c.mu.RLock()
+	c.mu.Lock()
 	entry, ok := c.entries[host]
-	c.mu.RUnlock()
-	if !ok || time.Now().After(entry.expiresAt) {
+	if !ok {
+		c.mu.Unlock()
 		return nil, false
 	}
+	if time.Now().After(entry.expiresAt) {
+		delete(c.entries, host)
+		c.mu.Unlock()
+		return nil, false
+	}
+	c.mu.Unlock()
 	return entry.err, true
 }
 
 func (c *dnsCache) set(host string, err error) {
 	c.mu.Lock()
+	defer c.mu.Unlock()
 	if len(c.entries) >= c.maxSize {
-		c.entries = make(map[string]dnsCacheEntry)
+		now := time.Now()
+		for k, v := range c.entries {
+			if now.After(v.expiresAt) {
+				delete(c.entries, k)
+			}
+		}
+		if len(c.entries) >= c.maxSize {
+			c.entries = make(map[string]dnsCacheEntry)
+		}
 	}
 	c.entries[host] = dnsCacheEntry{
 		err:       err,
 		expiresAt: time.Now().Add(c.ttl),
 	}
-	c.mu.Unlock()
 }
 
 // ResetDNSCache clears the DNS validation cache. Intended for use in tests.
@@ -102,30 +116,32 @@ func ValidateHTTPURL(rawURL string) error {
 		return validateIP(ip)
 	}
 
-	// Check DNS cache for a previous validation result.
-	if cachedErr, ok := hostCache.get(host); ok {
+	// Check DNS cache for a previously blocked result (keyed by lowercase hostname).
+	// Only blocked (error) results are cached — allowed results are always
+	// re-validated to prevent DNS rebinding attacks where an attacker changes
+	// DNS records from a public IP to an internal IP after the first lookup.
+	if cachedErr, ok := hostCache.get(hostLower); ok {
 		return cachedErr
 	}
 
 	// Cache miss: resolve and check all resulting IPs to prevent DNS rebinding.
 	// If resolution fails (e.g., non-existent domain), allow the request — the
 	// actual HTTP call will fail anyway. Only block when resolved IPs are internal.
-	var validationErr error
 	addrs, err := net.LookupHost(host)
 	if err == nil {
 		for _, addr := range addrs {
 			resolved := net.ParseIP(addr)
 			if resolved != nil {
 				if ipErr := validateIP(resolved); ipErr != nil {
-					validationErr = fmt.Errorf("hostname resolves to blocked address: %w", ipErr)
-					break
+					validationErr := fmt.Errorf("hostname resolves to blocked address: %w", ipErr)
+					hostCache.set(hostLower, validationErr)
+					return validationErr
 				}
 			}
 		}
 	}
 
-	hostCache.set(host, validationErr)
-	return validationErr
+	return nil
 }
 
 // validateIP checks a single IP against blocked ranges.
