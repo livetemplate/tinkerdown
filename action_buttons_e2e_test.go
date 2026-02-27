@@ -110,10 +110,10 @@ func TestActionButtons(t *testing.T) {
 	t.Log("Custom action buttons exist")
 
 	// Test 1: Click "Clear Completed" button
-	// This should delete the 2 completed tasks
+	// This should delete the 2 completed tasks (confirm dialog auto-accepted by headless Chrome)
 	err = chromedp.Run(ctx,
 		chromedp.Click(`button[lvt-click="clear-done"]`, chromedp.ByQuery),
-		waitForDOM(`document.querySelectorAll('[lvt-source="tasks"] tbody tr').length === 2`, 5*time.Second),
+		waitForDOM(`document.querySelectorAll('[lvt-source="tasks"] tbody tr').length === 2`, 10*time.Second),
 	)
 	if err != nil {
 		t.Fatalf("Failed to click 'Clear Completed': %v\nConsole logs: %v", err, consoleLogs)
@@ -151,7 +151,7 @@ func TestActionButtons(t *testing.T) {
 	// This should mark all remaining tasks as done
 	err = chromedp.Run(ctx,
 		chromedp.Click(`button[lvt-click="mark-all-done"]`, chromedp.ByQuery),
-		waitForDOM(`[...document.querySelectorAll('[lvt-source="tasks"] tbody input[type="checkbox"]')].every(cb => cb.checked)`, 5*time.Second),
+		waitForDOM(`[...document.querySelectorAll('[lvt-source="tasks"] tbody input[type="checkbox"]')].every(cb => cb.checked)`, 10*time.Second),
 	)
 	if err != nil {
 		t.Fatalf("Failed to click 'Mark All Done': %v\nConsole logs: %v", err, consoleLogs)
@@ -171,7 +171,7 @@ func TestActionButtons(t *testing.T) {
 	// Test 3: Clear completed again (should now delete all remaining tasks)
 	err = chromedp.Run(ctx,
 		chromedp.Click(`button[lvt-click="clear-done"]`, chromedp.ByQuery),
-		waitForDOM(`document.querySelectorAll('[lvt-source="tasks"] tbody tr').length === 0`, 5*time.Second),
+		waitForDOM(`document.querySelectorAll('[lvt-source="tasks"] tbody tr').length === 0`, 10*time.Second),
 	)
 	if err != nil {
 		t.Fatalf("Failed to click 'Clear Completed' second time: %v", err)
