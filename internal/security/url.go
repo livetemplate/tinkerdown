@@ -27,7 +27,7 @@ type dnsCacheEntry struct {
 }
 
 type dnsCache struct {
-	mu      sync.Mutex
+	mu      sync.RWMutex
 	entries map[string]dnsCacheEntry
 	ttl     time.Duration
 	maxSize int
@@ -40,18 +40,12 @@ var hostCache = &dnsCache{
 }
 
 func (c *dnsCache) get(host string) (error, bool) {
-	c.mu.Lock()
+	c.mu.RLock()
 	entry, ok := c.entries[host]
-	if !ok {
-		c.mu.Unlock()
+	c.mu.RUnlock()
+	if !ok || time.Now().After(entry.expiresAt) {
 		return nil, false
 	}
-	if time.Now().After(entry.expiresAt) {
-		delete(c.entries, host)
-		c.mu.Unlock()
-		return nil, false
-	}
-	c.mu.Unlock()
 	return entry.err, true
 }
 
@@ -75,7 +69,8 @@ func (c *dnsCache) set(host string, err error) {
 	}
 }
 
-// ResetDNSCache clears the DNS validation cache. Intended for use in tests.
+// ResetDNSCache clears the DNS validation cache. This discards all cached
+// blocked-host entries and should only be called from tests.
 func ResetDNSCache() {
 	hostCache.mu.Lock()
 	hostCache.entries = make(map[string]dnsCacheEntry)
@@ -127,6 +122,10 @@ func ValidateHTTPURL(rawURL string) error {
 	// Cache miss: resolve and check all resulting IPs to prevent DNS rebinding.
 	// If resolution fails (e.g., non-existent domain), allow the request — the
 	// actual HTTP call will fail anyway. Only block when resolved IPs are internal.
+	//
+	// Note: this does not fully prevent DNS rebinding with TTL=0 tricks where the
+	// DNS response changes between this validation and the actual HTTP request.
+	// Only blocked results are cached, so allowed hosts are always re-validated.
 	addrs, err := net.LookupHost(host)
 	if err == nil {
 		for _, addr := range addrs {
