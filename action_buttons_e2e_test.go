@@ -71,11 +71,15 @@ func TestActionButtons(t *testing.T) {
 	}
 	t.Log("Page loaded and lvt-source element visible")
 
-	// Wait for data to load
-	time.Sleep(500 * time.Millisecond)
+	// Wait for data to load (poll until 4 task rows appear)
+	err = chromedp.Run(ctx,
+		waitForDOM(`document.querySelectorAll('[lvt-source="tasks"] tbody tr').length === 4`, 5*time.Second),
+	)
+	if err != nil {
+		t.Fatalf("Failed waiting for initial tasks: %v", err)
+	}
 
 	// Verify initial data is displayed (4 tasks: 2 done, 2 not done)
-	// Use specific selector to only count rows in the tasks table, not documentation tables
 	var taskCount int
 	err = chromedp.Run(ctx,
 		chromedp.Evaluate(`document.querySelectorAll('[lvt-source="tasks"] tbody tr').length`, &taskCount),
@@ -109,7 +113,7 @@ func TestActionButtons(t *testing.T) {
 	// This should delete the 2 completed tasks
 	err = chromedp.Run(ctx,
 		chromedp.Click(`button[lvt-click="clear-done"]`, chromedp.ByQuery),
-		chromedp.Sleep(500*time.Millisecond),
+		waitForDOM(`document.querySelectorAll('[lvt-source="tasks"] tbody tr').length === 2`, 5*time.Second),
 	)
 	if err != nil {
 		t.Fatalf("Failed to click 'Clear Completed': %v\nConsole logs: %v", err, consoleLogs)
@@ -147,7 +151,7 @@ func TestActionButtons(t *testing.T) {
 	// This should mark all remaining tasks as done
 	err = chromedp.Run(ctx,
 		chromedp.Click(`button[lvt-click="mark-all-done"]`, chromedp.ByQuery),
-		chromedp.Sleep(500*time.Millisecond),
+		waitForDOM(`[...document.querySelectorAll('[lvt-source="tasks"] tbody input[type="checkbox"]')].every(cb => cb.checked)`, 5*time.Second),
 	)
 	if err != nil {
 		t.Fatalf("Failed to click 'Mark All Done': %v\nConsole logs: %v", err, consoleLogs)
@@ -167,7 +171,7 @@ func TestActionButtons(t *testing.T) {
 	// Test 3: Clear completed again (should now delete all remaining tasks)
 	err = chromedp.Run(ctx,
 		chromedp.Click(`button[lvt-click="clear-done"]`, chromedp.ByQuery),
-		chromedp.Sleep(500*time.Millisecond),
+		waitForDOM(`document.querySelectorAll('[lvt-source="tasks"] tbody tr').length === 0`, 5*time.Second),
 	)
 	if err != nil {
 		t.Fatalf("Failed to click 'Clear Completed' second time: %v", err)

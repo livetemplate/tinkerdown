@@ -229,6 +229,32 @@ func cleanupContainerByName(name string) {
 	rmCmd.CombinedOutput() // Ignore errors - container may not exist
 }
 
+// waitForDOM polls a JavaScript condition until it returns true or timeout is reached.
+func waitForDOM(condition string, timeout time.Duration) chromedp.Action {
+	return chromedp.ActionFunc(func(ctx context.Context) error {
+		startTime := time.Now()
+		for {
+			select {
+			case <-ctx.Done():
+				return fmt.Errorf("context canceled while waiting for '%s': %w", condition, ctx.Err())
+			default:
+			}
+
+			var result bool
+			err := chromedp.Evaluate(condition, &result).Do(ctx)
+			if err == nil && result {
+				return nil
+			}
+
+			if time.Since(startTime) > timeout {
+				return fmt.Errorf("timeout waiting for '%s' after %v", condition, timeout)
+			}
+
+			time.Sleep(50 * time.Millisecond)
+		}
+	})
+}
+
 // WaitForServer polls an HTTP server until it responds or timeout is reached.
 func WaitForServer(t *testing.T, serverURL string, timeout time.Duration) {
 	t.Helper()
