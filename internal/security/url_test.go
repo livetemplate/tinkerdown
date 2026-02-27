@@ -166,9 +166,9 @@ func TestDNSCache_MaxSizePrunesExpired(t *testing.T) {
 	}
 
 	// Cache should have only 1 entry (d.com) since expired ones were pruned.
-	c.mu.Lock()
+	c.mu.RLock()
 	size := len(c.entries)
-	c.mu.Unlock()
+	c.mu.RUnlock()
 	if size != 1 {
 		t.Fatalf("expected 1 entry after pruning, got %d", size)
 	}

@@ -58,8 +58,10 @@ func (c *dnsCache) set(host string, err error) {
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	now := time.Now()
 	if len(c.entries) >= c.maxSize {
-		now := time.Now()
+		// Prune expired entries first (O(n) scan under write lock;
+		// acceptable at the current 1024 cap and rarely triggered).
 		for k, v := range c.entries {
 			if now.After(v.expiresAt) {
 				delete(c.entries, k)
@@ -76,13 +78,17 @@ func (c *dnsCache) set(host string, err error) {
 	}
 	c.entries[host] = dnsCacheEntry{
 		err:       err,
-		expiresAt: time.Now().Add(c.ttl),
+		expiresAt: now.Add(c.ttl),
 	}
 }
 
 // ValidateHTTPURL checks for SSRF vulnerabilities by blocking requests to internal networks.
 // It rejects localhost, private IP ranges, link-local addresses, and cloud metadata endpoints.
 // Hostnames are resolved to detect DNS rebinding attacks targeting internal addresses.
+//
+// Blocked results are cached for up to 30 seconds. If a hostname transiently resolves to an
+// internal address (e.g. during DNS propagation), it will remain blocked until the cache entry
+// expires, even if the DNS record is corrected sooner.
 func ValidateHTTPURL(rawURL string) error {
 	if testBypassSSRF.Load() {
 		return nil
