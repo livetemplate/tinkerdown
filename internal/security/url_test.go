@@ -8,6 +8,12 @@ import (
 	"time"
 )
 
+func resetDNSCache() {
+	hostCache.mu.Lock()
+	hostCache.entries = make(map[string]dnsCacheEntry)
+	hostCache.mu.Unlock()
+}
+
 func TestValidateHTTPURL(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -39,7 +45,7 @@ func TestValidateHTTPURL(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ResetDNSCache()
+			resetDNSCache()
 			err := ValidateHTTPURL(tt.url)
 			if tt.wantErr == "" {
 				if err != nil {
@@ -67,7 +73,7 @@ func TestValidateHTTPURL_TestBypass(t *testing.T) {
 }
 
 func TestValidateHTTPURL_DNSRebinding(t *testing.T) {
-	ResetDNSCache()
+	resetDNSCache()
 	// Hostnames that resolve to loopback should be blocked
 	err := ValidateHTTPURL("http://localhost.localdomain/admin")
 	if err == nil {
@@ -96,8 +102,8 @@ func TestDNSCache_HitAndExpiry(t *testing.T) {
 		t.Fatalf("expected 'blocked' error, got %v", err)
 	}
 
-	// Wait for TTL expiry (5ms >> 1ms TTL, safe even on loaded CI).
-	time.Sleep(5 * time.Millisecond)
+	// Wait for TTL expiry (50ms >> 1ms TTL — generous margin for loaded CI).
+	time.Sleep(50 * time.Millisecond)
 	if _, ok := c.get("evil.com"); ok {
 		t.Fatal("expected cache miss after TTL expiry")
 	}
@@ -143,8 +149,8 @@ func TestDNSCache_MaxSizePrunesExpired(t *testing.T) {
 	c.set("b.com", blocked)
 	c.set("c.com", blocked)
 
-	// Wait for all entries to expire.
-	time.Sleep(5 * time.Millisecond)
+	// Wait for all entries to expire (50ms >> 1ms TTL).
+	time.Sleep(50 * time.Millisecond)
 
 	// Adding a new entry should prune expired entries instead of full clear.
 	c.set("d.com", blocked)

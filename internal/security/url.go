@@ -39,17 +39,23 @@ var hostCache = &dnsCache{
 	maxSize: 1024,
 }
 
-func (c *dnsCache) get(host string) (error, bool) {
+// get returns a cached validation error for host. On a cache miss or expired
+// entry it returns (nil, false). Expired entries are left in the map for lazy
+// cleanup by set() to avoid upgrading to a write lock on the read path.
+func (c *dnsCache) get(host string) (cachedErr error, ok bool) {
 	c.mu.RLock()
-	entry, ok := c.entries[host]
+	entry, found := c.entries[host]
 	c.mu.RUnlock()
-	if !ok || time.Now().After(entry.expiresAt) {
+	if !found || time.Now().After(entry.expiresAt) {
 		return nil, false
 	}
 	return entry.err, true
 }
 
 func (c *dnsCache) set(host string, err error) {
+	if err == nil {
+		return // never cache an allowed result
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if len(c.entries) >= c.maxSize {
@@ -67,14 +73,6 @@ func (c *dnsCache) set(host string, err error) {
 		err:       err,
 		expiresAt: time.Now().Add(c.ttl),
 	}
-}
-
-// ResetDNSCache clears the DNS validation cache. This discards all cached
-// blocked-host entries and should only be called from tests.
-func ResetDNSCache() {
-	hostCache.mu.Lock()
-	hostCache.entries = make(map[string]dnsCacheEntry)
-	hostCache.mu.Unlock()
 }
 
 // ValidateHTTPURL checks for SSRF vulnerabilities by blocking requests to internal networks.
