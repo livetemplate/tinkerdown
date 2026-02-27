@@ -126,13 +126,18 @@ func TestDNSCache_MaxSize(t *testing.T) {
 	}
 
 	// Adding one more should trigger expired-entry pruning first; since none
-	// are expired, all entries are cleared, then the new entry is stored.
+	// are expired, one arbitrary entry is evicted, then the new entry is stored.
 	c.set("d.com", blocked)
 	if _, ok := c.get("d.com"); !ok {
 		t.Fatal("expected cache hit for newly added entry after eviction")
 	}
-	if _, ok := c.get("a.com"); ok {
-		t.Fatal("expected cache miss for old entry after eviction")
+
+	// Should still have 3 entries (evicted 1 of 3, then added d.com).
+	c.mu.RLock()
+	size := len(c.entries)
+	c.mu.RUnlock()
+	if size != 3 {
+		t.Fatalf("expected 3 entries after single eviction, got %d", size)
 	}
 }
 

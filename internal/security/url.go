@@ -66,7 +66,12 @@ func (c *dnsCache) set(host string, err error) {
 			}
 		}
 		if len(c.entries) >= c.maxSize {
-			c.entries = make(map[string]dnsCacheEntry)
+			// Evict one arbitrary entry to make room without discarding
+			// the entire cache (avoids thrashing under adversarial load).
+			for k := range c.entries {
+				delete(c.entries, k)
+				break
+			}
 		}
 	}
 	c.entries[host] = dnsCacheEntry{
@@ -121,9 +126,11 @@ func ValidateHTTPURL(rawURL string) error {
 	// If resolution fails (e.g., non-existent domain), allow the request — the
 	// actual HTTP call will fail anyway. Only block when resolved IPs are internal.
 	//
-	// Note: this does not fully prevent DNS rebinding with TTL=0 tricks where the
-	// DNS response changes between this validation and the actual HTTP request.
-	// Only blocked results are cached, so allowed hosts are always re-validated.
+	// Note: this does not fully prevent DNS rebinding. Even when this function
+	// returns nil (allowed), the HTTP client re-resolves the hostname at
+	// connection time, creating a TOCTOU window where the DNS record could
+	// change to an internal address. Only blocked results are cached; allowed
+	// hosts are always re-validated on each call.
 	addrs, err := net.LookupHost(host)
 	if err == nil {
 		for _, addr := range addrs {
