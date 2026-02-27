@@ -1,9 +1,18 @@
 package security
 
 import (
+	"fmt"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
+
+func resetDNSCache() {
+	hostCache.mu.Lock()
+	hostCache.entries = make(map[string]dnsCacheEntry)
+	hostCache.mu.Unlock()
+}
 
 func TestValidateHTTPURL(t *testing.T) {
 	tests := []struct {
@@ -36,6 +45,7 @@ func TestValidateHTTPURL(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			resetDNSCache()
 			err := ValidateHTTPURL(tt.url)
 			if tt.wantErr == "" {
 				if err != nil {
@@ -63,9 +73,127 @@ func TestValidateHTTPURL_TestBypass(t *testing.T) {
 }
 
 func TestValidateHTTPURL_DNSRebinding(t *testing.T) {
+	resetDNSCache()
 	// Hostnames that resolve to loopback should be blocked
 	err := ValidateHTTPURL("http://localhost.localdomain/admin")
 	if err == nil {
 		t.Error("ValidateHTTPURL() should block localhost.localdomain")
 	}
+}
+
+func TestDNSCache_HitAndExpiry(t *testing.T) {
+	c := &dnsCache{
+		entries: make(map[string]dnsCacheEntry),
+		ttl:     1 * time.Millisecond,
+		maxSize: 10,
+	}
+
+	// Cache miss on empty cache.
+	if _, ok := c.get("example.com"); ok {
+		t.Fatal("expected cache miss on empty cache")
+	}
+
+	// Store a blocked error and verify cache hit returns it.
+	blockedErr := fmt.Errorf("blocked")
+	c.set("evil.com", blockedErr)
+	if err, ok := c.get("evil.com"); !ok {
+		t.Fatal("expected cache hit for blocked host")
+	} else if err == nil || err.Error() != "blocked" {
+		t.Fatalf("expected 'blocked' error, got %v", err)
+	}
+
+	// Wait for TTL expiry (50ms >> 1ms TTL — generous margin for loaded CI).
+	time.Sleep(50 * time.Millisecond)
+	if _, ok := c.get("evil.com"); ok {
+		t.Fatal("expected cache miss after TTL expiry")
+	}
+}
+
+func TestDNSCache_MaxSize(t *testing.T) {
+	blocked := fmt.Errorf("blocked")
+	c := &dnsCache{
+		entries: make(map[string]dnsCacheEntry),
+		ttl:     time.Minute,
+		maxSize: 3,
+	}
+
+	// Fill to capacity.
+	c.set("a.com", blocked)
+	c.set("b.com", blocked)
+	c.set("c.com", blocked)
+	if _, ok := c.get("a.com"); !ok {
+		t.Fatal("expected cache hit before overflow")
+	}
+
+	// Adding one more should trigger expired-entry pruning first; since none
+	// are expired, one arbitrary entry is evicted, then the new entry is stored.
+	c.set("d.com", blocked)
+	if _, ok := c.get("d.com"); !ok {
+		t.Fatal("expected cache hit for newly added entry after eviction")
+	}
+
+	// Should still have 3 entries (evicted 1 of 3, then added d.com).
+	c.mu.RLock()
+	size := len(c.entries)
+	c.mu.RUnlock()
+	if size != 3 {
+		t.Fatalf("expected 3 entries after single eviction, got %d", size)
+	}
+}
+
+func TestDNSCache_MaxSizePrunesExpired(t *testing.T) {
+	blocked := fmt.Errorf("blocked")
+	c := &dnsCache{
+		entries: make(map[string]dnsCacheEntry),
+		ttl:     1 * time.Millisecond,
+		maxSize: 3,
+	}
+
+	// Fill to capacity with entries that will expire quickly.
+	c.set("a.com", blocked)
+	c.set("b.com", blocked)
+	c.set("c.com", blocked)
+
+	// Wait for all entries to expire (50ms >> 1ms TTL).
+	time.Sleep(50 * time.Millisecond)
+
+	// Adding a new entry should prune expired entries instead of full clear.
+	c.set("d.com", blocked)
+
+	// d.com should be present.
+	if _, ok := c.get("d.com"); !ok {
+		t.Fatal("expected cache hit for newly added entry")
+	}
+
+	// Cache should have only 1 entry (d.com) since expired ones were pruned.
+	c.mu.RLock()
+	size := len(c.entries)
+	c.mu.RUnlock()
+	if size != 1 {
+		t.Fatalf("expected 1 entry after pruning, got %d", size)
+	}
+}
+
+func TestDNSCache_ConcurrentAccess(t *testing.T) {
+	blocked := fmt.Errorf("blocked")
+	c := &dnsCache{
+		entries: make(map[string]dnsCacheEntry),
+		ttl:     time.Second,
+		maxSize: 100,
+	}
+
+	var wg sync.WaitGroup
+	for i := range 50 {
+		wg.Add(2)
+		host := fmt.Sprintf("host-%d.example.com", i)
+		go func() {
+			defer wg.Done()
+			c.set(host, blocked)
+		}()
+		go func() {
+			defer wg.Done()
+			c.get(host)
+		}()
+	}
+	wg.Wait()
 }

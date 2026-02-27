@@ -6,7 +6,9 @@ import (
 	"net"
 	"net/url"
 	"strings"
+	"sync"
 	"sync/atomic"
+	"time"
 )
 
 // testBypassSSRF is a testing hook to bypass SSRF validation.
@@ -19,9 +21,74 @@ func SetTestBypassSSRF(enabled bool) {
 	testBypassSSRF.Store(enabled)
 }
 
+type dnsCacheEntry struct {
+	err       error
+	expiresAt time.Time
+}
+
+type dnsCache struct {
+	mu      sync.RWMutex
+	entries map[string]dnsCacheEntry
+	ttl     time.Duration
+	maxSize int
+}
+
+var hostCache = &dnsCache{
+	entries: make(map[string]dnsCacheEntry),
+	ttl:     30 * time.Second,
+	maxSize: 1024,
+}
+
+// get returns a cached validation error for host. On a cache miss or expired
+// entry it returns (nil, false). Expired entries are left in the map for lazy
+// cleanup by set() to avoid upgrading to a write lock on the read path.
+func (c *dnsCache) get(host string) (cachedErr error, ok bool) {
+	c.mu.RLock()
+	entry, found := c.entries[host]
+	c.mu.RUnlock()
+	if !found || time.Now().After(entry.expiresAt) {
+		return nil, false
+	}
+	return entry.err, true
+}
+
+func (c *dnsCache) set(host string, err error) {
+	if err == nil {
+		return // never cache an allowed result
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	now := time.Now()
+	if len(c.entries) >= c.maxSize {
+		// Prune expired entries first (O(n) scan under write lock;
+		// acceptable at the current 1024 cap and rarely triggered).
+		for k, v := range c.entries {
+			if now.After(v.expiresAt) {
+				delete(c.entries, k)
+			}
+		}
+		if len(c.entries) >= c.maxSize {
+			// Evict one arbitrary entry to make room without discarding
+			// the entire cache (avoids thrashing under adversarial load).
+			for k := range c.entries {
+				delete(c.entries, k)
+				break
+			}
+		}
+	}
+	c.entries[host] = dnsCacheEntry{
+		err:       err,
+		expiresAt: now.Add(c.ttl),
+	}
+}
+
 // ValidateHTTPURL checks for SSRF vulnerabilities by blocking requests to internal networks.
 // It rejects localhost, private IP ranges, link-local addresses, and cloud metadata endpoints.
 // Hostnames are resolved to detect DNS rebinding attacks targeting internal addresses.
+//
+// Blocked results are cached for up to 30 seconds. If a hostname transiently resolves to an
+// internal address (e.g. during DNS propagation), it will remain blocked until the cache entry
+// expires, even if the DNS record is corrected sooner.
 func ValidateHTTPURL(rawURL string) error {
 	if testBypassSSRF.Load() {
 		return nil
@@ -53,18 +120,32 @@ func ValidateHTTPURL(rawURL string) error {
 		return validateIP(ip)
 	}
 
-	// Hostname: resolve and check all resulting IPs to prevent DNS rebinding.
+	// Check DNS cache for a previously blocked result (keyed by lowercase hostname).
+	// Only blocked (error) results are cached — allowed results are always
+	// re-validated to prevent DNS rebinding attacks where an attacker changes
+	// DNS records from a public IP to an internal IP after the first lookup.
+	if cachedErr, ok := hostCache.get(hostLower); ok {
+		return cachedErr
+	}
+
+	// Cache miss: resolve and check all resulting IPs to prevent DNS rebinding.
 	// If resolution fails (e.g., non-existent domain), allow the request — the
 	// actual HTTP call will fail anyway. Only block when resolved IPs are internal.
-	// Note: This does not fully prevent DNS rebinding with TTL=0 tricks where the
-	// DNS response changes between validation and the actual HTTP request.
+	//
+	// Note: this does not fully prevent DNS rebinding. Even when this function
+	// returns nil (allowed), the HTTP client re-resolves the hostname at
+	// connection time, creating a TOCTOU window where the DNS record could
+	// change to an internal address. Only blocked results are cached; allowed
+	// hosts are always re-validated on each call.
 	addrs, err := net.LookupHost(host)
 	if err == nil {
 		for _, addr := range addrs {
 			resolved := net.ParseIP(addr)
 			if resolved != nil {
-				if err := validateIP(resolved); err != nil {
-					return fmt.Errorf("hostname resolves to blocked address: %w", err)
+				if ipErr := validateIP(resolved); ipErr != nil {
+					validationErr := fmt.Errorf("hostname resolves to blocked address: %w", ipErr)
+					hostCache.set(hostLower, validationErr)
+					return validationErr
 				}
 			}
 		}
