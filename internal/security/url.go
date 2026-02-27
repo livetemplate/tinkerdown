@@ -6,7 +6,9 @@ import (
 	"net"
 	"net/url"
 	"strings"
+	"sync"
 	"sync/atomic"
+	"time"
 )
 
 // testBypassSSRF is a testing hook to bypass SSRF validation.
@@ -17,6 +19,53 @@ var testBypassSSRF atomic.Bool
 // It is safe for concurrent use.
 func SetTestBypassSSRF(enabled bool) {
 	testBypassSSRF.Store(enabled)
+}
+
+type dnsCacheEntry struct {
+	err       error
+	expiresAt time.Time
+}
+
+type dnsCache struct {
+	mu      sync.RWMutex
+	entries map[string]dnsCacheEntry
+	ttl     time.Duration
+	maxSize int
+}
+
+var hostCache = &dnsCache{
+	entries: make(map[string]dnsCacheEntry),
+	ttl:     30 * time.Second,
+	maxSize: 1024,
+}
+
+func (c *dnsCache) get(host string) (error, bool) {
+	c.mu.RLock()
+	entry, ok := c.entries[host]
+	c.mu.RUnlock()
+	if !ok || time.Now().After(entry.expiresAt) {
+		return nil, false
+	}
+	return entry.err, true
+}
+
+func (c *dnsCache) set(host string, err error) {
+	c.mu.Lock()
+	if len(c.entries) >= c.maxSize {
+		c.entries = make(map[string]dnsCacheEntry)
+	}
+	c.entries[host] = dnsCacheEntry{
+		err:       err,
+		expiresAt: time.Now().Add(c.ttl),
+	}
+	c.mu.Unlock()
+}
+
+// ResetDNSCache clears the DNS validation cache. Intended for use in tests.
+func ResetDNSCache() {
+	hostCache.mu.Lock()
+	hostCache.entries = make(map[string]dnsCacheEntry)
+	hostCache.mu.Unlock()
 }
 
 // ValidateHTTPURL checks for SSRF vulnerabilities by blocking requests to internal networks.
@@ -53,24 +102,30 @@ func ValidateHTTPURL(rawURL string) error {
 		return validateIP(ip)
 	}
 
-	// Hostname: resolve and check all resulting IPs to prevent DNS rebinding.
+	// Check DNS cache for a previous validation result.
+	if cachedErr, ok := hostCache.get(host); ok {
+		return cachedErr
+	}
+
+	// Cache miss: resolve and check all resulting IPs to prevent DNS rebinding.
 	// If resolution fails (e.g., non-existent domain), allow the request — the
 	// actual HTTP call will fail anyway. Only block when resolved IPs are internal.
-	// Note: This does not fully prevent DNS rebinding with TTL=0 tricks where the
-	// DNS response changes between validation and the actual HTTP request.
+	var validationErr error
 	addrs, err := net.LookupHost(host)
 	if err == nil {
 		for _, addr := range addrs {
 			resolved := net.ParseIP(addr)
 			if resolved != nil {
-				if err := validateIP(resolved); err != nil {
-					return fmt.Errorf("hostname resolves to blocked address: %w", err)
+				if ipErr := validateIP(resolved); ipErr != nil {
+					validationErr = fmt.Errorf("hostname resolves to blocked address: %w", ipErr)
+					break
 				}
 			}
 		}
 	}
 
-	return nil
+	hostCache.set(host, validationErr)
+	return validationErr
 }
 
 // validateIP checks a single IP against blocked ranges.

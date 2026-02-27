@@ -1,8 +1,11 @@
 package security
 
 import (
+	"fmt"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 func TestValidateHTTPURL(t *testing.T) {
@@ -36,6 +39,7 @@ func TestValidateHTTPURL(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			ResetDNSCache()
 			err := ValidateHTTPURL(tt.url)
 			if tt.wantErr == "" {
 				if err != nil {
@@ -68,4 +72,92 @@ func TestValidateHTTPURL_DNSRebinding(t *testing.T) {
 	if err == nil {
 		t.Error("ValidateHTTPURL() should block localhost.localdomain")
 	}
+}
+
+func TestDNSCache_HitAndExpiry(t *testing.T) {
+	c := &dnsCache{
+		entries: make(map[string]dnsCacheEntry),
+		ttl:     50 * time.Millisecond,
+		maxSize: 10,
+	}
+
+	// Cache miss on empty cache.
+	if _, ok := c.get("example.com"); ok {
+		t.Fatal("expected cache miss on empty cache")
+	}
+
+	// Store a nil-error (allowed host) and verify cache hit.
+	c.set("example.com", nil)
+	if err, ok := c.get("example.com"); !ok {
+		t.Fatal("expected cache hit after set")
+	} else if err != nil {
+		t.Fatalf("expected nil cached error, got %v", err)
+	}
+
+	// Store a non-nil error (blocked host) and verify it's returned.
+	blockedErr := fmt.Errorf("blocked")
+	c.set("evil.com", blockedErr)
+	if err, ok := c.get("evil.com"); !ok {
+		t.Fatal("expected cache hit for blocked host")
+	} else if err == nil || err.Error() != "blocked" {
+		t.Fatalf("expected 'blocked' error, got %v", err)
+	}
+
+	// Wait for TTL expiry.
+	time.Sleep(60 * time.Millisecond)
+	if _, ok := c.get("example.com"); ok {
+		t.Fatal("expected cache miss after TTL expiry")
+	}
+	if _, ok := c.get("evil.com"); ok {
+		t.Fatal("expected cache miss after TTL expiry for blocked host")
+	}
+}
+
+func TestDNSCache_MaxSize(t *testing.T) {
+	c := &dnsCache{
+		entries: make(map[string]dnsCacheEntry),
+		ttl:     time.Minute,
+		maxSize: 3,
+	}
+
+	// Fill to capacity.
+	c.set("a.com", nil)
+	c.set("b.com", nil)
+	c.set("c.com", nil)
+	if _, ok := c.get("a.com"); !ok {
+		t.Fatal("expected cache hit before overflow")
+	}
+
+	// Adding one more should trigger a clear, then store the new entry.
+	c.set("d.com", nil)
+	if _, ok := c.get("d.com"); !ok {
+		t.Fatal("expected cache hit for newly added entry after eviction")
+	}
+	// Previous entries should be gone.
+	if _, ok := c.get("a.com"); ok {
+		t.Fatal("expected cache miss for old entry after eviction")
+	}
+}
+
+func TestDNSCache_ConcurrentAccess(t *testing.T) {
+	c := &dnsCache{
+		entries: make(map[string]dnsCacheEntry),
+		ttl:     time.Second,
+		maxSize: 100,
+	}
+
+	var wg sync.WaitGroup
+	for i := range 50 {
+		wg.Add(2)
+		host := fmt.Sprintf("host-%d.example.com", i)
+		go func() {
+			defer wg.Done()
+			c.set(host, nil)
+		}()
+		go func() {
+			defer wg.Done()
+			c.get(host)
+		}()
+	}
+	wg.Wait()
 }
