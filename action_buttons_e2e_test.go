@@ -12,6 +12,7 @@ import (
 
 	"net/http/httptest"
 
+	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/cdproto/runtime"
 	"github.com/chromedp/chromedp"
 	"github.com/livetemplate/tinkerdown/internal/server"
@@ -48,13 +49,21 @@ func TestActionButtons(t *testing.T) {
 
 	ctx := chromeCtx.Context
 
-	// Store console logs for debugging
+	// Store console logs for debugging and auto-accept confirm dialogs
 	var consoleLogs []string
 	chromedp.ListenTarget(ctx, func(ev interface{}) {
-		if ev, ok := ev.(*runtime.EventConsoleAPICalled); ok {
+		switch ev := ev.(type) {
+		case *runtime.EventConsoleAPICalled:
 			for _, arg := range ev.Args {
 				consoleLogs = append(consoleLogs, fmt.Sprintf("[Console] %s", arg.Value))
 			}
+		case *page.EventJavascriptDialogOpening:
+			t.Logf("Dialog opened: type=%s message=%q", ev.Type, ev.Message)
+			go func() {
+				if err := chromedp.Run(ctx, page.HandleJavaScriptDialog(true)); err != nil {
+					t.Logf("Failed to handle dialog: %v", err)
+				}
+			}()
 		}
 	})
 
@@ -62,6 +71,8 @@ func TestActionButtons(t *testing.T) {
 	url := ConvertURLForDockerChrome(ts.URL)
 	var wsConnected bool
 	err := chromedp.Run(ctx,
+		// Enable page events so we receive dialog opening notifications
+		page.Enable(),
 		chromedp.Navigate(url),
 		chromedp.WaitVisible(`[lvt-source="tasks"]`, chromedp.ByQuery),
 		chromedp.Evaluate(`window.tinkerdownWS !== undefined && window.tinkerdownWS.readyState === 1`, &wsConnected),
@@ -110,7 +121,7 @@ func TestActionButtons(t *testing.T) {
 	t.Log("Custom action buttons exist")
 
 	// Test 1: Click "Clear Completed" button
-	// This should delete the 2 completed tasks (confirm dialog auto-accepted by headless Chrome)
+	// This should delete the 2 completed tasks (confirm dialog handled by ListenTarget above)
 	err = chromedp.Run(ctx,
 		chromedp.Click(`button[lvt-click="clear-done"]`, chromedp.ByQuery),
 		waitForDOM(`document.querySelectorAll('[lvt-source="tasks"] tbody tr').length === 2`, 10*time.Second),
