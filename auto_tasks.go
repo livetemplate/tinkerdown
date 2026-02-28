@@ -3,7 +3,6 @@ package tinkerdown
 import (
 	"bytes"
 	"fmt"
-	"log"
 	"regexp"
 	"strings"
 )
@@ -111,7 +110,8 @@ func detectTaskListSections(content []byte) []taskListSection {
 // preprocessAutoTasks transforms markdown content by replacing detected task list
 // sections with lvt code blocks, and returns source configs to inject.
 // The original file on disk is never modified.
-func preprocessAutoTasks(content []byte, absPath string) ([]byte, map[string]SourceConfig) {
+// The third return value contains warnings for any duplicate anchor collisions.
+func preprocessAutoTasks(content []byte, absPath string) ([]byte, map[string]SourceConfig, []string) {
 	// Skip frontmatter during detection
 	bodyOffset := 0
 	if loc := frontmatterPattern.FindIndex(content); loc != nil {
@@ -121,7 +121,7 @@ func preprocessAutoTasks(content []byte, absPath string) ([]byte, map[string]Sou
 	body := content[bodyOffset:]
 	sections := detectTaskListSections(body)
 	if len(sections) == 0 {
-		return content, nil
+		return content, nil, nil
 	}
 
 	sources := make(map[string]SourceConfig)
@@ -134,17 +134,20 @@ func preprocessAutoTasks(content []byte, absPath string) ([]byte, map[string]Sou
 	}
 
 	// Forward pass: detect duplicate anchors and mark later occurrences for skipping
-	seenAnchors := make(map[string]int) // anchor → first section index
-	skipIndices := make(map[int]bool)
+	var warnings []string
+	seenAnchors := make(map[string]int)    // anchor → first section index
+	skipIndices := make(map[int]struct{})   // section indices to skip
 	for i, sec := range sections {
 		if sec.anchor == "" {
 			continue
 		}
 		if firstIdx, exists := seenAnchors[sec.anchor]; exists {
-			skipIndices[i] = true
-			log.Printf("warning: heading %q (line %d) produces anchor #%s which collides with heading %q (line %d) — skipping duplicate",
-				sec.heading, sec.startLine-1+fmLineCount+1, sec.anchor,
-				sections[firstIdx].heading, sections[firstIdx].startLine-1+fmLineCount+1)
+			skipIndices[i] = struct{}{}
+			warnings = append(warnings, fmt.Sprintf(
+				"%s: heading %q (line %d) produces anchor #%s which collides with heading %q (line %d) — skipping duplicate",
+				absPath,
+				sec.heading, sec.startLine+fmLineCount, sec.anchor,
+				sections[firstIdx].heading, sections[firstIdx].startLine+fmLineCount))
 		} else {
 			seenAnchors[sec.anchor] = i
 		}
@@ -160,7 +163,7 @@ func preprocessAutoTasks(content []byte, absPath string) ([]byte, map[string]Sou
 		}
 
 		// Skip duplicate anchor sections (detected in forward pass)
-		if skipIndices[i] {
+		if _, ok := skipIndices[i]; ok {
 			continue
 		}
 
@@ -199,7 +202,7 @@ func preprocessAutoTasks(content []byte, absPath string) ([]byte, map[string]Sou
 		}
 	}
 
-	return []byte(strings.Join(lines, "\n")), sources
+	return []byte(strings.Join(lines, "\n")), sources, warnings
 }
 
 // generateAutoTaskLvtBlock generates the lvt template HTML for an auto-task section.

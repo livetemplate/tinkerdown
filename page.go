@@ -3,6 +3,7 @@ package tinkerdown
 import (
 	"fmt"
 	"html"
+	"log"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -44,7 +45,10 @@ func ParseFile(path string) (*Page, error) {
 	}
 
 	// Pre-process: detect task list sections and replace with lvt blocks (in-memory only)
-	processedContent, autoSources := preprocessAutoTasks(content, absPath)
+	processedContent, autoSources, autoWarnings := preprocessAutoTasks(content, absPath)
+	for _, w := range autoWarnings {
+		log.Printf("warning: %s", w)
+	}
 
 	// Parse markdown with partial support
 	baseDir := filepath.Dir(absPath)
