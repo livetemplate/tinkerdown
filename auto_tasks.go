@@ -135,8 +135,8 @@ func preprocessAutoTasks(content []byte, absPath string) ([]byte, map[string]Sou
 
 	// Forward pass: detect duplicate anchors and mark later occurrences for skipping
 	var warnings []string
-	seenAnchors := make(map[string]int)    // anchor → first section index
-	skipIndices := make(map[int]struct{})   // section indices to skip
+	seenAnchors := make(map[string]int)   // anchor → first section index
+	skipIndices := make(map[int]struct{}) // section indices to skip
 	for i, sec := range sections {
 		if sec.anchor == "" {
 			continue
@@ -184,7 +184,7 @@ func preprocessAutoTasks(content []byte, absPath string) ([]byte, map[string]Sou
 
 		// Replace lines: heading line through end of task items
 		startIdx := sec.startLine - 1 + fmLineCount // heading line
-		endIdx := sec.endLine + fmLineCount          // exclusive
+		endIdx := sec.endLine + fmLineCount         // exclusive
 
 		newLines := make([]string, 0, len(lines)-(endIdx-startIdx)+len(replacement))
 		newLines = append(newLines, lines[:startIdx]...)

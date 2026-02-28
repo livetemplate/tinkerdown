@@ -439,6 +439,40 @@ func TestPreprocessDuplicateExplicitAnchor(t *testing.T) {
 	}
 }
 
+func TestPreprocessTripleDuplicateAnchor(t *testing.T) {
+	content := []byte(`## Tasks
+- [ ] A
+
+## Tasks
+- [ ] B
+
+## Tasks
+- [ ] C
+`)
+
+	processed, sources, warnings := preprocessAutoTasks(content, "/test/page.md")
+
+	if len(sources) != 1 {
+		t.Fatalf("expected 1 source (first of three), got %d", len(sources))
+	}
+	if len(warnings) != 2 {
+		t.Fatalf("expected 2 warnings (one per extra duplicate), got %d", len(warnings))
+	}
+
+	// The second and third sections' task items should remain as plain markdown
+	processedStr := string(processed)
+	if !strings.Contains(processedStr, "- [ ] B") {
+		t.Error("second duplicate section should retain its task items as plain markdown")
+	}
+	if !strings.Contains(processedStr, "- [ ] C") {
+		t.Error("third duplicate section should retain its task items as plain markdown")
+	}
+	// First section replaced
+	if strings.Contains(processedStr, "- [ ] A") {
+		t.Error("first section's task items should be replaced by lvt block")
+	}
+}
+
 // Helper to verify task items exist in a section
 func (s taskListSection) hasTaskItems(content []byte) bool {
 	lines := strings.Split(string(content), "\n")
