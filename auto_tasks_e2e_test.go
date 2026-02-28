@@ -521,7 +521,9 @@ func TestAutoTasks_NoFullReload(t *testing.T) {
 }
 
 // createXSSAutoTasksExample creates a temp directory with a markdown file
-// containing task items that use common XSS payloads.
+// containing task items that use common XSS payloads. Payloads use non-blocking
+// sentinels (window flags) instead of alert() so the test fails cleanly rather
+// than hanging on a browser dialog if escaping ever regresses.
 func createXSSAutoTasksExample(t *testing.T) (string, func()) {
 	t.Helper()
 
@@ -533,9 +535,9 @@ func createXSSAutoTasksExample(t *testing.T) (string, func()) {
 	content := `# XSS Test
 
 ## Tasks
-- [ ] <script>alert('xss')</script>
-- [ ] <img src=x onerror="alert('xss')">
-- [ ] Test &amp; <b>bold</b> "quotes"
+- [ ] <script>window.__xssExecutedScript = true;</script>
+- [ ] <img src=x onerror="window.__xssExecutedImg = true;">
+- [ ] Test & <b>bold</b> "quotes"
 `
 
 	indexPath := filepath.Join(tempDir, "index.md")
@@ -610,7 +612,7 @@ func TestAutoTasks_XSSEscaping(t *testing.T) {
 	}
 	t.Log("No <img> tags injected")
 
-	// 3. Verify no <b> tags from the HTML entity payload
+	// 3. Verify no <b> tags from the raw HTML tag payload
 	var boldCount int
 	err = chromedp.Run(ctx,
 		chromedp.Evaluate(`document.querySelectorAll('[lvt-source="_auto_tasks"] b').length`, &boldCount),
@@ -646,23 +648,31 @@ func TestAutoTasks_XSSEscaping(t *testing.T) {
 		t.Logf("Task texts: %s", taskTexts)
 		t.Fatal("Expected '<img' to appear as visible text in task span")
 	}
+	if !strings.Contains(taskTexts, "<b>bold</b>") {
+		t.Logf("Task texts: %s", taskTexts)
+		t.Fatal("Expected '<b>bold</b>' to appear as visible text in task span")
+	}
 	t.Logf("XSS payloads rendered as escaped text: %s", taskTexts)
 
-	// 5. Check console logs for evidence of actual XSS execution.
-	// WebSocket data messages naturally contain the escaped payload text,
-	// so we skip those and only flag logs that indicate real script execution.
-	logs := testCtx.ConsoleLogs.get()
-	for _, log := range logs {
-		// Skip WebSocket data frames — they legitimately contain escaped payload text
-		if strings.Contains(log, "blockID") || strings.Contains(log, "lvt-") {
-			continue
-		}
-		lower := strings.ToLower(log)
-		if strings.Contains(lower, "xss") || strings.Contains(lower, "alert(") {
-			t.Fatalf("XSS: Console log contains evidence of script execution: %s", log)
-		}
+	// 5. Check for XSS execution via window sentinel flags.
+	// The payloads set window.__xssExecutedScript / window.__xssExecutedImg
+	// if they execute. This is deterministic — unlike console log scanning,
+	// it directly detects whether the browser ran the injected code.
+	var scriptExecuted, imgExecuted bool
+	err = chromedp.Run(ctx,
+		chromedp.Evaluate(`window.__xssExecutedScript === true`, &scriptExecuted),
+		chromedp.Evaluate(`window.__xssExecutedImg === true`, &imgExecuted),
+	)
+	if err != nil {
+		t.Fatalf("Failed to check XSS sentinel flags: %v", err)
 	}
-	t.Log("No XSS execution detected in console logs")
+	if scriptExecuted {
+		t.Fatal("XSS: <script> payload executed — window.__xssExecutedScript was set!")
+	}
+	if imgExecuted {
+		t.Fatal("XSS: <img onerror> payload executed — window.__xssExecutedImg was set!")
+	}
+	t.Log("No XSS execution detected (sentinel flags unset)")
 
 	t.Log("XSSEscaping test passed!")
 }
