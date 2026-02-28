@@ -3,6 +3,7 @@ package tinkerdown
 import (
 	"bytes"
 	"fmt"
+	"log"
 	"regexp"
 	"strings"
 )
@@ -132,12 +133,34 @@ func preprocessAutoTasks(content []byte, absPath string) ([]byte, map[string]Sou
 		fmLineCount = strings.Count(string(content[:bodyOffset]), "\n")
 	}
 
+	// Forward pass: detect duplicate anchors and mark later occurrences for skipping
+	seenAnchors := make(map[string]int) // anchor → first section index
+	skipIndices := make(map[int]bool)
+	for i, sec := range sections {
+		if sec.anchor == "" {
+			continue
+		}
+		if firstIdx, exists := seenAnchors[sec.anchor]; exists {
+			skipIndices[i] = true
+			log.Printf("warning: heading %q (line %d) produces anchor #%s which collides with heading %q (line %d) — skipping duplicate",
+				sec.heading, sec.startLine-1+fmLineCount+1, sec.anchor,
+				sections[firstIdx].heading, sections[firstIdx].startLine-1+fmLineCount+1)
+		} else {
+			seenAnchors[sec.anchor] = i
+		}
+	}
+
 	// Process sections in reverse order to preserve line numbers
 	for i := len(sections) - 1; i >= 0; i-- {
 		sec := sections[i]
 
 		// Skip sections with empty anchors (headings with no alphanumeric chars)
 		if sec.anchor == "" {
+			continue
+		}
+
+		// Skip duplicate anchor sections (detected in forward pass)
+		if skipIndices[i] {
 			continue
 		}
 

@@ -320,6 +320,103 @@ func TestGenerateAutoTaskLvtBlock(t *testing.T) {
 	}
 }
 
+func TestPreprocessDuplicateAnchorSameCasing(t *testing.T) {
+	content := []byte(`# My Day
+
+## Tasks
+- [ ] Buy groceries
+
+## Tasks
+- [ ] Walk the dog
+`)
+
+	_, sources := preprocessAutoTasks(content, "/test/page.md")
+
+	// Only the first "Tasks" section should produce a source
+	if len(sources) != 1 {
+		t.Fatalf("expected 1 source (first occurrence only), got %d", len(sources))
+	}
+
+	src, ok := sources["_auto_tasks"]
+	if !ok {
+		t.Fatal("expected source '_auto_tasks' for first occurrence")
+	}
+	if src.Anchor != "#tasks" {
+		t.Errorf("expected anchor '#tasks', got %q", src.Anchor)
+	}
+}
+
+func TestPreprocessDuplicateAnchorDifferentCasing(t *testing.T) {
+	content := []byte(`# My Day
+
+## Tasks
+- [ ] Buy groceries
+
+## TASKS
+- [ ] Walk the dog
+`)
+
+	_, sources := preprocessAutoTasks(content, "/test/page.md")
+
+	// "Tasks" and "TASKS" both slugify to "tasks" — only first kept
+	if len(sources) != 1 {
+		t.Fatalf("expected 1 source (same slug despite different casing), got %d", len(sources))
+	}
+
+	if _, ok := sources["_auto_tasks"]; !ok {
+		t.Fatal("expected source '_auto_tasks'")
+	}
+}
+
+func TestPreprocessDuplicateExplicitAnchor(t *testing.T) {
+	content := []byte(`# My Day
+
+## Morning Tasks {#my-tasks}
+- [ ] Buy groceries
+
+## Evening Tasks {#my-tasks}
+- [ ] Walk the dog
+`)
+
+	_, sources := preprocessAutoTasks(content, "/test/page.md")
+
+	// Both use explicit anchor {#my-tasks} — only first kept
+	if len(sources) != 1 {
+		t.Fatalf("expected 1 source (explicit anchor collision), got %d", len(sources))
+	}
+
+	if _, ok := sources["_auto_my-tasks"]; !ok {
+		t.Fatal("expected source '_auto_my-tasks'")
+	}
+}
+
+func TestPreprocessNoDuplicateAnchors(t *testing.T) {
+	content := []byte(`# My Day
+
+## Morning
+- [ ] Make coffee
+- [x] Exercise
+
+## Evening
+- [ ] Cook dinner
+- [ ] Read book
+`)
+
+	_, sources := preprocessAutoTasks(content, "/test/page.md")
+
+	// Different anchors — both should be kept (regression check)
+	if len(sources) != 2 {
+		t.Fatalf("expected 2 sources (no collision), got %d", len(sources))
+	}
+
+	if _, ok := sources["_auto_morning"]; !ok {
+		t.Fatal("expected source '_auto_morning'")
+	}
+	if _, ok := sources["_auto_evening"]; !ok {
+		t.Fatal("expected source '_auto_evening'")
+	}
+}
+
 // Helper to verify task items exist in a section
 func (s taskListSection) hasTaskItems(content []byte) bool {
 	lines := strings.Split(string(content), "\n")
