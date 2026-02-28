@@ -658,16 +658,23 @@ func TestAutoTasks_XSSEscaping(t *testing.T) {
 	// The payloads set window.__xssExecutedScript / window.__xssExecutedImg
 	// if they execute. This is deterministic — unlike console log scanning,
 	// it directly detects whether the browser ran the injected code.
-	var scriptExecuted, imgExecuted bool
+	var scriptExecuted bool
 	err = chromedp.Run(ctx,
 		chromedp.Evaluate(`window.__xssExecutedScript === true`, &scriptExecuted),
-		chromedp.Evaluate(`window.__xssExecutedImg === true`, &imgExecuted),
 	)
 	if err != nil {
-		t.Fatalf("Failed to check XSS sentinel flags: %v", err)
+		t.Fatalf("Failed to check script sentinel flag: %v", err)
 	}
 	if scriptExecuted {
 		t.Fatal("XSS: <script> payload executed — window.__xssExecutedScript was set!")
+	}
+
+	var imgExecuted bool
+	err = chromedp.Run(ctx,
+		chromedp.Evaluate(`window.__xssExecutedImg === true`, &imgExecuted),
+	)
+	if err != nil {
+		t.Fatalf("Failed to check img sentinel flag: %v", err)
 	}
 	if imgExecuted {
 		t.Fatal("XSS: <img onerror> payload executed — window.__xssExecutedImg was set!")
