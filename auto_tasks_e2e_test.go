@@ -519,3 +519,150 @@ func TestAutoTasks_NoFullReload(t *testing.T) {
 
 	t.Log("NoFullReload test passed!")
 }
+
+// createXSSAutoTasksExample creates a temp directory with a markdown file
+// containing task items that use common XSS payloads.
+func createXSSAutoTasksExample(t *testing.T) (string, func()) {
+	t.Helper()
+
+	tempDir, err := os.MkdirTemp("", "auto-tasks-xss-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+
+	content := `# XSS Test
+
+## Tasks
+- [ ] <script>alert('xss')</script>
+- [ ] <img src=x onerror="alert('xss')">
+- [ ] Test &amp; <b>bold</b> "quotes"
+`
+
+	indexPath := filepath.Join(tempDir, "index.md")
+	if err := os.WriteFile(indexPath, []byte(content), 0644); err != nil {
+		os.RemoveAll(tempDir)
+		t.Fatalf("Failed to write index.md: %v", err)
+	}
+
+	cleanup := func() {
+		os.RemoveAll(tempDir)
+	}
+
+	return tempDir, cleanup
+}
+
+// TestAutoTasks_XSSEscaping verifies that XSS payloads in task text are escaped
+// by html/template and rendered as visible text, not as executable HTML elements.
+// This guards against regressions like switching to text/template.
+func TestAutoTasks_XSSEscaping(t *testing.T) {
+	tempDir, tempCleanup := createXSSAutoTasksExample(t)
+	defer tempCleanup()
+
+	testCtx, cleanup := setupAutoTasksTest(t, tempDir, false)
+	defer cleanup()
+
+	ctx := testCtx.ChromeCtx.Context
+	t.Logf("Test server URL: %s", testCtx.Server.URL)
+
+	// Navigate and wait for auto-tasks to render
+	var hasAutoSource bool
+	err := chromedp.Run(ctx,
+		chromedp.Navigate(testCtx.URL+"/"),
+		chromedp.Sleep(15*time.Second),
+		chromedp.Evaluate(`document.querySelector('[lvt-source="_auto_tasks"]') !== null`, &hasAutoSource),
+	)
+	if err != nil {
+		t.Fatalf("Failed to navigate: %v", err)
+	}
+
+	if !hasAutoSource {
+		var htmlContent string
+		chromedp.Run(ctx, chromedp.OuterHTML("html", &htmlContent))
+		t.Logf("HTML (first 3000 chars): %s", htmlContent[:min(3000, len(htmlContent))])
+		t.Logf("Console logs: %v", testCtx.ConsoleLogs.get())
+		t.Fatal("Auto-generated task list was not rendered")
+	}
+	t.Log("XSS task list rendered successfully")
+
+	// 1. Verify no <script> tags were injected into the task section
+	var scriptCount int
+	err = chromedp.Run(ctx,
+		chromedp.Evaluate(`document.querySelectorAll('[lvt-source="_auto_tasks"] script').length`, &scriptCount),
+	)
+	if err != nil {
+		t.Fatalf("Failed to check for script tags: %v", err)
+	}
+	if scriptCount != 0 {
+		t.Fatalf("XSS: Found %d <script> tags in task section — payloads were not escaped!", scriptCount)
+	}
+	t.Log("No <script> tags injected")
+
+	// 2. Verify no <img> tags were injected (checkboxes are <input>, not <img>)
+	var imgCount int
+	err = chromedp.Run(ctx,
+		chromedp.Evaluate(`document.querySelectorAll('[lvt-source="_auto_tasks"] img').length`, &imgCount),
+	)
+	if err != nil {
+		t.Fatalf("Failed to check for img tags: %v", err)
+	}
+	if imgCount != 0 {
+		t.Fatalf("XSS: Found %d <img> tags in task section — payloads were not escaped!", imgCount)
+	}
+	t.Log("No <img> tags injected")
+
+	// 3. Verify no <b> tags from the HTML entity payload
+	var boldCount int
+	err = chromedp.Run(ctx,
+		chromedp.Evaluate(`document.querySelectorAll('[lvt-source="_auto_tasks"] b').length`, &boldCount),
+	)
+	if err != nil {
+		t.Fatalf("Failed to check for bold tags: %v", err)
+	}
+	if boldCount != 0 {
+		t.Fatalf("XSS: Found %d <b> tags in task section — HTML was not escaped!", boldCount)
+	}
+	t.Log("No <b> tags injected")
+
+	// 4. Verify task text is visible as escaped text content
+	var taskTexts string
+	err = chromedp.Run(ctx,
+		chromedp.Evaluate(`
+			(() => {
+				const spans = document.querySelectorAll('[lvt-source="_auto_tasks"] label span');
+				return Array.from(spans).map(s => s.textContent).join('|||');
+			})()
+		`, &taskTexts),
+	)
+	if err != nil {
+		t.Fatalf("Failed to get task text content: %v", err)
+	}
+
+	// The raw XSS payloads should appear as visible text, not as executed HTML
+	if !strings.Contains(taskTexts, "<script>") {
+		t.Logf("Task texts: %s", taskTexts)
+		t.Fatal("Expected '<script>' to appear as visible text in task span")
+	}
+	if !strings.Contains(taskTexts, "<img") {
+		t.Logf("Task texts: %s", taskTexts)
+		t.Fatal("Expected '<img' to appear as visible text in task span")
+	}
+	t.Logf("XSS payloads rendered as escaped text: %s", taskTexts)
+
+	// 5. Check console logs for evidence of actual XSS execution.
+	// WebSocket data messages naturally contain the escaped payload text,
+	// so we skip those and only flag logs that indicate real script execution.
+	logs := testCtx.ConsoleLogs.get()
+	for _, log := range logs {
+		// Skip WebSocket data frames — they legitimately contain escaped payload text
+		if strings.Contains(log, "blockID") || strings.Contains(log, "lvt-") {
+			continue
+		}
+		lower := strings.ToLower(log)
+		if strings.Contains(lower, "xss") || strings.Contains(lower, "alert(") {
+			t.Fatalf("XSS: Console log contains evidence of script execution: %s", log)
+		}
+	}
+	t.Log("No XSS execution detected in console logs")
+
+	t.Log("XSSEscaping test passed!")
+}
