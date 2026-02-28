@@ -356,6 +356,10 @@ func TestPreprocessDuplicateAnchorSameCasing(t *testing.T) {
 	if !strings.Contains(warnings[0], "collides with") {
 		t.Errorf("warning should mention collision, got %q", warnings[0])
 	}
+	// The duplicate "## Tasks" is on line 6 of the input (1-indexed)
+	if !strings.Contains(warnings[0], "line 6") {
+		t.Errorf("warning should report correct line number for duplicate, got %q", warnings[0])
+	}
 
 	// Processed content: first section replaced with lvt block, second stays as plain markdown
 	processedStr := string(processed)
