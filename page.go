@@ -3,7 +3,6 @@ package tinkerdown
 import (
 	"fmt"
 	"html"
-	"log"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -47,7 +46,7 @@ func ParseFile(path string) (*Page, error) {
 	// Pre-process: detect task list sections and replace with lvt blocks (in-memory only)
 	processedContent, autoSources, autoWarnings := preprocessAutoTasks(content, absPath)
 	for _, w := range autoWarnings {
-		log.Printf("warning: %s", w)
+		fmt.Fprintf(os.Stderr, "warning: %s\n", w)
 	}
 
 	// Parse markdown with partial support
@@ -166,6 +165,8 @@ func (pc *PageConfig) MergeFromFrontmatter(fm *Frontmatter) {
 // ParseString parses markdown content from a string and creates a Page.
 // This is useful for the playground where content comes from user input.
 func ParseString(content string) (*Page, error) {
+	// Note: preprocessAutoTasks is skipped here — playground input uses explicit
+	// lvt blocks rather than auto-detected task sections from file-based markdown.
 	// Parse markdown (no partials support for string input)
 	fm, codeBlocks, staticHTML, err := ParseMarkdownWithPartials([]byte(content), "")
 	if err != nil {
@@ -203,6 +204,8 @@ func ParseString(content string) (*Page, error) {
 // This is useful for testing and programmatic page creation.
 // The content should be valid markdown with optional frontmatter.
 func BuildPage(id, sourceFile string, content []byte) (*Page, error) {
+	// Note: preprocessAutoTasks is skipped here — programmatic/test callers
+	// provide pre-built content with explicit lvt blocks.
 	// Parse markdown (no partials support for programmatic input)
 	fm, codeBlocks, staticHTML, err := ParseMarkdownWithPartials(content, "")
 	if err != nil {
