@@ -119,9 +119,10 @@ func TestActionButtons(t *testing.T) {
 	}
 
 	// Test 1: Click "Clear Completed" button
-	// This should delete the 2 completed tasks (confirm auto-accepted via JS override)
+	// Use JS .click() instead of chromedp.Click — CDP click doesn't reliably trigger
+	// event delegation handlers in headless Docker Chrome
 	err = chromedp.Run(ctx,
-		chromedp.Click(`button[lvt-click="clear-done"]`, chromedp.ByQuery),
+		chromedp.Evaluate(`document.querySelector('button[lvt-click="clear-done"]').click()`, nil),
 		waitForDOM(`document.querySelectorAll('[lvt-source="tasks"] tbody tr').length === 2`, 10*time.Second),
 	)
 	if err != nil {
@@ -157,9 +158,8 @@ func TestActionButtons(t *testing.T) {
 	}
 
 	// Test 2: Click "Mark All Done" button
-	// This should mark all remaining tasks as done
 	err = chromedp.Run(ctx,
-		chromedp.Click(`button[lvt-click="mark-all-done"]`, chromedp.ByQuery),
+		chromedp.Evaluate(`document.querySelector('button[lvt-click="mark-all-done"]').click()`, nil),
 		waitForDOM(`[...document.querySelectorAll('[lvt-source="tasks"] tbody input[type="checkbox"]')].every(cb => cb.checked)`, 10*time.Second),
 	)
 	if err != nil {
@@ -179,7 +179,7 @@ func TestActionButtons(t *testing.T) {
 
 	// Test 3: Clear completed again (should now delete all remaining tasks)
 	err = chromedp.Run(ctx,
-		chromedp.Click(`button[lvt-click="clear-done"]`, chromedp.ByQuery),
+		chromedp.Evaluate(`document.querySelector('button[lvt-click="clear-done"]').click()`, nil),
 		waitForDOM(`document.querySelectorAll('[lvt-source="tasks"] tbody tr').length === 0`, 10*time.Second),
 	)
 	if err != nil {
