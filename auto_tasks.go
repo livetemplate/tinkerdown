@@ -143,7 +143,9 @@ func preprocessAutoTasks(content []byte, absPath string) ([]byte, map[string]Sou
 		}
 		if firstIdx, exists := seenAnchors[sec.anchor]; exists {
 			skipIndices[i] = struct{}{}
-			dupLine := sec.startLine + fmLineCount // 1-indexed heading line in full file
+			// startLine is 0-indexed first-task line (after heading); heading is one before.
+			// 1-indexed file line: (startLine-1) + fmLineCount + 1 = startLine + fmLineCount.
+			dupLine := sec.startLine + fmLineCount
 			firstLine := sections[firstIdx].startLine + fmLineCount
 			warnings = append(warnings, fmt.Sprintf(
 				"%s: heading %q (line %d) produces anchor #%s which collides with heading %q (line %d) — skipping duplicate",

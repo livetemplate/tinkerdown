@@ -265,9 +265,12 @@ func TestPreprocessMultipleSections(t *testing.T) {
 - [ ] Read book
 `)
 
-	_, sources, _ := preprocessAutoTasks(content, "/test/page.md")
+	_, sources, warnings := preprocessAutoTasks(content, "/test/page.md")
 
 	// Also guards the no-collision regression path (distinct anchors both kept)
+	if len(warnings) != 0 {
+		t.Errorf("expected no warnings for distinct anchors, got %v", warnings)
+	}
 	if len(sources) != 2 {
 		t.Fatalf("expected 2 sources, got %d", len(sources))
 	}
