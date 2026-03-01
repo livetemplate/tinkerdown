@@ -38,8 +38,8 @@ server:
 api:
   enabled: true
   auth:
-    api_key: ${API_KEY}
-    header_name: X-API-Key    # Default; set to "Authorization" for Bearer tokens
+    api_key: ${API_KEY}           # Legacy single key (coexists with keys:)
+    header_name: X-API-Key        # Default; set to "Authorization" for Bearer tokens
     keys:
       - name: reader
         key: ${READ_KEY}
@@ -160,6 +160,8 @@ api:
       - "https://myapp.example.com"
 ```
 
+Use `"*"` to allow all origins (not recommended for production with authenticated APIs).
+
 ### Rate Limiting
 
 Protect API endpoints with per-IP rate limiting:
@@ -169,8 +171,8 @@ api:
   enabled: true
   rate_limit:
     requests_per_second: 10   # Per IP (default: 10; supports floats, e.g. 0.5)
-    burst: 20                 # Burst allowance (default: 20)
-    max_tracked_ips: 10000    # Max unique IPs tracked (default: 10000)
+    burst: 20                 # Max requests in a spike before rate kicks in (default: 20)
+    max_tracked_ips: 10000    # Max unique IPs tracked; LRU eviction (default: 10000)
 ```
 
 ## Styling Configuration
