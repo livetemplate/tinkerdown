@@ -13,8 +13,8 @@ import (
 	"sync"
 
 	"github.com/gorilla/websocket"
-	"github.com/livetemplate/components/base"
-	"github.com/livetemplate/components/datatable"
+	"github.com/livetemplate/lvt/components/base"
+	"github.com/livetemplate/lvt/components/datatable"
 	"github.com/livetemplate/livetemplate"
 	"github.com/livetemplate/tinkerdown"
 	"github.com/livetemplate/tinkerdown/internal/config"

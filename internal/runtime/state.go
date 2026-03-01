@@ -11,7 +11,7 @@ import (
 	"sync"
 	"unicode"
 
-	"github.com/livetemplate/components/datatable"
+	"github.com/livetemplate/lvt/components/datatable"
 
 	"github.com/livetemplate/tinkerdown/internal/cache"
 	"github.com/livetemplate/tinkerdown/internal/config"
