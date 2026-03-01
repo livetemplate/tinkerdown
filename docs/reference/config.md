@@ -39,7 +39,7 @@ api:
   enabled: true
   auth:
     api_key: ${API_KEY}
-    header_name: X-API-Key
+    header_name: X-API-Key    # Default; set to "Authorization" for Bearer tokens
     keys:
       - name: reader
         key: ${READ_KEY}
@@ -85,6 +85,8 @@ api:
   enabled: true        # Enable REST API endpoints (default: false)
 ```
 
+> **Important:** If `api.auth` is omitted while `api.enabled: true`, all API requests are allowed through without authentication.
+
 ### Authentication
 
 Configure `api.auth` to require API key authentication on all API endpoints.
@@ -127,11 +129,13 @@ Available permissions:
 
 > **Note:** `OPTIONS` requests bypass permission checks entirely to support CORS preflight.
 
+If `permissions` is omitted for a named key, the key can authenticate but has no permissions — all method-level checks will be denied.
+
 Both formats can coexist — the legacy `api_key` is treated as a key named "default" with full permissions.
 
 #### Custom header
 
-By default, keys are sent via the `X-API-Key` header. To use Bearer token authentication instead:
+By default, all keys (both legacy and named) are sent via the `X-API-Key` header. To use Bearer token authentication instead:
 
 ```yaml
 api:
@@ -141,7 +145,7 @@ api:
     header_name: Authorization  # Expects "Authorization: Bearer <token>"
 ```
 
-> **Secure default:** If `api_key` references an environment variable (e.g., `${API_KEY}`) and that variable is **not set**, authentication is still treated as **enabled**. No key will match, so all API requests are rejected. Auth is never silently disabled by a missing env var.
+> **Secure default:** If any key (`api_key` or `keys[].key`) references an environment variable that is **not set**, authentication is still treated as **enabled**. The expanded key is empty, so no request can match it and all API requests are rejected. Auth is never silently disabled by a missing env var.
 
 ### CORS
 
@@ -164,7 +168,7 @@ Protect API endpoints with per-IP rate limiting:
 api:
   enabled: true
   rate_limit:
-    requests_per_second: 10   # Requests per second per IP (default: 10)
+    requests_per_second: 10   # Per IP (default: 10; supports floats, e.g. 0.5)
     burst: 20                 # Burst allowance (default: 20)
     max_tracked_ips: 10000    # Max unique IPs tracked (default: 10000)
 ```
