@@ -34,6 +34,22 @@ server:
   port: 8080
   host: localhost
 
+# REST API (optional)
+api:
+  enabled: true
+  auth:
+    api_key: ${API_KEY}
+    header_name: X-API-Key
+    keys:
+      - name: reader
+        key: ${READ_KEY}
+        permissions: [read]
+  cors:
+    origins: ["http://localhost:3000"]
+  rate_limit:
+    requests_per_second: 10
+    burst: 20
+
 # Global styling (can also be per-page in frontmatter)
 styling:
   theme: clean  # clean, dark, minimal
@@ -57,6 +73,97 @@ Server settings **must** be in `tinkerdown.yaml` (not available in frontmatter):
 server:
   port: 8080           # Server port (default: 8080)
   host: localhost      # Server host (default: localhost)
+```
+
+## API Configuration
+
+The optional `api:` block enables a REST API for programmatic access to your app's data sources.
+
+```yaml
+api:
+  enabled: true        # Enable REST API endpoints (default: false)
+```
+
+### Authentication
+
+Configure `api.auth` to require API key authentication on all API endpoints.
+
+#### Legacy single key
+
+The simplest setup — one key with full permissions (read, write, delete):
+
+```yaml
+api:
+  enabled: true
+  auth:
+    api_key: ${API_KEY}
+```
+
+#### Multi-key with permissions
+
+For finer-grained access, define named keys with specific permissions:
+
+```yaml
+api:
+  enabled: true
+  auth:
+    keys:
+      - name: dashboard
+        key: ${DASHBOARD_KEY}
+        permissions: [read]
+      - name: admin
+        key: ${ADMIN_KEY}
+        permissions: [read, write, delete]
+```
+
+Available permissions:
+
+| Permission | Allowed HTTP methods |
+|------------|---------------------|
+| `read`     | GET, HEAD, OPTIONS  |
+| `write`    | POST, PUT, PATCH    |
+| `delete`   | DELETE              |
+
+Both formats can coexist — the legacy `api_key` is treated as a key named "default" with full permissions.
+
+#### Custom header
+
+By default, keys are sent via the `X-API-Key` header. To use Bearer token authentication instead:
+
+```yaml
+api:
+  enabled: true
+  auth:
+    api_key: ${API_KEY}
+    header_name: Authorization  # Expects "Authorization: Bearer <token>"
+```
+
+> **Secure default:** If `api_key` references an environment variable (e.g., `${API_KEY}`) and that variable is **not set**, authentication is still treated as **enabled**. No key will match, so all API requests are rejected. Auth is never silently disabled by a missing env var.
+
+### CORS
+
+Configure allowed origins for cross-origin API requests:
+
+```yaml
+api:
+  enabled: true
+  cors:
+    origins:
+      - "http://localhost:3000"
+      - "https://myapp.example.com"
+```
+
+### Rate Limiting
+
+Protect API endpoints with per-IP rate limiting:
+
+```yaml
+api:
+  enabled: true
+  rate_limit:
+    requests_per_second: 10   # Requests per second per IP (default: 10)
+    burst: 20                 # Burst allowance (default: 20)
+    max_tracked_ips: 10000    # Max unique IPs tracked (default: 10000)
 ```
 
 ## Styling Configuration
