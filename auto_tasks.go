@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"github.com/livetemplate/tinkerdown/internal/slug"
 )
 
 // taskListSection represents a detected section of task list items under a heading.
@@ -21,8 +23,7 @@ var (
 	taskItemPattern        = regexp.MustCompile(`^\s*-\s+\[([ xX])\]\s+`)
 	headingPattern         = regexp.MustCompile(`^(#{1,6})\s+(.+?)\s*$`)
 	frontmatterPattern     = regexp.MustCompile(`(?s)\A---\n(.+?)\n---\n`)
-	explicitAnchorPattern  = regexp.MustCompile(`\s*\{#([^}]+)\}\s*$`)
-	slugNonAlphanumPattern = regexp.MustCompile(`[^a-z0-9-]`)
+	explicitAnchorPattern = regexp.MustCompile(`\s*\{#([^}]+)\}\s*$`)
 )
 
 // detectTaskListSections scans markdown content (after frontmatter) and finds
@@ -74,7 +75,7 @@ func detectTaskListSections(content []byte) []taskListSection {
 				currentAnchor = anchorMatch[1]
 				headingText = explicitAnchorPattern.ReplaceAllString(headingText, "")
 			} else {
-				currentAnchor = slugifyHeading(headingText)
+				currentAnchor = slug.Heading(headingText)
 			}
 
 			currentHeading = headingText
@@ -228,10 +229,3 @@ func generateAutoTaskLvtBlock(sourceName string) string {
 </div>`, sourceName)
 }
 
-// slugifyHeading converts heading text to a URL-safe anchor slug (GitHub-style).
-// This must match the slugify() function in internal/source/markdown.go for anchor matching.
-func slugifyHeading(text string) string {
-	text = strings.ToLower(text)
-	text = strings.ReplaceAll(text, " ", "-")
-	return slugNonAlphanumPattern.ReplaceAllString(text, "")
-}

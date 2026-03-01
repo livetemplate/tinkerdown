@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/livetemplate/tinkerdown/internal/slug"
 )
 
 func TestNewMarkdownSource(t *testing.T) {
@@ -1352,9 +1354,9 @@ func TestSlugify(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			got := slugify(tt.input)
+			got := slug.Heading(tt.input)
 			if got != tt.want {
-				t.Errorf("slugify(%q) = %q, want %q", tt.input, got, tt.want)
+				t.Errorf("slug.Heading(%q) = %q, want %q", tt.input, got, tt.want)
 			}
 		})
 	}
