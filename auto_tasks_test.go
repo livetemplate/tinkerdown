@@ -1,6 +1,7 @@
 package tinkerdown
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -580,24 +581,24 @@ func TestParseFileDuplicateAnchorWarning(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Capture stderr
+	// Capture stderr — always restore even if test fails
 	origStderr := os.Stderr
 	r, w, err := os.Pipe()
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { os.Stderr = origStderr })
 	os.Stderr = w
 
 	// Call ParseFile
 	_, parseErr := ParseFile(mdPath)
 
-	// Restore stderr and read captured output
+	// Close writer and drain pipe
 	w.Close()
 	os.Stderr = origStderr
-	var buf [4096]byte
-	n, _ := r.Read(buf[:])
+	capturedBytes, _ := io.ReadAll(r)
 	r.Close()
-	captured := string(buf[:n])
+	captured := string(capturedBytes)
 
 	if parseErr != nil {
 		t.Fatalf("ParseFile returned error: %v", parseErr)
