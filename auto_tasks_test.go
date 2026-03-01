@@ -1,8 +1,13 @@
 package tinkerdown
 
 import (
+	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/livetemplate/tinkerdown/internal/slug"
 )
 
 func TestDetectTaskListSections(t *testing.T) {
@@ -283,7 +288,7 @@ func TestPreprocessMultipleSections(t *testing.T) {
 	}
 }
 
-func TestSlugifyHeading(t *testing.T) {
+func TestSlugHeading(t *testing.T) {
 	tests := []struct {
 		input    string
 		expected string
@@ -296,9 +301,9 @@ func TestSlugifyHeading(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		result := slugifyHeading(tt.input)
+		result := slug.Heading(tt.input)
 		if result != tt.expected {
-			t.Errorf("slugifyHeading(%q) = %q, want %q", tt.input, result, tt.expected)
+			t.Errorf("slug.Heading(%q) = %q, want %q", tt.input, result, tt.expected)
 		}
 	}
 }
@@ -559,6 +564,52 @@ Just some prose here.
 	}
 	if !strings.Contains(processedStr, "## Small") {
 		t.Error("heading '## Small' should be preserved")
+	}
+}
+
+func TestParseFileDuplicateAnchorWarning(t *testing.T) {
+	// Create a temp markdown file with duplicate anchors
+	dir := t.TempDir()
+	mdPath := filepath.Join(dir, "test.md")
+	content := []byte(`## Tasks
+- [ ] First
+
+## Tasks
+- [ ] Second
+`)
+	if err := os.WriteFile(mdPath, content, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Capture stderr — always restore even if test fails
+	origStderr := os.Stderr
+	t.Cleanup(func() { os.Stderr = origStderr })
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stderr = w
+
+	// Call ParseFile
+	_, parseErr := ParseFile(mdPath)
+
+	// Close writer and drain pipe
+	w.Close()
+	os.Stderr = origStderr
+	capturedBytes, _ := io.ReadAll(r)
+	r.Close()
+	captured := string(capturedBytes)
+
+	if parseErr != nil {
+		t.Fatalf("ParseFile returned error: %v", parseErr)
+	}
+
+	// The warning should have been written to stderr
+	if !strings.Contains(captured, "collides with") {
+		t.Errorf("expected duplicate anchor warning on stderr, got %q", captured)
+	}
+	if !strings.Contains(captured, "warning:") {
+		t.Errorf("expected 'warning:' prefix on stderr, got %q", captured)
 	}
 }
 

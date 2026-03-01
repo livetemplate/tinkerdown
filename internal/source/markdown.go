@@ -13,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/livetemplate/tinkerdown/internal/slug"
 )
 
 // ConflictError is returned when a write operation detects concurrent modification
@@ -164,7 +166,7 @@ func (s *MarkdownSource) findSectionHeader(content, anchorName string) []int {
 		if explicitAnchorPattern.MatchString(headingText) {
 			continue
 		}
-		if slugify(headingText) == anchorName {
+		if slug.Heading(headingText) == anchorName {
 			return match
 		}
 	}
@@ -357,16 +359,6 @@ func generateContentID(text string) string {
 	h := fnv.New32a()
 	h.Write([]byte(text))
 	return fmt.Sprintf("%08x", h.Sum32())
-}
-
-// slugify converts heading text to an anchor-compatible slug (GitHub-style).
-// "My Task List" -> "my-task-list"
-func slugify(text string) string {
-	text = strings.ToLower(text)
-	text = strings.ReplaceAll(text, " ", "-")
-	// Remove non-alphanumeric chars except hyphens
-	re := regexp.MustCompile(`[^a-z0-9-]`)
-	return re.ReplaceAllString(text, "")
 }
 
 // GetFilePath returns the resolved file path for file watching
