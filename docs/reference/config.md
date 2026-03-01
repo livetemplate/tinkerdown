@@ -34,6 +34,23 @@ server:
   port: 8080
   host: localhost
 
+# REST API (optional)
+api:
+  enabled: true
+  auth:
+    api_key: ${API_KEY}           # Legacy single key (coexists with keys:)
+    header_name: X-API-Key        # Default; set to "Authorization" for Bearer tokens
+    keys:
+      - name: reader
+        key: ${READ_KEY}
+        permissions: [read]
+  cors:
+    origins: ["http://localhost:3000"]
+  rate_limit:
+    requests_per_second: 10
+    burst: 20
+    max_tracked_ips: 10000
+
 # Global styling (can also be per-page in frontmatter)
 styling:
   theme: clean  # clean, dark, minimal
@@ -57,6 +74,107 @@ Server settings **must** be in `tinkerdown.yaml` (not available in frontmatter):
 server:
   port: 8080           # Server port (default: 8080)
   host: localhost      # Server host (default: localhost)
+```
+
+## API Configuration
+
+The optional `api:` block enables a REST API for programmatic access to your app's data sources.
+
+```yaml
+api:
+  enabled: true        # Enable REST API endpoints (default: false)
+```
+
+> **Important:** If `api.auth` is omitted while `api.enabled: true`, all API requests are allowed through without authentication.
+
+### Authentication
+
+Configure `api.auth` to require API key authentication on all API endpoints.
+
+#### Legacy single key
+
+The simplest setup — one key with full permissions (read, write, delete):
+
+```yaml
+api:
+  enabled: true
+  auth:
+    api_key: ${API_KEY}
+```
+
+#### Multi-key with permissions
+
+For finer-grained access, define named keys with specific permissions:
+
+```yaml
+api:
+  enabled: true
+  auth:
+    keys:
+      - name: dashboard
+        key: ${DASHBOARD_KEY}
+        permissions: [read]
+      - name: admin
+        key: ${ADMIN_KEY}
+        permissions: [read, write, delete]
+```
+
+Available permissions:
+
+| Permission | Allowed HTTP methods |
+|------------|---------------------|
+| `read`     | GET, HEAD           |
+| `write`    | POST, PUT, PATCH    |
+| `delete`   | DELETE              |
+
+> **Note:** `OPTIONS` requests bypass permission checks entirely to support CORS preflight.
+
+If `permissions` is omitted for a named key, the key can authenticate but has no permissions — all method-level checks will be denied.
+
+Both formats can coexist — the legacy `api_key` is treated as a key named "default" with full permissions.
+
+#### Custom header
+
+By default, all keys (both legacy and named) are sent via the `X-API-Key` header. To use Bearer token authentication instead:
+
+```yaml
+api:
+  enabled: true
+  auth:
+    api_key: ${API_KEY}
+    header_name: Authorization  # Expects "Authorization: Bearer <token>"
+```
+
+When using `Authorization`, clients send `Authorization: Bearer <token>` and the middleware strips the `Bearer ` prefix before matching. Set `api_key` (or `keys[].key`) to the **raw token value**, not the full `Bearer ...` string.
+
+> **Secure default:** If any key (`api_key` or `keys[].key`) references an environment variable that is **not set**, authentication is still treated as **enabled**. The expanded key is empty, so no request can match it and all API requests are rejected. Auth is never silently disabled by a missing env var.
+
+### CORS
+
+Configure allowed origins for cross-origin API requests:
+
+```yaml
+api:
+  enabled: true
+  cors:
+    origins:
+      - "http://localhost:3000"
+      - "https://myapp.example.com"
+```
+
+Use `"*"` to allow all origins (not recommended for production with authenticated APIs).
+
+### Rate Limiting
+
+Protect API endpoints with per-IP rate limiting:
+
+```yaml
+api:
+  enabled: true
+  rate_limit:
+    requests_per_second: 10   # Per IP (default: 10; supports floats, e.g. 0.5)
+    burst: 20                 # Max requests in a spike before rate kicks in (default: 20)
+    max_tracked_ips: 10000    # Max unique IPs tracked; LRU eviction (default: 10000)
 ```
 
 ## Styling Configuration
