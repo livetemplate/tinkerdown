@@ -3,6 +3,7 @@ package server
 import (
 	"container/list"
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -538,14 +539,7 @@ func HasPermission(r *http.Request, perm config.Permission) bool {
 
 // secureCompare performs a constant-time string comparison to prevent timing attacks.
 func secureCompare(a, b string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	var result byte
-	for i := 0; i < len(a); i++ {
-		result |= a[i] ^ b[i]
-	}
-	return result == 0
+	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
 }
 
 func writeJSONError(w http.ResponseWriter, status int, message string) {
