@@ -49,6 +49,7 @@ api:
   rate_limit:
     requests_per_second: 10
     burst: 20
+    max_tracked_ips: 10000
 
 # Global styling (can also be per-page in frontmatter)
 styling:
@@ -120,9 +121,11 @@ Available permissions:
 
 | Permission | Allowed HTTP methods |
 |------------|---------------------|
-| `read`     | GET, HEAD, OPTIONS  |
+| `read`     | GET, HEAD           |
 | `write`    | POST, PUT, PATCH    |
 | `delete`   | DELETE              |
+
+> **Note:** `OPTIONS` requests bypass permission checks entirely to support CORS preflight.
 
 Both formats can coexist — the legacy `api_key` is treated as a key named "default" with full permissions.
 
