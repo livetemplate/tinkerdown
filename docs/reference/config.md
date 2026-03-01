@@ -145,6 +145,8 @@ api:
     header_name: Authorization  # Expects "Authorization: Bearer <token>"
 ```
 
+When using `Authorization`, clients send `Authorization: Bearer <token>` and the middleware strips the `Bearer ` prefix before matching. Set `api_key` (or `keys[].key`) to the **raw token value**, not the full `Bearer ...` string.
+
 > **Secure default:** If any key (`api_key` or `keys[].key`) references an environment variable that is **not set**, authentication is still treated as **enabled**. The expanded key is empty, so no request can match it and all API requests are rejected. Auth is never silently disabled by a missing env var.
 
 ### CORS
