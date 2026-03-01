@@ -110,7 +110,8 @@ func detectTaskListSections(content []byte) []taskListSection {
 // preprocessAutoTasks transforms markdown content by replacing detected task list
 // sections with lvt code blocks, and returns source configs to inject.
 // The original file on disk is never modified.
-func preprocessAutoTasks(content []byte, absPath string) ([]byte, map[string]SourceConfig) {
+// The third return value contains warnings for any duplicate anchor collisions.
+func preprocessAutoTasks(content []byte, absPath string) ([]byte, map[string]SourceConfig, []string) {
 	// Skip frontmatter during detection
 	bodyOffset := 0
 	if loc := frontmatterPattern.FindIndex(content); loc != nil {
@@ -120,7 +121,7 @@ func preprocessAutoTasks(content []byte, absPath string) ([]byte, map[string]Sou
 	body := content[bodyOffset:]
 	sections := detectTaskListSections(body)
 	if len(sections) == 0 {
-		return content, nil
+		return content, nil, nil
 	}
 
 	sources := make(map[string]SourceConfig)
@@ -132,12 +133,39 @@ func preprocessAutoTasks(content []byte, absPath string) ([]byte, map[string]Sou
 		fmLineCount = strings.Count(string(content[:bodyOffset]), "\n")
 	}
 
+	// Forward pass: detect duplicate anchors and mark later occurrences for skipping
+	var warnings []string
+	seenAnchors := make(map[string]int)   // anchor → first section index
+	skipIndices := make(map[int]struct{}) // section indices to skip
+	for i, sec := range sections {
+		if sec.anchor == "" {
+			continue
+		}
+		if firstIdx, exists := seenAnchors[sec.anchor]; exists {
+			skipIndices[i] = struct{}{}
+			// startLine is 0-indexed first-task line (after heading); heading is one before.
+			// 1-indexed file line: (startLine-1) + fmLineCount + 1 = startLine + fmLineCount.
+			dupLine := sec.startLine + fmLineCount
+			firstLine := sections[firstIdx].startLine + fmLineCount
+			warnings = append(warnings, fmt.Sprintf(
+				"%s: heading %q (line %d) produces anchor #%s which collides with heading %q (line %d) — skipping duplicate",
+				absPath, sec.heading, dupLine, sec.anchor, sections[firstIdx].heading, firstLine))
+		} else {
+			seenAnchors[sec.anchor] = i
+		}
+	}
+
 	// Process sections in reverse order to preserve line numbers
 	for i := len(sections) - 1; i >= 0; i-- {
 		sec := sections[i]
 
 		// Skip sections with empty anchors (headings with no alphanumeric chars)
 		if sec.anchor == "" {
+			continue
+		}
+
+		// Skip duplicate anchor sections (detected in forward pass)
+		if _, ok := skipIndices[i]; ok {
 			continue
 		}
 
@@ -158,7 +186,7 @@ func preprocessAutoTasks(content []byte, absPath string) ([]byte, map[string]Sou
 
 		// Replace lines: heading line through end of task items
 		startIdx := sec.startLine - 1 + fmLineCount // heading line
-		endIdx := sec.endLine + fmLineCount          // exclusive
+		endIdx := sec.endLine + fmLineCount         // exclusive
 
 		newLines := make([]string, 0, len(lines)-(endIdx-startIdx)+len(replacement))
 		newLines = append(newLines, lines[:startIdx]...)
@@ -176,7 +204,7 @@ func preprocessAutoTasks(content []byte, absPath string) ([]byte, map[string]Sou
 		}
 	}
 
-	return []byte(strings.Join(lines, "\n")), sources
+	return []byte(strings.Join(lines, "\n")), sources, warnings
 }
 
 // generateAutoTaskLvtBlock generates the lvt template HTML for an auto-task section.

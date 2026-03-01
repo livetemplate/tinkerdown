@@ -142,11 +142,14 @@ func TestPreprocessAutoTasks(t *testing.T) {
 Just some regular text.
 `)
 
-	processed, sources := preprocessAutoTasks(content, "/test/page.md")
+	processed, sources, warnings := preprocessAutoTasks(content, "/test/page.md")
 
 	// Should have one source
 	if len(sources) != 1 {
 		t.Fatalf("expected 1 source, got %d", len(sources))
+	}
+	if len(warnings) != 0 {
+		t.Errorf("expected no warnings, got %v", warnings)
 	}
 
 	src, ok := sources["_auto_todos"]
@@ -207,7 +210,7 @@ sources:
 - [x] Call mom
 `)
 
-	processed, sources := preprocessAutoTasks(content, "/test/page.md")
+	processed, sources, _ := preprocessAutoTasks(content, "/test/page.md")
 
 	// Should have auto source
 	if len(sources) != 1 {
@@ -238,7 +241,7 @@ This page has no tasks.
 Just text.
 `)
 
-	processed, sources := preprocessAutoTasks(content, "/test/page.md")
+	processed, sources, _ := preprocessAutoTasks(content, "/test/page.md")
 
 	if sources != nil {
 		t.Errorf("expected nil sources, got %d", len(sources))
@@ -262,8 +265,12 @@ func TestPreprocessMultipleSections(t *testing.T) {
 - [ ] Read book
 `)
 
-	_, sources := preprocessAutoTasks(content, "/test/page.md")
+	_, sources, warnings := preprocessAutoTasks(content, "/test/page.md")
 
+	// Also guards the no-collision regression path (distinct anchors both kept)
+	if len(warnings) != 0 {
+		t.Errorf("expected no warnings for distinct anchors, got %v", warnings)
+	}
 	if len(sources) != 2 {
 		t.Fatalf("expected 2 sources, got %d", len(sources))
 	}
@@ -317,6 +324,159 @@ func TestGenerateAutoTaskLvtBlock(t *testing.T) {
 	// Should contain checkbox template
 	if !strings.Contains(block, `{{if .Done}}checked{{end}}`) {
 		t.Error("block should contain checkbox template")
+	}
+}
+
+func TestPreprocessDuplicateAnchorSameCasing(t *testing.T) {
+	content := []byte(`# My Day
+
+## Tasks
+- [ ] Buy groceries
+
+## Tasks
+- [ ] Walk the dog
+`)
+
+	processed, sources, warnings := preprocessAutoTasks(content, "/test/page.md")
+
+	// Only the first "Tasks" section should produce a source
+	if len(sources) != 1 {
+		t.Fatalf("expected 1 source (first occurrence only), got %d", len(sources))
+	}
+
+	src, ok := sources["_auto_tasks"]
+	if !ok {
+		t.Fatal("expected source '_auto_tasks' for first occurrence")
+	}
+	if src.Anchor != "#tasks" {
+		t.Errorf("expected anchor '#tasks', got %q", src.Anchor)
+	}
+
+	// Should have exactly one warning about the collision
+	if len(warnings) != 1 {
+		t.Fatalf("expected 1 warning, got %d", len(warnings))
+	}
+	if !strings.Contains(warnings[0], "collides with") {
+		t.Errorf("warning should mention collision, got %q", warnings[0])
+	}
+	// The duplicate "## Tasks" is on line 6 of the input (1-indexed)
+	if !strings.Contains(warnings[0], "line 6") {
+		t.Errorf("warning should report correct line number for duplicate, got %q", warnings[0])
+	}
+
+	// Processed content: first section replaced with lvt block, second stays as plain markdown
+	processedStr := string(processed)
+	if count := strings.Count(processedStr, `lvt-source="_auto_tasks"`); count != 1 {
+		t.Errorf("expected exactly 1 lvt-source block, got %d", count)
+	}
+	// The skipped section's task items should remain as plain markdown
+	if !strings.Contains(processedStr, "- [ ] Walk the dog") {
+		t.Error("skipped duplicate section should retain its task items as plain markdown")
+	}
+	// The first section's task items should be replaced (not present as raw markdown)
+	if strings.Contains(processedStr, "- [ ] Buy groceries") {
+		t.Error("first section's task items should be replaced by lvt block")
+	}
+}
+
+func TestPreprocessDuplicateAnchorDifferentCasing(t *testing.T) {
+	content := []byte(`# My Day
+
+## Tasks
+- [ ] Buy groceries
+
+## TASKS
+- [ ] Walk the dog
+`)
+
+	processed, sources, warnings := preprocessAutoTasks(content, "/test/page.md")
+
+	// "Tasks" and "TASKS" both slugify to "tasks" — only first kept
+	if len(sources) != 1 {
+		t.Fatalf("expected 1 source (same slug despite different casing), got %d", len(sources))
+	}
+
+	if _, ok := sources["_auto_tasks"]; !ok {
+		t.Fatal("expected source '_auto_tasks'")
+	}
+
+	if len(warnings) != 1 {
+		t.Fatalf("expected 1 warning, got %d", len(warnings))
+	}
+
+	// The skipped "TASKS" section should retain its task items as plain markdown
+	processedStr := string(processed)
+	if !strings.Contains(processedStr, "- [ ] Walk the dog") {
+		t.Error("skipped duplicate section should retain its task items as plain markdown")
+	}
+}
+
+func TestPreprocessDuplicateExplicitAnchor(t *testing.T) {
+	content := []byte(`# My Day
+
+## Morning Tasks {#my-tasks}
+- [ ] Buy groceries
+
+## Evening Tasks {#my-tasks}
+- [ ] Walk the dog
+`)
+
+	processed, sources, warnings := preprocessAutoTasks(content, "/test/page.md")
+
+	// Both use explicit anchor {#my-tasks} — only first kept
+	if len(sources) != 1 {
+		t.Fatalf("expected 1 source (explicit anchor collision), got %d", len(sources))
+	}
+
+	if _, ok := sources["_auto_my-tasks"]; !ok {
+		t.Fatal("expected source '_auto_my-tasks'")
+	}
+
+	if len(warnings) != 1 {
+		t.Fatalf("expected 1 warning, got %d", len(warnings))
+	}
+
+	// The skipped section should retain its task items as plain markdown
+	processedStr := string(processed)
+	if !strings.Contains(processedStr, "- [ ] Walk the dog") {
+		t.Error("skipped duplicate section should retain its task items as plain markdown")
+	}
+	if count := strings.Count(processedStr, `lvt-source="_auto_my-tasks"`); count != 1 {
+		t.Errorf("expected exactly 1 lvt-source block, got %d", count)
+	}
+}
+
+func TestPreprocessTripleDuplicateAnchor(t *testing.T) {
+	content := []byte(`## Tasks
+- [ ] A
+
+## Tasks
+- [ ] B
+
+## Tasks
+- [ ] C
+`)
+
+	processed, sources, warnings := preprocessAutoTasks(content, "/test/page.md")
+
+	if len(sources) != 1 {
+		t.Fatalf("expected 1 source (first of three), got %d", len(sources))
+	}
+	if len(warnings) != 2 {
+		t.Fatalf("expected 2 warnings (one per extra duplicate), got %d", len(warnings))
+	}
+
+	// The second and third sections' task items should remain as plain markdown
+	processedStr := string(processed)
+	if !strings.Contains(processedStr, "- [ ] B") {
+		t.Error("second duplicate section should retain its task items as plain markdown")
+	}
+	if !strings.Contains(processedStr, "- [ ] C") {
+		t.Error("third duplicate section should retain its task items as plain markdown")
+	}
+	// First section replaced
+	if strings.Contains(processedStr, "- [ ] A") {
+		t.Error("first section's task items should be replaced by lvt block")
 	}
 }
 
