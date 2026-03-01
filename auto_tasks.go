@@ -18,10 +18,10 @@ type taskListSection struct {
 
 // Pre-compiled patterns for task list detection
 var (
-	taskItemPattern       = regexp.MustCompile(`^\s*-\s+\[([ xX])\]\s+`)
-	headingPattern        = regexp.MustCompile(`^(#{1,6})\s+(.+?)\s*$`)
-	frontmatterPattern    = regexp.MustCompile(`(?s)\A---\n(.+?)\n---\n`)
-	explicitAnchorPattern = regexp.MustCompile(`\s*\{#([^}]+)\}\s*$`)
+	taskItemPattern        = regexp.MustCompile(`^\s*-\s+\[([ xX])\]\s+`)
+	headingPattern         = regexp.MustCompile(`^(#{1,6})\s+(.+?)\s*$`)
+	frontmatterPattern     = regexp.MustCompile(`(?s)\A---\n(.+?)\n---\n`)
+	explicitAnchorPattern  = regexp.MustCompile(`\s*\{#([^}]+)\}\s*$`)
 	slugNonAlphanumPattern = regexp.MustCompile(`[^a-z0-9-]`)
 )
 
