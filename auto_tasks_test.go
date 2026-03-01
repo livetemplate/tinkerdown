@@ -480,6 +480,88 @@ func TestPreprocessTripleDuplicateAnchor(t *testing.T) {
 	}
 }
 
+func TestPreprocessThreeSectionsVaryingSizes(t *testing.T) {
+	content := []byte(`# My Day
+
+## Quick
+- [ ] One item
+
+## Big List
+- [ ] Item A
+- [ ] Item B
+- [x] Item C
+- [ ] Item D
+- [ ] Item E
+
+## Small
+- [x] Done
+- [ ] Not done
+
+## Notes
+Just some prose here.
+`)
+
+	processed, sources, warnings := preprocessAutoTasks(content, "/test/page.md")
+
+	if len(warnings) != 0 {
+		t.Errorf("expected no warnings, got %v", warnings)
+	}
+
+	// All 3 task sections should produce sources
+	if len(sources) != 3 {
+		t.Fatalf("expected 3 sources, got %d", len(sources))
+	}
+	for _, name := range []string{"_auto_quick", "_auto_big-list", "_auto_small"} {
+		if _, ok := sources[name]; !ok {
+			t.Errorf("expected source %q", name)
+		}
+	}
+
+	processedStr := string(processed)
+
+	// Each section should have its own lvt block
+	if count := strings.Count(processedStr, "```lvt"); count != 3 {
+		t.Errorf("expected 3 lvt blocks, got %d", count)
+	}
+
+	// lvt blocks should appear in document order
+	posQuick := strings.Index(processedStr, `lvt-source="_auto_quick"`)
+	posBig := strings.Index(processedStr, `lvt-source="_auto_big-list"`)
+	posSmall := strings.Index(processedStr, `lvt-source="_auto_small"`)
+	if posQuick < 0 || posBig < 0 || posSmall < 0 {
+		t.Fatal("all three lvt-source blocks should be present")
+	}
+	if !(posQuick < posBig && posBig < posSmall) {
+		t.Errorf("lvt blocks should appear in document order: quick=%d, big-list=%d, small=%d", posQuick, posBig, posSmall)
+	}
+
+	// Original task items should be replaced (not present as raw markdown)
+	for _, item := range []string{"- [ ] One item", "- [ ] Item A", "- [ ] Item E", "- [x] Done", "- [ ] Not done"} {
+		if strings.Contains(processedStr, item) {
+			t.Errorf("task item %q should have been replaced by lvt block", item)
+		}
+	}
+
+	// Non-task content should be preserved
+	if !strings.Contains(processedStr, "## Notes") {
+		t.Error("non-task heading should be preserved")
+	}
+	if !strings.Contains(processedStr, "Just some prose here.") {
+		t.Error("non-task prose should be preserved")
+	}
+
+	// Headings for task sections should be preserved
+	if !strings.Contains(processedStr, "## Quick") {
+		t.Error("heading '## Quick' should be preserved")
+	}
+	if !strings.Contains(processedStr, "## Big List") {
+		t.Error("heading '## Big List' should be preserved")
+	}
+	if !strings.Contains(processedStr, "## Small") {
+		t.Error("heading '## Small' should be preserved")
+	}
+}
+
 // Helper to verify task items exist in a section
 func (s taskListSection) hasTaskItems(content []byte) bool {
 	lines := strings.Split(string(content), "\n")

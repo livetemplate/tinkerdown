@@ -22,6 +22,7 @@ var (
 	headingPattern        = regexp.MustCompile(`^(#{1,6})\s+(.+?)\s*$`)
 	frontmatterPattern    = regexp.MustCompile(`(?s)\A---\n(.+?)\n---\n`)
 	explicitAnchorPattern = regexp.MustCompile(`\s*\{#([^}]+)\}\s*$`)
+	slugNonAlphanumPattern = regexp.MustCompile(`[^a-z0-9-]`)
 )
 
 // detectTaskListSections scans markdown content (after frontmatter) and finds
@@ -232,6 +233,5 @@ func generateAutoTaskLvtBlock(sourceName string) string {
 func slugifyHeading(text string) string {
 	text = strings.ToLower(text)
 	text = strings.ReplaceAll(text, " ", "-")
-	re := regexp.MustCompile(`[^a-z0-9-]`)
-	return re.ReplaceAllString(text, "")
+	return slugNonAlphanumPattern.ReplaceAllString(text, "")
 }
