@@ -1348,7 +1348,7 @@ func TestSlugify(t *testing.T) {
 		{"Team Members", "team-members"},
 		{"Special! Characters?", "special-characters"},
 		{"Under_scores", "underscores"}, // underscores are removed (not alphanumeric)
-		{"  Spaces  ", "--spaces--"},     // spaces become hyphens
+		{"  Spaces  ", "spaces"},         // leading/trailing spaces trimmed
 		{"123 Numbers", "123-numbers"},
 	}
 

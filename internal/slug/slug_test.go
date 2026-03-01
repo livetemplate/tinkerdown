@@ -14,7 +14,7 @@ func TestHeading(t *testing.T) {
 		{"café", "caf"},
 		{"UPPER CASE", "upper-case"},
 		{"already-lowercase", "already-lowercase"},
-		{"  spaces  ", "--spaces--"},
+		{"  spaces  ", "spaces"},
 		{"", ""},
 	}
 

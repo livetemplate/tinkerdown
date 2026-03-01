@@ -583,11 +583,11 @@ func TestParseFileDuplicateAnchorWarning(t *testing.T) {
 
 	// Capture stderr — always restore even if test fails
 	origStderr := os.Stderr
+	t.Cleanup(func() { os.Stderr = origStderr })
 	r, w, err := os.Pipe()
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { os.Stderr = origStderr })
 	os.Stderr = w
 
 	// Call ParseFile
