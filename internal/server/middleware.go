@@ -471,7 +471,7 @@ func AuthMiddleware(authCfg *config.AuthConfig) func(http.Handler) http.Handler 
 			var matched *config.APIKeyConfig
 			for i := range apiKeys {
 				expandedKey := os.ExpandEnv(apiKeys[i].Key)
-				if secureCompare(token, expandedKey) {
+				if secureCompare(token, expandedKey) && matched == nil {
 					matched = &apiKeys[i]
 				}
 			}
