@@ -466,13 +466,13 @@ func AuthMiddleware(authCfg *config.AuthConfig) func(http.Handler) http.Handler 
 				}
 			}
 
-			// Find matching key
+			// Find matching key — iterate all keys to avoid leaking
+			// which position matched via response time differences.
 			var matched *config.APIKeyConfig
 			for i := range apiKeys {
 				expandedKey := os.ExpandEnv(apiKeys[i].Key)
 				if secureCompare(token, expandedKey) {
 					matched = &apiKeys[i]
-					break
 				}
 			}
 
