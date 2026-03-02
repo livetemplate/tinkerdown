@@ -539,8 +539,8 @@ func HasPermission(r *http.Request, perm config.Permission) bool {
 }
 
 // secureCompare performs a constant-time string comparison to prevent timing attacks.
-// Both inputs are hashed to fixed-length SHA-256 digests before comparison,
-// so the timing does not reveal whether the inputs have the same length.
+// Inputs are hashed to fixed-length SHA-256 digests before comparison so the
+// timing does not reveal whether the inputs differ in length.
 func secureCompare(a, b string) bool {
 	aHash := sha256.Sum256([]byte(a))
 	bHash := sha256.Sum256([]byte(b))

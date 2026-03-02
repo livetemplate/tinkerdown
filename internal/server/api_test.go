@@ -864,6 +864,7 @@ func TestSecureCompare(t *testing.T) {
 	}{
 		{"equal strings", "secret", "secret", true},
 		{"different strings", "secret", "wrong", false},
+		{"same length different content", "abcdef", "abcdeg", false},
 		{"different lengths", "short", "longer", false},
 		{"empty strings", "", "", true},
 		{"one empty", "secret", "", false},
