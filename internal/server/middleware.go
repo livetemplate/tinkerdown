@@ -3,6 +3,7 @@ package server
 import (
 	"container/list"
 	"context"
+	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/json"
 	"fmt"
@@ -538,8 +539,12 @@ func HasPermission(r *http.Request, perm config.Permission) bool {
 }
 
 // secureCompare performs a constant-time string comparison to prevent timing attacks.
+// Both inputs are hashed to fixed-length SHA-256 digests before comparison,
+// so the timing does not reveal whether the inputs have the same length.
 func secureCompare(a, b string) bool {
-	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
+	aHash := sha256.Sum256([]byte(a))
+	bHash := sha256.Sum256([]byte(b))
+	return subtle.ConstantTimeCompare(aHash[:], bHash[:]) == 1
 }
 
 func writeJSONError(w http.ResponseWriter, status int, message string) {
