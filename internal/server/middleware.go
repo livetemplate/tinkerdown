@@ -433,8 +433,15 @@ const (
 	ctxKeyPermissions authContextKey = "auth_permissions"
 )
 
+// expandedKey pairs a pre-expanded key value with its config.
+type expandedKey struct {
+	value  string
+	config *config.APIKeyConfig
+}
+
 // AuthMiddleware validates API key authentication with support for multiple keys.
 // If no keys are configured, authentication is disabled and all requests pass through.
+// Environment variables in key values are expanded once at construction time.
 func AuthMiddleware(authCfg *config.AuthConfig) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		if authCfg == nil {
@@ -447,6 +454,17 @@ func AuthMiddleware(authCfg *config.AuthConfig) func(http.Handler) http.Handler 
 		}
 
 		headerName := authCfg.GetHeaderName()
+
+		// Expand env vars once at construction time rather than per-request,
+		// eliminating per-request os.ExpandEnv overhead and a minor timing
+		// variation between literal keys and env-var-referenced keys.
+		keys := make([]expandedKey, len(apiKeys))
+		for i := range apiKeys {
+			keys[i] = expandedKey{
+				value:  os.ExpandEnv(apiKeys[i].Key),
+				config: &apiKeys[i],
+			}
+		}
 
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			token := r.Header.Get(headerName)
@@ -469,10 +487,9 @@ func AuthMiddleware(authCfg *config.AuthConfig) func(http.Handler) http.Handler 
 			// Find matching key — iterate all keys to avoid leaking
 			// which position matched via response time differences.
 			var matched *config.APIKeyConfig
-			for i := range apiKeys {
-				expandedKey := os.ExpandEnv(apiKeys[i].Key)
-				if secureCompare(token, expandedKey) && matched == nil {
-					matched = &apiKeys[i]
+			for i := range keys {
+				if secureCompare(token, keys[i].value) && matched == nil {
+					matched = keys[i].config
 				}
 			}
 
