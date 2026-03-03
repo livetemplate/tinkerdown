@@ -777,6 +777,50 @@ func TestAuthMiddleware(t *testing.T) {
 		}
 	})
 
+	t.Run("env var expanded key", func(t *testing.T) {
+		t.Setenv("TEST_API_KEY", "secret-from-env")
+		cfg := &config.AuthConfig{APIKey: "$TEST_API_KEY"}
+		wrapped := AuthMiddleware(cfg)(handler)
+
+		req := httptest.NewRequest("GET", "/api/sources/test", nil)
+		req.Header.Set("X-API-Key", "secret-from-env")
+		w := httptest.NewRecorder()
+		wrapped.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("expected env-var-expanded key to authenticate, got %d", w.Code)
+		}
+	})
+
+	t.Run("env var expanded at construction time", func(t *testing.T) {
+		t.Setenv("TEST_SNAPSHOT_KEY", "original-value")
+		cfg := &config.AuthConfig{APIKey: "$TEST_SNAPSHOT_KEY"}
+		wrapped := AuthMiddleware(cfg)(handler)
+
+		// Change env var after construction — should not affect auth
+		t.Setenv("TEST_SNAPSHOT_KEY", "changed-value")
+
+		// Original value still works (snapshot semantics)
+		req := httptest.NewRequest("GET", "/api/sources/test", nil)
+		req.Header.Set("X-API-Key", "original-value")
+		w := httptest.NewRecorder()
+		wrapped.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("expected original env value to still work, got %d", w.Code)
+		}
+
+		// New value does not work
+		req = httptest.NewRequest("GET", "/api/sources/test", nil)
+		req.Header.Set("X-API-Key", "changed-value")
+		w = httptest.NewRecorder()
+		wrapped.ServeHTTP(w, req)
+
+		if w.Code != http.StatusUnauthorized {
+			t.Errorf("expected changed env value to be rejected, got %d", w.Code)
+		}
+	})
+
 	t.Run("multiple keys with different permissions", func(t *testing.T) {
 		cfg := &config.AuthConfig{
 			Keys: []config.APIKeyConfig{
