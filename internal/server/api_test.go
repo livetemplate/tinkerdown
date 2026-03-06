@@ -899,6 +899,41 @@ func TestMethodPermissionMiddleware(t *testing.T) {
 	}
 }
 
+func TestAuthMiddleware_EmptyExpandedKey(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	// Configure auth with a key referencing an unset env var.
+	// The key expands to "" at runtime, so no token can match it.
+	t.Setenv("TINKERDOWN_TEST_UNSET", "")
+	cfg := &config.AuthConfig{
+		Keys: []config.APIKeyConfig{
+			{Name: "env-key", Key: "$TINKERDOWN_TEST_UNSET", Permissions: []config.Permission{config.PermRead}},
+		},
+	}
+	wrapped := AuthMiddleware(cfg)(handler)
+
+	// Request with any token should be rejected (empty key never matches)
+	req := httptest.NewRequest("GET", "/api/sources/test", nil)
+	req.Header.Set("X-API-Key", "any-token")
+	w := httptest.NewRecorder()
+	wrapped.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("Expected 401 when key expands to empty, got %d", w.Code)
+	}
+
+	// Request with empty token should also be rejected (missing header check)
+	req = httptest.NewRequest("GET", "/api/sources/test", nil)
+	w = httptest.NewRecorder()
+	wrapped.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("Expected 401 when no key provided, got %d", w.Code)
+	}
+}
+
 func TestSecureCompare(t *testing.T) {
 	tests := []struct {
 		name     string

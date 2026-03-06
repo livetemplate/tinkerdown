@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"time"
@@ -169,6 +170,7 @@ func (c SourceConfig) GetTimeout() time.Duration {
 	}
 	d, err := time.ParseDuration(c.Timeout)
 	if err != nil {
+		log.Printf("[Config] Warning: invalid timeout %q, using default 10s", c.Timeout)
 		return 10 * time.Second
 	}
 	return d
@@ -192,6 +194,7 @@ func (c SourceConfig) GetRetryBaseDelay() time.Duration {
 	}
 	d, err := time.ParseDuration(c.Retry.BaseDelay)
 	if err != nil {
+		log.Printf("[Config] Warning: invalid retry base_delay %q, using default 100ms", c.Retry.BaseDelay)
 		return 100 * time.Millisecond
 	}
 	return d
@@ -204,6 +207,7 @@ func (c SourceConfig) GetRetryMaxDelay() time.Duration {
 	}
 	d, err := time.ParseDuration(c.Retry.MaxDelay)
 	if err != nil {
+		log.Printf("[Config] Warning: invalid retry max_delay %q, using default 5s", c.Retry.MaxDelay)
 		return 5 * time.Second
 	}
 	return d
@@ -221,6 +225,7 @@ func (c SourceConfig) GetCacheTTL() time.Duration {
 	}
 	d, err := time.ParseDuration(c.Cache.TTL)
 	if err != nil {
+		log.Printf("[Config] Warning: invalid cache ttl %q, caching disabled", c.Cache.TTL)
 		return 0
 	}
 	return d

@@ -27,6 +27,72 @@ func TestSourceConfigIsCacheEnabled(t *testing.T) {
 	}
 }
 
+func TestSourceConfigGetTimeout(t *testing.T) {
+	tests := []struct {
+		name     string
+		timeout  string
+		expected time.Duration
+	}{
+		{"empty defaults to 10s", "", 10 * time.Second},
+		{"valid duration", "30s", 30 * time.Second},
+		{"invalid duration defaults to 10s", "notaduration", 10 * time.Second},
+		{"1 minute", "1m", time.Minute},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := SourceConfig{Timeout: tt.timeout}
+			if got := cfg.GetTimeout(); got != tt.expected {
+				t.Errorf("GetTimeout() = %v, want %v", got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestSourceConfigGetRetryBaseDelay(t *testing.T) {
+	tests := []struct {
+		name     string
+		retry    *RetryConfig
+		expected time.Duration
+	}{
+		{"nil retry defaults to 100ms", nil, 100 * time.Millisecond},
+		{"empty base_delay defaults to 100ms", &RetryConfig{BaseDelay: ""}, 100 * time.Millisecond},
+		{"invalid base_delay defaults to 100ms", &RetryConfig{BaseDelay: "bad"}, 100 * time.Millisecond},
+		{"valid base_delay", &RetryConfig{BaseDelay: "200ms"}, 200 * time.Millisecond},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := SourceConfig{Retry: tt.retry}
+			if got := cfg.GetRetryBaseDelay(); got != tt.expected {
+				t.Errorf("GetRetryBaseDelay() = %v, want %v", got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestSourceConfigGetRetryMaxDelay(t *testing.T) {
+	tests := []struct {
+		name     string
+		retry    *RetryConfig
+		expected time.Duration
+	}{
+		{"nil retry defaults to 5s", nil, 5 * time.Second},
+		{"empty max_delay defaults to 5s", &RetryConfig{MaxDelay: ""}, 5 * time.Second},
+		{"invalid max_delay defaults to 5s", &RetryConfig{MaxDelay: "bad"}, 5 * time.Second},
+		{"valid max_delay", &RetryConfig{MaxDelay: "10s"}, 10 * time.Second},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := SourceConfig{Retry: tt.retry}
+			if got := cfg.GetRetryMaxDelay(); got != tt.expected {
+				t.Errorf("GetRetryMaxDelay() = %v, want %v", got, tt.expected)
+			}
+		})
+	}
+}
+
 func TestSourceConfigGetCacheTTL(t *testing.T) {
 	tests := []struct {
 		name     string

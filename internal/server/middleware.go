@@ -460,8 +460,12 @@ func AuthMiddleware(authCfg *config.AuthConfig) func(http.Handler) http.Handler 
 		// variation between literal keys and env-var-referenced keys.
 		keys := make([]expandedKey, len(apiKeys))
 		for i := range apiKeys {
+			expanded := os.ExpandEnv(apiKeys[i].Key)
+			if expanded == "" {
+				log.Printf("[Auth] Warning: key %q expanded to empty string (check env var config)", apiKeys[i].Name)
+			}
 			keys[i] = expandedKey{
-				value:  os.ExpandEnv(apiKeys[i].Key),
+				value:  expanded,
 				config: &apiKeys[i],
 			}
 		}
