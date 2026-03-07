@@ -117,6 +117,12 @@ func NewWithConfig(rootDir string, cfg *config.Config) *Server {
 		handler = SecurityHeadersMiddleware()(handler)
 
 		srv.apiRoutes = handler
+
+		log.Printf("[API] Middleware: auth=%v cors=%v rate_limit=%.1f rps (burst %d)",
+			cfg.API.IsAuthEnabled(),
+			len(cfg.API.GetCORSOrigins()) > 0,
+			cfg.API.GetRateLimitRPS(),
+			cfg.API.GetRateLimitBurst())
 	}
 
 	// Initialize webhook handler if webhooks are configured
