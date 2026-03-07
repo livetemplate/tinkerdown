@@ -904,7 +904,7 @@ func TestAuthMiddleware_EmptyExpandedKey(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	// Configure auth with a key referencing an unset env var.
+	// Configure auth with a key referencing an env var set to the empty string.
 	// The key expands to "" at runtime, so no token can match it.
 	t.Setenv("TINKERDOWN_TEST_UNSET", "")
 	cfg := &config.AuthConfig{
@@ -931,6 +931,26 @@ func TestAuthMiddleware_EmptyExpandedKey(t *testing.T) {
 
 	if w.Code != http.StatusUnauthorized {
 		t.Errorf("Expected 401 when no key provided, got %d", w.Code)
+	}
+}
+
+func TestAuthMiddleware_LegacyEmptyExpandedKey(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	// Legacy api_key referencing an unset env var should enforce auth
+	// (reject all requests), not silently disable it.
+	cfg := &config.AuthConfig{APIKey: "$TINKERDOWN_UNSET_LEGACY_KEY_TEST"}
+	wrapped := AuthMiddleware(cfg)(handler)
+
+	req := httptest.NewRequest("GET", "/api/sources/test", nil)
+	req.Header.Set("X-API-Key", "any-token")
+	w := httptest.NewRecorder()
+	wrapped.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("Expected 401 when legacy api_key expands to empty, got %d (auth silently disabled)", w.Code)
 	}
 }
 

@@ -502,13 +502,17 @@ type AuthConfig struct {
 
 // GetAPIKeys returns all configured API keys, normalizing legacy and new formats.
 // Legacy api_key gets full permissions for backward compatibility.
+// Uses the raw (unexpanded) value to detect intent — if the user configured
+// an api_key that expands to empty, auth is still enforced (rejecting all
+// requests) rather than silently disabled.
 func (c *AuthConfig) GetAPIKeys() []APIKeyConfig {
 	if c == nil {
 		return nil
 	}
 	var keys []APIKeyConfig
-	// Add legacy key with full permissions
-	if c.GetAPIKey() != "" {
+	// Add legacy key with full permissions (check raw config, not expanded,
+	// so auth stays enforced even if the env var is missing/empty).
+	if c.APIKey != "" {
 		keys = append(keys, APIKeyConfig{
 			Name:        "default",
 			Key:         c.APIKey, // Keep unexpanded; middleware does ExpandEnv
