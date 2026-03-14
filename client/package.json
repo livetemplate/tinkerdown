@@ -15,17 +15,17 @@
     "analyze": "node -e \"const fs=require('fs');const m=JSON.parse(fs.readFileSync('dist/meta.json'));Object.entries(m.outputs).forEach(([k,v])=>console.log(k,Math.round(v.bytes/1024)+'KB'));\""
   },
   "dependencies": {
-    "@livetemplate/client": "^0.8.0",
+    "@livetemplate/client": "^0.8.4",
     "monaco-editor": "^0.45.0"
   },
   "devDependencies": {
+    "@types/jest": "^29.0.0",
     "@types/node": "^20.0.0",
     "esbuild": "^0.19.0",
-    "typescript": "^5.3.0",
     "jest": "^29.0.0",
     "jest-environment-jsdom": "^29.0.0",
-    "@types/jest": "^29.0.0",
-    "ts-jest": "^29.0.0"
+    "ts-jest": "^29.0.0",
+    "typescript": "^5.3.0"
   },
   "peerDependencies": {
     "monaco-editor": "^0.45.0"
