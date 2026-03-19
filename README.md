@@ -8,6 +8,19 @@
 
 Tinkerdown is a CLI tool for creating interactive, data-driven applications using markdown files. Connect to databases, APIs, and files with zero boilerplate. Built on [LiveTemplate](https://github.com/livetemplate/livetemplate).
 
+## Why Tinkerdown?
+
+Most internal tools start the same way: spin up a framework, wire up a database, write CRUD endpoints, build a UI. For a simple dashboard or admin panel, that's a lot of ceremony.
+
+Tinkerdown skips all of it. You write a single markdown file, declare your data sources in frontmatter, and use `lvt-*` attributes to make things interactive. No frontend framework, no API layer, no build step.
+
+- **One file = one app.** Your entire app lives in a markdown file — data connections, layout, and interactions included.
+- **8 data sources out of the box.** SQLite, PostgreSQL, REST APIs, JSON, CSV, shell commands, markdown files, and WASM. Declare them in frontmatter; they just work.
+- **Instant feedback.** `tinkerdown serve` gives you hot reload and WebSocket-powered live updates. Change the file, see the result.
+- **AI-friendly.** The format is simple enough that you can describe what you want to Claude or any LLM and get a working app back.
+
+If you've ever thought "I just need a quick UI for this database" — that's what Tinkerdown is for.
+
 ## Quick Start
 
 ```bash
