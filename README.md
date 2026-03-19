@@ -10,18 +10,16 @@ Tinkerdown is a CLI tool for creating interactive, data-driven applications usin
 
 ## Why Tinkerdown?
 
-Most internal tools start the same way: spin up a framework, wire up a database, write CRUD endpoints, build a UI. For a simple dashboard or admin panel, that's a lot of ceremony.
+You need a quick UI — a dashboard, an admin panel, a tool for your team. With traditional frameworks, that means scaffolding a project, wiring up a database, writing API routes, and picking a frontend. For something you might only use for a week, that's way too much.
 
-Tinkerdown skips all of it. You write a single markdown file, declare your data sources in frontmatter, and use `lvt-*` attributes to make things interactive. No frontend framework, no API layer, no build step.
+Tinkerdown is a markdown format designed for LLMs to generate working UIs on the fly. Describe what you want, get a single markdown file back, run `tinkerdown serve`, done. No npm, no build step, no debugging generated React code.
 
+- **LLM-native format.** Markdown is far more deterministic for LLMs than React/JS — one file, fewer ways to fail. AI gets it right on the first try, and unlike generated React code, you can actually read and maintain it.
 - **One file = one app.** Everything lives in a single markdown file — data connections, layout, and interactions. No project scaffolding, no 10-file boilerplate. If it's valid markdown, it's a working app.
-- **Start simple, add power as needed.** Begin with pure markdown (headings become data, task lists become interactive checkboxes). Add YAML frontmatter for external databases. Drop to HTML + Go templates when you need full control. Each step is small and reversible.
+- **Start simple, add power as needed.** Begin with pure markdown (task lists become interactive checkboxes, tables become editable grids). Add YAML frontmatter for external databases. Drop to HTML + Go templates when you need full control. Each step is small and reversible.
 - **8 data sources out of the box.** SQLite, PostgreSQL, REST APIs, JSON, CSV, shell commands, markdown files, and WASM. Declare them in frontmatter; they just work. Build a UI for your existing scripts in 30 seconds.
-- **Git-native and self-hosted.** Your apps are plain text files in a git repo. Version history, grep, branching, offline access — all free. No vendor lock-in, no $10/month SaaS subscriptions. Your data stays yours.
-- **AI-generation friendly.** Markdown is more deterministic for LLMs than React/JS — fewer files, fewer ways to fail. Describe what you want, get a working app back on the first try. And unlike generated React code, you can actually maintain it.
-- **Built for throwaway tools.** Job search trackers, project dashboards, incident runbooks, expense logs. Apps you use for days or weeks, then archive. The markdown stays human-readable forever — even without Tinkerdown.
-
-If you've ever thought "I just need a quick UI for this database" — that's what Tinkerdown is for.
+- **Git-native and self-hosted.** Plain text files in a git repo. Version history, grep, offline access — all free. No vendor lock-in, no SaaS subscriptions. Your data stays yours.
+- **Built for throwaway tools.** Job search trackers, project dashboards, incident runbooks, expense logs. Use it for days or weeks, then archive. The markdown stays human-readable forever — even without Tinkerdown.
 
 ## Quick Start
 
