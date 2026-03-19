@@ -14,12 +14,12 @@ You need a quick UI — a dashboard, an admin panel, a tool for your team. With 
 
 Tinkerdown is a markdown format designed for LLMs to generate working UIs on the fly. Describe what you want, get a single markdown file back, run `tinkerdown serve`, done. No npm, no build step, no debugging generated React code.
 
-- **LLM-native format.** Markdown is far more deterministic for LLMs than React/JS — one file, fewer ways to fail. AI gets it right on the first try, and unlike generated React code, you can actually read and maintain it. Not a compile-time format like MDX — your UIs are live at runtime, with real data connections.
-- **One file = one app.** Everything lives in a single markdown file — data connections, layout, and interactions. No project scaffolding, no 10-file boilerplate. If it's valid markdown, it's a working app. Generate it, save it, reuse it — every UI you create is a file you can freeze and come back to.
-- **Start simple, add power as needed.** Begin with pure markdown (task lists become interactive checkboxes, tables become editable grids). Add YAML frontmatter for external databases. Drop to HTML + Go templates when you need full control. Each step is small and reversible.
-- **8 data sources out of the box.** SQLite, PostgreSQL, REST APIs, JSON, CSV, shell commands, markdown files, and WASM. Declare them in frontmatter; they just work. Wire up a Kubernetes dashboard, a database admin panel, or a UI for your scripts in 30 seconds.
-- **Git-native and self-hosted.** Plain text files in a git repo. Version history, grep, offline access — all free. No vendor lock-in, no SaaS subscriptions. Your data stays yours.
-- **Built for throwaway tools.** Job search trackers, project dashboards, incident runbooks, expense logs. Use it for days or weeks, then archive. The markdown stays human-readable forever — even without Tinkerdown.
+- **LLM-native format.** LLMs produce reliable markdown far more consistently than multi-file JS projects. The output works on the first run, and the result is something a human can actually maintain. Unlike static formats like MDX, Tinkerdown files run live — they hold active connections to databases and APIs.
+- **One file = one app.** Data connections, layout, and interactions all live in one markdown file. No scaffolding, no boilerplate. Once you have something useful, it's already a file you can stash in a repo and pull up again months later.
+- **Start simple, add power as needed.** Pure markdown gets you surprisingly far — task lists become interactive checkboxes, tables become editable grids. When you outgrow that, add YAML frontmatter for external databases, or drop to HTML + Go templates for full control.
+- **8 data sources out of the box.** SQLite, PostgreSQL, REST APIs, JSON, CSV, shell commands, markdown files, and WASM. Point at your existing infrastructure — a database, a cluster, an internal API — and have a working UI without writing any glue code.
+- **Git-native and self-hosted.** Plain text in a repo means you get version history, search, offline access, and collaboration for free. No subscriptions, no platform lock-in.
+- **Built for disposable tools.** The admin panel for this migration. The tracker for that hiring round. The runbook for on-call week. Tinkerdown is for tools with a shelf life — and when you're done, the markdown is still perfectly readable on its own.
 
 ## Quick Start
 
