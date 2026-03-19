@@ -2,6 +2,10 @@
 
 **Build data-driven apps with markdown**
 
+<p align="center">
+  <img src="docs/assets/demo.svg" alt="Tinkerdown demo: write markdown, get an interactive app" width="960">
+</p>
+
 Tinkerdown is a CLI tool for creating interactive, data-driven applications using markdown files. Connect to databases, APIs, and files with zero boilerplate. Built on [LiveTemplate](https://github.com/livetemplate/livetemplate).
 
 ## Quick Start

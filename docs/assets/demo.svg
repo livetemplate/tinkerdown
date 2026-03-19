@@ -1,0 +1,223 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540" font-family="'SF Mono', 'Cascadia Code', 'Fira Code', Consolas, monospace" font-size="13">
+  <style>
+    @keyframes cursor-blink { 0%,50%{opacity:1}51%,100%{opacity:0} }
+    @keyframes typing1 { 0%{width:0} 100%{width:100%} }
+    @keyframes fade-in { 0%{opacity:0} 100%{opacity:1} }
+    @keyframes slide-up { 0%{opacity:0;transform:translateY(12px)} 100%{opacity:1;transform:translateY(0)} }
+    @keyframes check-mark { 0%{stroke-dashoffset:20} 100%{stroke-dashoffset:0} }
+    @keyframes progress { 0%{width:0} 100%{width:170px} }
+
+    .terminal-bg { fill: #1a1b26; }
+    .browser-bg { fill: #ffffff; }
+    .title-bar { fill: #2a2b3d; }
+    .browser-bar { fill: #f0f0f0; }
+    .dot-red { fill: #ff5f57; }
+    .dot-yellow { fill: #febc2e; }
+    .dot-green { fill: #28c840; }
+
+    .line { opacity: 0; }
+    .line1 { animation: slide-up 0.3s ease forwards; animation-delay: 0.5s; }
+    .line2 { animation: slide-up 0.3s ease forwards; animation-delay: 0.8s; }
+    .line3 { animation: slide-up 0.3s ease forwards; animation-delay: 1.1s; }
+    .line4 { animation: slide-up 0.3s ease forwards; animation-delay: 1.4s; }
+    .line5 { animation: slide-up 0.3s ease forwards; animation-delay: 1.7s; }
+    .line6 { animation: slide-up 0.3s ease forwards; animation-delay: 2.0s; }
+    .line7 { animation: slide-up 0.3s ease forwards; animation-delay: 2.3s; }
+    .line8 { animation: slide-up 0.3s ease forwards; animation-delay: 2.6s; }
+    .line9 { animation: slide-up 0.3s ease forwards; animation-delay: 2.9s; }
+    .line10 { animation: slide-up 0.3s ease forwards; animation-delay: 3.2s; }
+    .line11 { animation: slide-up 0.3s ease forwards; animation-delay: 3.5s; }
+    .line12 { animation: slide-up 0.3s ease forwards; animation-delay: 3.8s; }
+    .line13 { animation: slide-up 0.3s ease forwards; animation-delay: 4.1s; }
+
+    .browser-content { opacity: 0; }
+    .browser-step1 { animation: fade-in 0.6s ease forwards; animation-delay: 4.8s; }
+    .browser-step2 { animation: fade-in 0.5s ease forwards; animation-delay: 5.4s; }
+    .browser-step3 { animation: fade-in 0.5s ease forwards; animation-delay: 6.0s; }
+    .browser-step4 { animation: fade-in 0.5s ease forwards; animation-delay: 6.5s; }
+    .browser-step5 { animation: fade-in 0.5s ease forwards; animation-delay: 7.0s; }
+
+    .arrow-anim { opacity: 0; animation: fade-in 0.4s ease forwards; animation-delay: 4.4s; }
+
+    .serve-line { opacity: 0; animation: slide-up 0.3s ease forwards; animation-delay: 4.2s; }
+
+    .keyword { fill: #bb9af7; }
+    .string { fill: #9ece6a; }
+    .comment { fill: #565f89; }
+    .tag { fill: #7aa2f7; }
+    .attr { fill: #e0af68; }
+    .attr-val { fill: #9ece6a; }
+    .text-dim { fill: #a9b1d6; }
+    .text-bright { fill: #c0caf5; }
+    .prompt { fill: #7dcfff; }
+    .success { fill: #9ece6a; }
+  </style>
+
+  <defs>
+    <clipPath id="terminal-clip"><rect x="16" y="44" width="440" height="480" rx="0"/></clipPath>
+    <clipPath id="browser-clip"><rect x="504" y="44" width="440" height="480" rx="0"/></clipPath>
+    <linearGradient id="arrow-grad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#7aa2f7;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#bb9af7;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="960" height="540" rx="12" fill="#0f0f14"/>
+
+  <!-- Terminal Window -->
+  <g>
+    <rect x="16" y="8" width="440" height="520" rx="10" class="terminal-bg" stroke="#2a2b3d" stroke-width="1"/>
+    <rect x="16" y="8" width="440" height="36" rx="10" class="title-bar"/>
+    <rect x="16" y="34" width="440" height="10" class="title-bar"/>
+    <circle cx="36" cy="26" r="6" class="dot-red"/>
+    <circle cx="56" cy="26" r="6" class="dot-yellow"/>
+    <circle cx="76" cy="26" r="6" class="dot-green"/>
+    <text x="236" y="30" text-anchor="middle" fill="#565f89" font-size="12">index.md</text>
+
+    <g clip-path="url(#terminal-clip)">
+      <!-- Markdown content typing in -->
+      <text y="68" x="28" class="line line1 comment">---</text>
+
+      <g class="line line2">
+        <text y="86" x="28" class="keyword">title</text><text y="86" x="60" class="text-dim">: </text><text y="86" x="72" class="string">"Task Manager"</text>
+      </g>
+
+      <g class="line line3">
+        <text y="104" x="28" class="keyword">sources</text><text y="104" x="84" class="text-dim">:</text>
+      </g>
+
+      <g class="line line4">
+        <text y="122" x="44" class="keyword">tasks</text><text y="122" x="84" class="text-dim">:</text>
+      </g>
+
+      <g class="line line5">
+        <text y="140" x="60" class="attr">type</text><text y="140" x="92" class="text-dim">: </text><text y="140" x="104" class="string">sqlite</text>
+      </g>
+
+      <g class="line line6">
+        <text y="158" x="60" class="attr">path</text><text y="158" x="92" class="text-dim">: </text><text y="158" x="104" class="string">./tasks.db</text>
+      </g>
+
+      <g class="line line7">
+        <text y="176" x="60" class="attr">query</text><text y="176" x="100" class="text-dim">: </text><text y="176" x="112" class="string">SELECT * FROM tasks</text>
+      </g>
+
+      <text y="194" x="28" class="line line8 comment">---</text>
+
+      <g class="line line9">
+        <text y="218" x="28" class="text-bright"># My Tasks</text>
+      </g>
+
+      <g class="line line10">
+        <text y="242" x="28" class="tag">&lt;table</text>
+        <text y="242" x="80" class="attr"> lvt-source</text><text y="242" x="168" class="text-dim">=</text><text y="242" x="176" class="attr-val">"tasks"</text>
+      </g>
+
+      <g class="line line11">
+        <text y="260" x="52" class="attr">lvt-columns</text><text y="260" x="148" class="text-dim">=</text><text y="260" x="156" class="attr-val">"title,status"</text>
+      </g>
+
+      <g class="line line12">
+        <text y="278" x="52" class="attr">lvt-actions</text><text y="278" x="148" class="text-dim">=</text><text y="278" x="156" class="attr-val">"Done,Delete"</text><text y="278" x="252" class="tag">&gt;</text>
+      </g>
+
+      <g class="line line13">
+        <text y="296" x="28" class="tag">&lt;/table&gt;</text>
+      </g>
+
+      <!-- Serve command -->
+      <g class="serve-line">
+        <text y="340" x="28" class="prompt">$</text>
+        <text y="340" x="44" class="text-bright"> tinkerdown serve</text>
+        <text y="358" x="28" class="success">Server running at localhost:8080</text>
+      </g>
+    </g>
+  </g>
+
+  <!-- Arrow -->
+  <g class="arrow-anim">
+    <line x1="462" y1="270" x2="496" y2="270" stroke="url(#arrow-grad)" stroke-width="3" stroke-linecap="round"/>
+    <polygon points="496,264 508,270 496,276" fill="#bb9af7"/>
+  </g>
+
+  <!-- Browser Window -->
+  <g>
+    <rect x="504" y="8" width="440" height="520" rx="10" class="browser-bg" stroke="#ddd" stroke-width="1"/>
+    <rect x="504" y="8" width="440" height="36" rx="10" class="browser-bar"/>
+    <rect x="504" y="34" width="440" height="10" class="browser-bar"/>
+    <circle cx="524" cy="26" r="6" class="dot-red"/>
+    <circle cx="544" cy="26" r="6" class="dot-yellow"/>
+    <circle cx="564" cy="26" r="6" class="dot-green"/>
+    <rect x="600" y="18" width="290" height="16" rx="8" fill="#fff" stroke="#ccc" stroke-width="1"/>
+    <text x="650" y="30" fill="#999" font-size="10" font-family="system-ui, sans-serif">localhost:8080</text>
+
+    <g clip-path="url(#browser-clip)">
+      <!-- App title -->
+      <g class="browser-content browser-step1">
+        <text x="536" y="80" fill="#1a1b26" font-size="22" font-weight="bold" font-family="system-ui, sans-serif">My Tasks</text>
+      </g>
+
+      <!-- Table header -->
+      <g class="browser-content browser-step2">
+        <rect x="536" y="96" width="380" height="32" rx="4" fill="#f8f9fa"/>
+        <text x="552" y="117" fill="#444" font-size="12" font-weight="bold" font-family="system-ui, sans-serif">Title</text>
+        <text x="720" y="117" fill="#444" font-size="12" font-weight="bold" font-family="system-ui, sans-serif">Status</text>
+        <text x="850" y="117" fill="#444" font-size="12" font-weight="bold" font-family="system-ui, sans-serif">Actions</text>
+      </g>
+
+      <!-- Table rows -->
+      <g class="browser-content browser-step3">
+        <line x1="536" y1="128" x2="916" y2="128" stroke="#eee" stroke-width="1"/>
+        <text x="552" y="150" fill="#333" font-size="12" font-family="system-ui, sans-serif">Build landing page</text>
+        <rect x="714" y="138" width="60" height="20" rx="10" fill="#fff3cd"/>
+        <text x="724" y="152" fill="#856404" font-size="10" font-family="system-ui, sans-serif">In Progress</text>
+        <rect x="836" y="137" width="36" height="20" rx="4" fill="#d4edda" stroke="#28a745" stroke-width="1"/>
+        <text x="839" y="151" fill="#28a745" font-size="9" font-family="system-ui, sans-serif">Done</text>
+        <rect x="876" y="137" width="36" height="20" rx="4" fill="#f8d7da" stroke="#dc3545" stroke-width="1"/>
+        <text x="880" y="151" fill="#dc3545" font-size="9" font-family="system-ui, sans-serif">Del</text>
+
+        <line x1="536" y1="164" x2="916" y2="164" stroke="#eee" stroke-width="1"/>
+        <text x="552" y="184" fill="#333" font-size="12" font-family="system-ui, sans-serif">Write API docs</text>
+        <rect x="714" y="172" width="36" height="20" rx="10" fill="#d4edda"/>
+        <text x="722" y="186" fill="#155724" font-size="10" font-family="system-ui, sans-serif">Done</text>
+        <rect x="836" y="171" width="36" height="20" rx="4" fill="#d4edda" stroke="#28a745" stroke-width="1"/>
+        <text x="839" y="185" fill="#28a745" font-size="9" font-family="system-ui, sans-serif">Done</text>
+        <rect x="876" y="171" width="36" height="20" rx="4" fill="#f8d7da" stroke="#dc3545" stroke-width="1"/>
+        <text x="880" y="185" fill="#dc3545" font-size="9" font-family="system-ui, sans-serif">Del</text>
+
+        <line x1="536" y1="198" x2="916" y2="198" stroke="#eee" stroke-width="1"/>
+        <text x="552" y="218" fill="#333" font-size="12" font-family="system-ui, sans-serif">Fix auth bug</text>
+        <rect x="714" y="206" width="28" height="20" rx="10" fill="#cce5ff"/>
+        <text x="720" y="220" fill="#004085" font-size="10" font-family="system-ui, sans-serif">New</text>
+        <rect x="836" y="205" width="36" height="20" rx="4" fill="#d4edda" stroke="#28a745" stroke-width="1"/>
+        <text x="839" y="219" fill="#28a745" font-size="9" font-family="system-ui, sans-serif">Done</text>
+        <rect x="876" y="205" width="36" height="20" rx="4" fill="#f8d7da" stroke="#dc3545" stroke-width="1"/>
+        <text x="880" y="219" fill="#dc3545" font-size="9" font-family="system-ui, sans-serif">Del</text>
+      </g>
+
+      <!-- Checkbox interaction animation -->
+      <g class="browser-content browser-step4">
+        <line x1="536" y1="232" x2="916" y2="232" stroke="#eee" stroke-width="1"/>
+
+        <!-- Simulated click highlight on "Done" button of row 3 -->
+        <rect x="836" y="205" width="36" height="20" rx="4" fill="#28a745" opacity="0.3">
+          <animate attributeName="opacity" values="0.3;0;0" dur="2s" begin="7s" fill="freeze"/>
+        </rect>
+      </g>
+
+      <!-- Live update indicator -->
+      <g class="browser-content browser-step5">
+        <circle cx="546" y="260" cy="260" r="5" fill="#28a745">
+          <animate attributeName="opacity" values="1;0.4;1" dur="2s" repeatCount="indefinite"/>
+        </circle>
+        <text x="558" y="264" fill="#28a745" font-size="11" font-family="system-ui, sans-serif">Live  &#8226;  Connected via WebSocket</text>
+      </g>
+    </g>
+  </g>
+
+  <!-- Bottom label -->
+  <text x="480" y="534" text-anchor="middle" fill="#565f89" font-size="11" font-family="system-ui, sans-serif">
+    Write markdown  &#8594;  Get an interactive app  &#8594;  Data persists to SQLite
+  </text>
+</svg>
