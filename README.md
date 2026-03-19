@@ -10,7 +10,7 @@ Tinkerdown is a CLI tool for creating interactive, data-driven applications usin
 
 ## Why Tinkerdown?
 
-Prompt an LLM, get a markdown file, `tinkerdown serve`. That's the whole workflow.
+An LLM can generate a React app, but you still need to install dependencies, debug build errors, and understand the code to change it. Tinkerdown apps are single markdown files — nothing to install, nothing to break, and anyone can read and edit the result.
 
 - **LLM-native format.** LLMs produce reliable markdown far more consistently than multi-file JS projects. The output works on the first run, and the result is something a human can actually maintain. Tinkerdown files run live — they hold active connections to databases and APIs.
 - **One file = one app.** Data connections, layout, and interactions all live in one markdown file. No scaffolding, no boilerplate. Once you have something useful, it's already a file you can stash in a repo and pull up again months later.
