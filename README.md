@@ -2,7 +2,22 @@
 
 **Build data-driven apps with markdown**
 
+<p align="center">
+  <img src="docs/assets/demo.svg" alt="Animated demo showing a markdown file with YAML frontmatter and lvt attributes being served by Tinkerdown into a live interactive task manager with table, status badges, and action buttons" width="960">
+</p>
+
 Tinkerdown is a CLI tool for creating interactive, data-driven applications using markdown files. Connect to databases, APIs, and files with zero boilerplate. Built on [LiveTemplate](https://github.com/livetemplate/livetemplate).
+
+## Why Tinkerdown?
+
+AI app builders generate React projects with dozens of files, dependency trees, and build pipelines. When something breaks — and it will — you're debugging code you didn't write, burning tokens trying to fix context window drift, and wrestling with framework complexity that has nothing to do with your actual problem. Tinkerdown takes a different approach: the entire app is a single markdown file. There's no build step, no node_modules, and nothing to drift out of sync.
+
+- **Tiny surface area for AI.** A Tinkerdown file is declarative — data sources in YAML, layout in markdown, interactions via HTML attributes. There's no component tree to get tangled, no state management to misconfigure, no async rendering bugs. The format is constrained enough that LLMs get it right consistently, and small enough that you can read the whole thing and understand it.
+- **One file = one app.** Data connections, layout, and interactions all live in one markdown file. No scaffolding, no boilerplate. Once you have something useful, it's already a file you can stash in a repo and pull up months later.
+- **Start simple, add power as needed.** Pure markdown gets you surprisingly far — task lists become interactive checkboxes, tables become editable grids. When you outgrow that, add YAML frontmatter for external databases, or drop to HTML + Go templates for full control.
+- **8 data sources out of the box.** SQLite, PostgreSQL, REST APIs, JSON, CSV, shell commands, markdown files, and WASM. Point at your existing infrastructure — a database, a cluster, an internal API — and have a working UI without writing any glue code.
+- **Git-native and self-hosted.** Plain text in a repo means you get version history, search, offline access, and collaboration for free. No subscriptions, no platform lock-in.
+- **Made for disposable software.** The admin panel for this sprint. The tracker for that hiring round. The runbook for on-call week. Software you'd never justify scaffolding a React project for, but that's genuinely useful for a few days or weeks. When you're done, the markdown is still readable on its own.
 
 ## Quick Start
 
