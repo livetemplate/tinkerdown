@@ -4,6 +4,6 @@
 ! exec tinkerdown serve /nonexistent/dir
 stderr 'directory does not exist'
 
-# Invalid port
-! exec tinkerdown serve --port abc
+# Invalid port (use . as directory to ensure we reach port validation)
+! exec tinkerdown serve . --port abc
 stderr 'invalid port'
