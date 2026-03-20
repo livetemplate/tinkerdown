@@ -12,10 +12,12 @@ import (
 // version is set via ldflags during build: -ldflags="-X main.version=1.0.0"
 var version = "dev"
 
-func main() {
+func main() { os.Exit(run()) }
+
+func run() int {
 	if len(os.Args) < 2 {
 		printUsage()
-		os.Exit(1)
+		return 1
 	}
 
 	command := os.Args[1]
@@ -67,13 +69,15 @@ func main() {
 	default:
 		fmt.Printf("Unknown command: %s\n\n", command)
 		printUsage()
-		os.Exit(1)
+		return 1
 	}
 
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
+
+	return 0
 }
 
 func printUsage() {

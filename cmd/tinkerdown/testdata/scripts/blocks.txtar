@@ -1,0 +1,14 @@
+# Test that blocks command inspects code blocks in markdown files.
+exec tinkerdown blocks .
+stdout 'Inspecting blocks in:'
+stdout 'Total blocks:'
+stdout 'Server blocks:'
+
+-- index.md --
+# Test Page
+
+```go server
+type State struct {
+    Count int
+}
+```

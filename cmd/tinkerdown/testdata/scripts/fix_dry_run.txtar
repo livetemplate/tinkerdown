@@ -1,0 +1,11 @@
+# Test that fix --dry-run previews fixes without modifying files.
+# The embedded test.md has no trailing newline, which fix should detect.
+exec tinkerdown fix . --dry-run
+stdout 'dry-run mode'
+stdout 'Summary:'
+
+-- test.md --
+# Hello
+
+
+

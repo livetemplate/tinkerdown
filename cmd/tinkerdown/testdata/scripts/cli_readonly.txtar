@@ -1,0 +1,11 @@
+# Test that writing to a read-only source returns an error.
+# SQLite sources implement WritableSource, so readonly flag is checked.
+! exec tinkerdown cli . add tasks --text=hello
+stderr 'source is read-only'
+
+-- tinkerdown.yaml --
+sources:
+  tasks:
+    type: sqlite
+    table: tasks
+    readonly: true

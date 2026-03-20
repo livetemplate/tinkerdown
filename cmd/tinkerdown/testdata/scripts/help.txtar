@@ -1,0 +1,18 @@
+# Test that help command and flags show usage information.
+
+# help subcommand
+exec tinkerdown help
+stdout 'tinkerdown - Interactive documentation made easy'
+stdout 'Usage:'
+
+# -h flag
+exec tinkerdown -h
+stdout 'Usage:'
+
+# --help flag
+exec tinkerdown --help
+stdout 'Usage:'
+
+# Unknown command exits with 1 and prints error
+! exec tinkerdown nosuchcommand
+stdout 'Unknown command: nosuchcommand'

@@ -1,0 +1,9 @@
+# Test CLI error when source name is not found.
+! exec tinkerdown cli . list nosuch
+stderr 'source "nosuch" not found'
+
+-- tinkerdown.yaml --
+sources:
+  tasks:
+    type: sqlite
+    table: tasks

@@ -1,0 +1,3 @@
+# Test that blocks command errors on nonexistent directory.
+! exec tinkerdown blocks /nonexistent/dir
+stderr 'directory does not exist'

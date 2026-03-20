@@ -1,0 +1,18 @@
+# Test error cases for the new command.
+
+# No project name
+! exec tinkerdown new
+stderr 'project name required'
+
+# Spaces in project name
+! exec tinkerdown new 'my app'
+stderr 'project name cannot contain spaces'
+
+# Unknown template
+! exec tinkerdown new myapp --template=nosuch
+stderr 'unknown template'
+
+# Directory already exists
+mkdir existing-dir
+! exec tinkerdown new existing-dir
+stderr 'already exists'

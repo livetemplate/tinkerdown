@@ -1,0 +1,12 @@
+# Test that fix actually applies fixes to markdown files.
+# The embedded test.md has excessive blank lines that should be normalized.
+exec tinkerdown fix .
+stdout 'Summary:'
+
+-- test.md --
+# Hello
+
+
+
+
+Some text after many blank lines.

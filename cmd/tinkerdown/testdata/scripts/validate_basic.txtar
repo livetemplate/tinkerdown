@@ -1,0 +1,8 @@
+# Test validate on valid markdown files (non-Mermaid to avoid chromedp).
+exec tinkerdown validate .
+stdout 'All checks passed!'
+
+-- index.md --
+# Hello World
+
+This is a valid markdown file.

@@ -1,0 +1,15 @@
+# Test listing items from a CSV file source.
+exec tinkerdown cli . list items
+stdout 'alice'
+stdout 'bob'
+
+-- tinkerdown.yaml --
+sources:
+  items:
+    type: csv
+    file: data.csv
+
+-- data.csv --
+id,name
+1,alice
+2,bob

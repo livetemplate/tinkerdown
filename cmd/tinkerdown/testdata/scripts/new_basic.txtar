@@ -1,0 +1,5 @@
+# Test that new command creates a project directory with expected files.
+exec tinkerdown new my-app
+stdout 'Created new app: my-app'
+stdout 'template: basic'
+exists my-app/index.md

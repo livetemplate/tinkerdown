@@ -1,0 +1,21 @@
+# Test that --template and -t flag variants work for the new command.
+
+# Long form with =
+exec tinkerdown new app1 --template=todo
+stdout 'template: todo'
+exists app1/index.md
+
+# Short form with =
+exec tinkerdown new app2 -t=todo
+stdout 'template: todo'
+exists app2/index.md
+
+# Long form with space
+exec tinkerdown new app3 --template todo
+stdout 'template: todo'
+exists app3/index.md
+
+# Short form with space
+exec tinkerdown new app4 -t todo
+stdout 'template: todo'
+exists app4/index.md
