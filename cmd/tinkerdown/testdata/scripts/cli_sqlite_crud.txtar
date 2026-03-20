@@ -1,4 +1,5 @@
 # Test full CRUD cycle on a SQLite source.
+# No .db file is provided; the SQLite source auto-creates the database and table on first use.
 
 # List (empty initially)
 exec tinkerdown cli . list tasks
