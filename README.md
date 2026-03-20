@@ -10,13 +10,13 @@ Tinkerdown is a CLI tool for creating interactive, data-driven applications usin
 
 ## Why Tinkerdown?
 
-Most internal tools don't need a framework. Tinkerdown replaces the scaffolding with a single markdown file — data sources in YAML, layout in markdown, interactions via HTML attributes.
+Tinkerdown replaces typical app scaffolding with a single markdown file — data sources in YAML, layout in markdown, interactions via HTML attributes.
 
-- **One file = one app.** Data connections, layout, and interactions all live in one place. No build step, no dependencies, no boilerplate.
-- **AI gets it right.** The format is small and declarative enough that LLMs produce working apps consistently — no component trees or state management to misconfigure.
+- **One file = one app.** Data connections, layout, and interactions all live in one place. No build step, no node_modules, no boilerplate.
+- **AI gets it right.** A single declarative file with no component tree or state management means less surface area for LLMs to misconfigure.
 - **8 data sources out of the box.** SQLite, PostgreSQL, REST APIs, JSON, CSV, shell commands, markdown, and WASM. Point at existing infrastructure and get a working UI.
 - **Start simple, add power as needed.** Plain markdown tables become editable grids. Add YAML frontmatter for databases, or drop to HTML + Go templates for full control.
-- **Git-native and self-hosted.** Plain text in a repo. Version history, offline access, no subscriptions.
+- **Git-native and self-hosted.** Plain text in a repo. Version history, search, collaboration, offline access, no subscriptions.
 - **Made for disposable software.** The admin panel for this sprint. The tracker for that hiring round. Software you'd never scaffold a React project for, but that's useful for days or weeks.
 
 ## Quick Start
