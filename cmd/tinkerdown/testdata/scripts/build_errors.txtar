@@ -1,0 +1,9 @@
+# Test build command error cases.
+
+# No input path
+! exec tinkerdown build
+stderr 'input path required'
+
+# Nonexistent input path
+! exec tinkerdown build /nonexistent/file.md
+stderr 'input path does not exist'

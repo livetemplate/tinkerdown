@@ -1,0 +1,15 @@
+# Test that fix --dry-run previews fixes without modifying files.
+# The embedded test.md has excessive blank lines, which fix should detect.
+cp test.md test.md.orig
+exec tinkerdown fix . --dry-run
+stdout 'dry-run mode'
+stdout 'Summary:'
+
+# Verify file was NOT modified (dry-run must not change content)
+cmp test.md test.md.orig
+
+-- test.md --
+# Hello
+
+
+

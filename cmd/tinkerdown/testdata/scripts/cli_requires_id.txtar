@@ -1,0 +1,16 @@
+# Test that update and delete require --id flag.
+
+# Update without --id
+! exec tinkerdown cli . update tasks --text=hello
+stderr '--id is required for update'
+
+# Delete without --id
+! exec tinkerdown cli . delete tasks -y
+stderr '--id is required for delete'
+
+-- tinkerdown.yaml --
+sources:
+  tasks:
+    type: sqlite
+    table: tasks
+    readonly: false

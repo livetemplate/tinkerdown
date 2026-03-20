@@ -1,0 +1,33 @@
+# Test full CRUD cycle on a SQLite source.
+# No .db file is provided; the SQLite source auto-creates the database and table on first use.
+
+# List (empty initially)
+exec tinkerdown cli . list tasks
+stdout 'No items found.'
+
+# Add an item
+exec tinkerdown cli . add tasks --text=hello --done=false
+stdout 'Item added successfully.'
+
+# List should now show the item
+exec tinkerdown cli . list tasks
+stdout 'hello'
+
+# Update the item (id=1 since SQLite auto-increments)
+exec tinkerdown cli . update tasks --id=1 --done=true
+stdout 'Item 1 updated successfully.'
+
+# Delete the item
+exec tinkerdown cli . delete tasks --id=1 -y
+stdout 'Item 1 deleted successfully.'
+
+# List should be empty again
+exec tinkerdown cli . list tasks
+stdout 'No items found.'
+
+-- tinkerdown.yaml --
+sources:
+  tasks:
+    type: sqlite
+    table: tasks
+    readonly: false

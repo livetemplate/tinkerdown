@@ -3,6 +3,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -12,10 +13,12 @@ import (
 // version is set via ldflags during build: -ldflags="-X main.version=1.0.0"
 var version = "dev"
 
-func main() {
+func main() { os.Exit(run()) }
+
+func run() int {
 	if len(os.Args) < 2 {
-		printUsage()
-		os.Exit(1)
+		printUsage(os.Stderr)
+		return 1
 	}
 
 	command := os.Args[1]
@@ -63,50 +66,52 @@ func main() {
 	case "version":
 		fmt.Printf("tinkerdown version %s\n", version)
 	case "help", "-h", "--help":
-		printUsage()
+		printUsage(os.Stdout)
 	default:
-		fmt.Printf("Unknown command: %s\n\n", command)
-		printUsage()
-		os.Exit(1)
+		fmt.Fprintf(os.Stderr, "Unknown command: %s\n\n", command)
+		printUsage(os.Stderr)
+		return 1
 	}
 
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		return 1
 	}
+
+	return 0
 }
 
-func printUsage() {
-	fmt.Println("tinkerdown - Interactive documentation made easy")
-	fmt.Println()
-	fmt.Println("Usage:")
-	fmt.Println("  tinkerdown serve [directory]     Start development server")
-	fmt.Println("  tinkerdown build <file|dir>      Build standalone executable")
-	fmt.Println("  tinkerdown validate [directory]  Validate markdown files")
-	fmt.Println("  tinkerdown fix [directory]       Auto-fix common issues")
-	fmt.Println("  tinkerdown blocks [directory]    Inspect code blocks")
-	fmt.Println("  tinkerdown new <name>            Create new app from template")
-	fmt.Println("  tinkerdown cli <path> <action> <source>  CLI mode for CRUD operations")
-	fmt.Println("  tinkerdown version               Show version")
-	fmt.Println("  tinkerdown help                  Show this help")
-	fmt.Println()
-	fmt.Println("Examples:")
-	fmt.Println("  tinkerdown serve                 # Serve current directory")
-	fmt.Println("  tinkerdown serve ./tutorials     # Serve tutorials directory")
-	fmt.Println("  tinkerdown serve --watch         # Serve with live reload")
-	fmt.Println("  tinkerdown build app.md -o myapp # Build single-file app")
-	fmt.Println("  tinkerdown build ./docs -o docs  # Build directory into binary")
-	fmt.Println("  tinkerdown build app.md --target=linux/amd64  # Cross-compile")
-	fmt.Println("  tinkerdown validate              # Validate current directory")
-	fmt.Println("  tinkerdown validate examples/    # Validate specific directory")
-	fmt.Println("  tinkerdown fix                   # Auto-fix issues in current directory")
-	fmt.Println("  tinkerdown fix --dry-run         # Preview fixes without applying")
-	fmt.Println("  tinkerdown blocks examples/      # Inspect blocks in examples/")
-	fmt.Println("  tinkerdown blocks . --verbose    # Show detailed block info")
-	fmt.Println("  tinkerdown new my-app            # Create new app (basic template)")
-	fmt.Println("  tinkerdown new my-app --template=todo  # Use todo template")
-	fmt.Println("  tinkerdown cli app.md list tasks # List items from source")
-	fmt.Println("  tinkerdown cli . add tasks --text=\"New task\"  # Add item")
-	fmt.Println()
-	fmt.Println("Documentation: https://github.com/livetemplate/tinkerdown")
+func printUsage(w io.Writer) {
+	fmt.Fprintln(w, "tinkerdown - Interactive documentation made easy")
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "Usage:")
+	fmt.Fprintln(w, "  tinkerdown serve [directory]     Start development server")
+	fmt.Fprintln(w, "  tinkerdown build <file|dir>      Build standalone executable")
+	fmt.Fprintln(w, "  tinkerdown validate [directory]  Validate markdown files")
+	fmt.Fprintln(w, "  tinkerdown fix [directory]       Auto-fix common issues")
+	fmt.Fprintln(w, "  tinkerdown blocks [directory]    Inspect code blocks")
+	fmt.Fprintln(w, "  tinkerdown new <name>            Create new app from template")
+	fmt.Fprintln(w, "  tinkerdown cli <path> <action> <source>  CLI mode for CRUD operations")
+	fmt.Fprintln(w, "  tinkerdown version               Show version")
+	fmt.Fprintln(w, "  tinkerdown help                  Show this help")
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "Examples:")
+	fmt.Fprintln(w, "  tinkerdown serve                 # Serve current directory")
+	fmt.Fprintln(w, "  tinkerdown serve ./tutorials     # Serve tutorials directory")
+	fmt.Fprintln(w, "  tinkerdown serve --watch         # Serve with live reload")
+	fmt.Fprintln(w, "  tinkerdown build app.md -o myapp # Build single-file app")
+	fmt.Fprintln(w, "  tinkerdown build ./docs -o docs  # Build directory into binary")
+	fmt.Fprintln(w, "  tinkerdown build app.md --target=linux/amd64  # Cross-compile")
+	fmt.Fprintln(w, "  tinkerdown validate              # Validate current directory")
+	fmt.Fprintln(w, "  tinkerdown validate examples/    # Validate specific directory")
+	fmt.Fprintln(w, "  tinkerdown fix                   # Auto-fix issues in current directory")
+	fmt.Fprintln(w, "  tinkerdown fix --dry-run         # Preview fixes without applying")
+	fmt.Fprintln(w, "  tinkerdown blocks examples/      # Inspect blocks in examples/")
+	fmt.Fprintln(w, "  tinkerdown blocks . --verbose    # Show detailed block info")
+	fmt.Fprintln(w, "  tinkerdown new my-app            # Create new app (basic template)")
+	fmt.Fprintln(w, "  tinkerdown new my-app --template=todo  # Use todo template")
+	fmt.Fprintln(w, "  tinkerdown cli app.md list tasks # List items from source")
+	fmt.Fprintln(w, "  tinkerdown cli . add tasks --text=\"New task\"  # Add item")
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "Documentation: https://github.com/livetemplate/tinkerdown")
 }

@@ -10,6 +10,7 @@ require (
 	github.com/lib/pq v1.10.9
 	github.com/livetemplate/livetemplate v0.8.4
 	github.com/livetemplate/lvt/components v0.0.0-20260228153051-c00a45caae95
+	github.com/rogpeppe/go-internal v1.14.1
 	github.com/stretchr/testify v1.11.0
 	github.com/tetratelabs/wazero v1.11.0
 	github.com/wailsapp/wails/v2 v2.11.0

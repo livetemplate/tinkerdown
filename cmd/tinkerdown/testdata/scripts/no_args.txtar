@@ -1,0 +1,3 @@
+# Test that running tinkerdown with no arguments prints usage to stderr and exits 1.
+! exec tinkerdown
+stderr 'Usage:'

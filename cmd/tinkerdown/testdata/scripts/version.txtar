@@ -1,0 +1,3 @@
+# Test that the version command outputs a version string.
+exec tinkerdown version
+stdout 'tinkerdown version'

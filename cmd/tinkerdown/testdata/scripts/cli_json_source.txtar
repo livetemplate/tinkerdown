@@ -1,0 +1,16 @@
+# Test listing items from a JSON file source.
+exec tinkerdown cli . list items
+stdout 'alice'
+stdout 'bob'
+
+-- tinkerdown.yaml --
+sources:
+  items:
+    type: json
+    file: data.json
+
+-- data.json --
+[
+  {"id": 1, "name": "alice"},
+  {"id": 2, "name": "bob"}
+]

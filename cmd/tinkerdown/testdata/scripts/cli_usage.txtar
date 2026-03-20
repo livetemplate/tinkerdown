@@ -1,0 +1,13 @@
+# Test that cli command with too few args prints usage error.
+
+# No args at all
+! exec tinkerdown cli
+stderr 'usage: tinkerdown cli'
+
+# Only one arg
+! exec tinkerdown cli .
+stderr 'usage: tinkerdown cli'
+
+# Only two args
+! exec tinkerdown cli . list
+stderr 'usage: tinkerdown cli'

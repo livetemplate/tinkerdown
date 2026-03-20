@@ -1,0 +1,9 @@
+# Test CLI error for unknown action.
+! exec tinkerdown cli . badaction tasks
+stderr 'unknown action: badaction'
+
+-- tinkerdown.yaml --
+sources:
+  tasks:
+    type: sqlite
+    table: tasks

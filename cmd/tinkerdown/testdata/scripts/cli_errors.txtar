@@ -1,0 +1,13 @@
+# Test CLI error cases: bad path, no sources, source not found, unknown action.
+
+# Path doesn't exist
+! exec tinkerdown cli /nonexistent/path list tasks
+stderr 'path does not exist'
+
+# No sources defined in config (empty config)
+! exec tinkerdown cli . list tasks
+stderr 'no sources defined in config'
+
+-- tinkerdown.yaml --
+server:
+  port: 8080

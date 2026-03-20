@@ -1,0 +1,9 @@
+# Test serve command error cases.
+
+# Nonexistent directory
+! exec tinkerdown serve /nonexistent/dir
+stderr 'directory does not exist'
+
+# Invalid port (use . as directory to ensure we reach port validation)
+! exec tinkerdown serve . --port abc
+stderr 'invalid port'

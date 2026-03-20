@@ -1,0 +1,14 @@
+# Test that blocks --verbose flag shows detailed output.
+exec tinkerdown blocks . --verbose
+stdout 'Inspecting blocks in:'
+stdout 'Type: server'
+stdout 'Language: go'
+
+-- index.md --
+# Test Page
+
+```go server
+type State struct {
+    Count int
+}
+```

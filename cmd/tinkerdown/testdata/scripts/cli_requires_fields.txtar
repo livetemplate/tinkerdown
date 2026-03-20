@@ -1,0 +1,10 @@
+# Test that add without field flags returns an error.
+! exec tinkerdown cli . add tasks
+stderr 'no fields provided'
+
+-- tinkerdown.yaml --
+sources:
+  tasks:
+    type: sqlite
+    table: tasks
+    readonly: false
