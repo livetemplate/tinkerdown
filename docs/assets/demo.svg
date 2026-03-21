@@ -274,26 +274,26 @@
         <line x1="536" y1="128" x2="916" y2="128" stroke="#eee" stroke-width="1"/>
         <text x="552" y="150" fill="#333" font-size="12" font-family="system-ui, sans-serif">Build landing page</text>
         <text x="720" y="150" fill="#666" font-size="12" font-family="system-ui, sans-serif">In Progress</text>
-        <rect x="836" y="137" width="36" height="20" rx="4" fill="#fff" stroke="#28a745" stroke-width="1"/>
-        <text x="839" y="151" fill="#28a745" font-size="9" font-family="system-ui, sans-serif">Done</text>
-        <rect x="876" y="137" width="36" height="20" rx="4" fill="#fff" stroke="#dc3545" stroke-width="1"/>
-        <text x="880" y="151" fill="#dc3545" font-size="9" font-family="system-ui, sans-serif">Del</text>
+        <rect x="836" y="137" width="36" height="20" rx="4" fill="#fff" stroke="#333" stroke-width="1"/>
+        <text x="839" y="151" fill="#333" font-size="9" font-family="system-ui, sans-serif">Done</text>
+        <rect x="876" y="137" width="36" height="20" rx="4" fill="#fff" stroke="#333" stroke-width="1"/>
+        <text x="880" y="151" fill="#333" font-size="9" font-family="system-ui, sans-serif">Del</text>
 
         <line x1="536" y1="164" x2="916" y2="164" stroke="#eee" stroke-width="1"/>
         <text x="552" y="184" fill="#333" font-size="12" font-family="system-ui, sans-serif">Write API docs</text>
         <text x="720" y="184" fill="#666" font-size="12" font-family="system-ui, sans-serif">Done</text>
-        <rect x="836" y="171" width="36" height="20" rx="4" fill="#fff" stroke="#28a745" stroke-width="1"/>
-        <text x="839" y="185" fill="#28a745" font-size="9" font-family="system-ui, sans-serif">Done</text>
-        <rect x="876" y="171" width="36" height="20" rx="4" fill="#fff" stroke="#dc3545" stroke-width="1"/>
-        <text x="880" y="185" fill="#dc3545" font-size="9" font-family="system-ui, sans-serif">Del</text>
+        <rect x="836" y="171" width="36" height="20" rx="4" fill="#fff" stroke="#333" stroke-width="1"/>
+        <text x="839" y="185" fill="#333" font-size="9" font-family="system-ui, sans-serif">Done</text>
+        <rect x="876" y="171" width="36" height="20" rx="4" fill="#fff" stroke="#333" stroke-width="1"/>
+        <text x="880" y="185" fill="#333" font-size="9" font-family="system-ui, sans-serif">Del</text>
 
         <line x1="536" y1="198" x2="916" y2="198" stroke="#eee" stroke-width="1"/>
         <text x="552" y="218" fill="#333" font-size="12" font-family="system-ui, sans-serif">Fix auth bug</text>
         <text x="720" y="218" fill="#666" font-size="12" font-family="system-ui, sans-serif">New</text>
-        <rect x="836" y="205" width="36" height="20" rx="4" fill="#fff" stroke="#28a745" stroke-width="1"/>
-        <text x="839" y="219" fill="#28a745" font-size="9" font-family="system-ui, sans-serif">Done</text>
-        <rect x="876" y="205" width="36" height="20" rx="4" fill="#fff" stroke="#dc3545" stroke-width="1"/>
-        <text x="880" y="219" fill="#dc3545" font-size="9" font-family="system-ui, sans-serif">Del</text>
+        <rect x="836" y="205" width="36" height="20" rx="4" fill="#fff" stroke="#333" stroke-width="1"/>
+        <text x="839" y="219" fill="#333" font-size="9" font-family="system-ui, sans-serif">Done</text>
+        <rect x="876" y="205" width="36" height="20" rx="4" fill="#fff" stroke="#333" stroke-width="1"/>
+        <text x="880" y="219" fill="#333" font-size="9" font-family="system-ui, sans-serif">Del</text>
 
         <line x1="536" y1="232" x2="916" y2="232" stroke="#eee" stroke-width="1"/>
       </g>
