@@ -1,12 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540" font-family="'SF Mono', 'Cascadia Code', 'Fira Code', Consolas, monospace" font-size="13">
   <style>
-    @keyframes cursor-blink { 0%,50%{opacity:1}51%,100%{opacity:0} }
-    @keyframes typing1 { 0%{width:0} 100%{width:100%} }
-    @keyframes fade-in { 0%{opacity:0} 100%{opacity:1} }
-    @keyframes slide-up { 0%{opacity:0;transform:translateY(12px)} 100%{opacity:1;transform:translateY(0)} }
-    @keyframes check-mark { 0%{stroke-dashoffset:20} 100%{stroke-dashoffset:0} }
-    @keyframes progress { 0%{width:0} 100%{width:170px} }
-
     .terminal-bg { fill: #1a1b26; }
     .browser-bg { fill: #ffffff; }
     .title-bar { fill: #2a2b3d; }
@@ -14,33 +7,6 @@
     .dot-red { fill: #ff5f57; }
     .dot-yellow { fill: #febc2e; }
     .dot-green { fill: #28c840; }
-
-    .line { opacity: 0; }
-    .line1 { animation: slide-up 0.3s ease forwards; animation-delay: 0.5s; }
-    .line2 { animation: slide-up 0.3s ease forwards; animation-delay: 0.8s; }
-    .line3 { animation: slide-up 0.3s ease forwards; animation-delay: 1.1s; }
-    .line4 { animation: slide-up 0.3s ease forwards; animation-delay: 1.4s; }
-    .line5 { animation: slide-up 0.3s ease forwards; animation-delay: 1.7s; }
-    .line6 { animation: slide-up 0.3s ease forwards; animation-delay: 2.0s; }
-    .line7 { animation: slide-up 0.3s ease forwards; animation-delay: 2.3s; }
-    .line8 { animation: slide-up 0.3s ease forwards; animation-delay: 2.6s; }
-    .line9 { animation: slide-up 0.3s ease forwards; animation-delay: 2.9s; }
-    .line10 { animation: slide-up 0.3s ease forwards; animation-delay: 3.2s; }
-    .line11 { animation: slide-up 0.3s ease forwards; animation-delay: 3.5s; }
-    .line12 { animation: slide-up 0.3s ease forwards; animation-delay: 3.8s; }
-    .line13 { animation: slide-up 0.3s ease forwards; animation-delay: 4.1s; }
-
-    .browser-content { opacity: 0; }
-    .browser-step1 { animation: fade-in 0.6s ease forwards; animation-delay: 4.8s; }
-    .browser-step2 { animation: fade-in 0.5s ease forwards; animation-delay: 5.4s; }
-    .browser-step3 { animation: fade-in 0.5s ease forwards; animation-delay: 6.0s; }
-    .browser-step4 { animation: fade-in 0.5s ease forwards; animation-delay: 6.5s; }
-    .browser-step5 { animation: fade-in 0.5s ease forwards; animation-delay: 7.0s; }
-
-    .arrow-anim { opacity: 0; animation: fade-in 0.4s ease forwards; animation-delay: 4.4s; }
-
-    .serve-line { opacity: 0; animation: slide-up 0.3s ease forwards; animation-delay: 4.2s; }
-
     .keyword { fill: #bb9af7; }
     .string { fill: #9ece6a; }
     .comment { fill: #565f89; }
@@ -51,6 +17,143 @@
     .text-bright { fill: #c0caf5; }
     .prompt { fill: #7dcfff; }
     .success { fill: #9ece6a; }
+
+    /* Looping slide-up animations — 12s cycle */
+    /* Pattern: hidden → slide-up at T → hold → fade out → hidden */
+
+    @keyframes su1 {
+      0%,4.2%{opacity:0;transform:translateY(12px)}
+      6.7%{opacity:1;transform:translateY(0)}
+      70.8%{opacity:1;transform:translateY(0)}
+      79.2%{opacity:0;transform:translateY(0)}
+      100%{opacity:0;transform:translateY(12px)}
+    }
+    @keyframes su2 {
+      0%,6.7%{opacity:0;transform:translateY(12px)}
+      9.2%{opacity:1;transform:translateY(0)}
+      70.8%{opacity:1;transform:translateY(0)}
+      79.2%{opacity:0;transform:translateY(0)}
+      100%{opacity:0;transform:translateY(12px)}
+    }
+    @keyframes su3 {
+      0%,9.2%{opacity:0;transform:translateY(12px)}
+      11.7%{opacity:1;transform:translateY(0)}
+      70.8%{opacity:1;transform:translateY(0)}
+      79.2%{opacity:0;transform:translateY(0)}
+      100%{opacity:0;transform:translateY(12px)}
+    }
+    @keyframes su4 {
+      0%,11.7%{opacity:0;transform:translateY(12px)}
+      14.2%{opacity:1;transform:translateY(0)}
+      70.8%{opacity:1;transform:translateY(0)}
+      79.2%{opacity:0;transform:translateY(0)}
+      100%{opacity:0;transform:translateY(12px)}
+    }
+    @keyframes su5 {
+      0%,14.2%{opacity:0;transform:translateY(12px)}
+      16.7%{opacity:1;transform:translateY(0)}
+      70.8%{opacity:1;transform:translateY(0)}
+      79.2%{opacity:0;transform:translateY(0)}
+      100%{opacity:0;transform:translateY(12px)}
+    }
+    @keyframes su6 {
+      0%,16.7%{opacity:0;transform:translateY(12px)}
+      19.2%{opacity:1;transform:translateY(0)}
+      70.8%{opacity:1;transform:translateY(0)}
+      79.2%{opacity:0;transform:translateY(0)}
+      100%{opacity:0;transform:translateY(12px)}
+    }
+    @keyframes su7 {
+      0%,19.2%{opacity:0;transform:translateY(12px)}
+      21.7%{opacity:1;transform:translateY(0)}
+      70.8%{opacity:1;transform:translateY(0)}
+      79.2%{opacity:0;transform:translateY(0)}
+      100%{opacity:0;transform:translateY(12px)}
+    }
+    @keyframes su8 {
+      0%,21.7%{opacity:0;transform:translateY(12px)}
+      24.2%{opacity:1;transform:translateY(0)}
+      70.8%{opacity:1;transform:translateY(0)}
+      79.2%{opacity:0;transform:translateY(0)}
+      100%{opacity:0;transform:translateY(12px)}
+    }
+    @keyframes su9 {
+      0%,24.2%{opacity:0;transform:translateY(12px)}
+      26.7%{opacity:1;transform:translateY(0)}
+      70.8%{opacity:1;transform:translateY(0)}
+      79.2%{opacity:0;transform:translateY(0)}
+      100%{opacity:0;transform:translateY(12px)}
+    }
+    @keyframes su10 {
+      0%,26.7%{opacity:0;transform:translateY(12px)}
+      29.2%{opacity:1;transform:translateY(0)}
+      70.8%{opacity:1;transform:translateY(0)}
+      79.2%{opacity:0;transform:translateY(0)}
+      100%{opacity:0;transform:translateY(12px)}
+    }
+    @keyframes su11 {
+      0%,29.2%{opacity:0;transform:translateY(12px)}
+      31.7%{opacity:1;transform:translateY(0)}
+      70.8%{opacity:1;transform:translateY(0)}
+      79.2%{opacity:0;transform:translateY(0)}
+      100%{opacity:0;transform:translateY(12px)}
+    }
+    @keyframes su12 {
+      0%,31.7%{opacity:0;transform:translateY(12px)}
+      34.2%{opacity:1;transform:translateY(0)}
+      70.8%{opacity:1;transform:translateY(0)}
+      79.2%{opacity:0;transform:translateY(0)}
+      100%{opacity:0;transform:translateY(12px)}
+    }
+    @keyframes su13 {
+      0%,34.2%{opacity:0;transform:translateY(12px)}
+      36.7%{opacity:1;transform:translateY(0)}
+      70.8%{opacity:1;transform:translateY(0)}
+      79.2%{opacity:0;transform:translateY(0)}
+      100%{opacity:0;transform:translateY(12px)}
+    }
+    @keyframes su-serve {
+      0%,35%{opacity:0;transform:translateY(12px)}
+      37.5%{opacity:1;transform:translateY(0)}
+      70.8%{opacity:1;transform:translateY(0)}
+      79.2%{opacity:0;transform:translateY(0)}
+      100%{opacity:0;transform:translateY(12px)}
+    }
+
+    /* Looping fade-in animations */
+    @keyframes fi-arrow {
+      0%,36.7%{opacity:0}40%{opacity:1}70.8%{opacity:1}79.2%{opacity:0}100%{opacity:0}
+    }
+    @keyframes fi-b1 {
+      0%,40%{opacity:0}45%{opacity:1}70.8%{opacity:1}79.2%{opacity:0}100%{opacity:0}
+    }
+    @keyframes fi-b2 {
+      0%,45%{opacity:0}49.2%{opacity:1}70.8%{opacity:1}79.2%{opacity:0}100%{opacity:0}
+    }
+    @keyframes fi-b3 {
+      0%,50%{opacity:0}54.2%{opacity:1}70.8%{opacity:1}79.2%{opacity:0}100%{opacity:0}
+    }
+
+    .line { opacity: 0; }
+    .line1 { animation: su1 12s ease infinite; }
+    .line2 { animation: su2 12s ease infinite; }
+    .line3 { animation: su3 12s ease infinite; }
+    .line4 { animation: su4 12s ease infinite; }
+    .line5 { animation: su5 12s ease infinite; }
+    .line6 { animation: su6 12s ease infinite; }
+    .line7 { animation: su7 12s ease infinite; }
+    .line8 { animation: su8 12s ease infinite; }
+    .line9 { animation: su9 12s ease infinite; }
+    .line10 { animation: su10 12s ease infinite; }
+    .line11 { animation: su11 12s ease infinite; }
+    .line12 { animation: su12 12s ease infinite; }
+    .line13 { animation: su13 12s ease infinite; }
+    .serve-line { animation: su-serve 12s ease infinite; opacity: 0; }
+    .arrow-anim { animation: fi-arrow 12s ease infinite; opacity: 0; }
+    .browser-content { opacity: 0; }
+    .browser-step1 { animation: fi-b1 12s ease infinite; }
+    .browser-step2 { animation: fi-b2 12s ease infinite; }
+    .browser-step3 { animation: fi-b3 12s ease infinite; }
   </style>
 
   <defs>
@@ -170,49 +273,29 @@
       <g class="browser-content browser-step3">
         <line x1="536" y1="128" x2="916" y2="128" stroke="#eee" stroke-width="1"/>
         <text x="552" y="150" fill="#333" font-size="12" font-family="system-ui, sans-serif">Build landing page</text>
-        <rect x="714" y="138" width="60" height="20" rx="10" fill="#fff3cd"/>
-        <text x="724" y="152" fill="#856404" font-size="10" font-family="system-ui, sans-serif">In Progress</text>
-        <rect x="836" y="137" width="36" height="20" rx="4" fill="#d4edda" stroke="#28a745" stroke-width="1"/>
+        <text x="720" y="150" fill="#666" font-size="12" font-family="system-ui, sans-serif">In Progress</text>
+        <rect x="836" y="137" width="36" height="20" rx="4" fill="#fff" stroke="#28a745" stroke-width="1"/>
         <text x="839" y="151" fill="#28a745" font-size="9" font-family="system-ui, sans-serif">Done</text>
-        <rect x="876" y="137" width="36" height="20" rx="4" fill="#f8d7da" stroke="#dc3545" stroke-width="1"/>
+        <rect x="876" y="137" width="36" height="20" rx="4" fill="#fff" stroke="#dc3545" stroke-width="1"/>
         <text x="880" y="151" fill="#dc3545" font-size="9" font-family="system-ui, sans-serif">Del</text>
 
         <line x1="536" y1="164" x2="916" y2="164" stroke="#eee" stroke-width="1"/>
         <text x="552" y="184" fill="#333" font-size="12" font-family="system-ui, sans-serif">Write API docs</text>
-        <rect x="714" y="172" width="36" height="20" rx="10" fill="#d4edda"/>
-        <text x="722" y="186" fill="#155724" font-size="10" font-family="system-ui, sans-serif">Done</text>
-        <rect x="836" y="171" width="36" height="20" rx="4" fill="#d4edda" stroke="#28a745" stroke-width="1"/>
+        <text x="720" y="184" fill="#666" font-size="12" font-family="system-ui, sans-serif">Done</text>
+        <rect x="836" y="171" width="36" height="20" rx="4" fill="#fff" stroke="#28a745" stroke-width="1"/>
         <text x="839" y="185" fill="#28a745" font-size="9" font-family="system-ui, sans-serif">Done</text>
-        <rect x="876" y="171" width="36" height="20" rx="4" fill="#f8d7da" stroke="#dc3545" stroke-width="1"/>
+        <rect x="876" y="171" width="36" height="20" rx="4" fill="#fff" stroke="#dc3545" stroke-width="1"/>
         <text x="880" y="185" fill="#dc3545" font-size="9" font-family="system-ui, sans-serif">Del</text>
 
         <line x1="536" y1="198" x2="916" y2="198" stroke="#eee" stroke-width="1"/>
         <text x="552" y="218" fill="#333" font-size="12" font-family="system-ui, sans-serif">Fix auth bug</text>
-        <rect x="714" y="206" width="28" height="20" rx="10" fill="#cce5ff"/>
-        <text x="720" y="220" fill="#004085" font-size="10" font-family="system-ui, sans-serif">New</text>
-        <rect x="836" y="205" width="36" height="20" rx="4" fill="#d4edda" stroke="#28a745" stroke-width="1"/>
+        <text x="720" y="218" fill="#666" font-size="12" font-family="system-ui, sans-serif">New</text>
+        <rect x="836" y="205" width="36" height="20" rx="4" fill="#fff" stroke="#28a745" stroke-width="1"/>
         <text x="839" y="219" fill="#28a745" font-size="9" font-family="system-ui, sans-serif">Done</text>
-        <rect x="876" y="205" width="36" height="20" rx="4" fill="#f8d7da" stroke="#dc3545" stroke-width="1"/>
+        <rect x="876" y="205" width="36" height="20" rx="4" fill="#fff" stroke="#dc3545" stroke-width="1"/>
         <text x="880" y="219" fill="#dc3545" font-size="9" font-family="system-ui, sans-serif">Del</text>
-      </g>
 
-      <!-- Checkbox interaction animation -->
-      <g class="browser-content browser-step4">
         <line x1="536" y1="232" x2="916" y2="232" stroke="#eee" stroke-width="1"/>
-
-        <!-- Simulated click highlight on "Done" button of row 3 -->
-        <rect x="836" y="205" width="36" height="20" rx="4" fill="#28a745" opacity="0.3">
-          <!-- begin synced to browser-step4 delay (6.5s) + fade-in (0.5s) -->
-          <animate attributeName="opacity" values="0.3;0;0" dur="2s" begin="7s" fill="freeze"/>
-        </rect>
-      </g>
-
-      <!-- Live update indicator -->
-      <g class="browser-content browser-step5">
-        <circle cx="546" cy="260" r="5" fill="#28a745">
-          <animate attributeName="opacity" values="1;0.4;1" dur="2s" repeatCount="indefinite"/>
-        </circle>
-        <text x="558" y="264" fill="#28a745" font-size="11" font-family="system-ui, sans-serif">Live  &#8226;  Connected via WebSocket</text>
       </g>
     </g>
   </g>
