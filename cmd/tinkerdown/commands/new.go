@@ -10,23 +10,38 @@ import (
 	"text/template"
 )
 
-//go:embed templates/*
+//go:embed all:templates
 var templatesFS embed.FS
 
-var validTemplates = []string{
-	"basic",
-	"tutorial",
-	"todo",
-	"dashboard",
-	"form",
-	"api-explorer",
-	"wasm-source",
+type templateInfo struct {
+	Name        string
+	Description string
+	Category    string
+}
+
+var templateCatalog = []templateInfo{
+	// Getting Started
+	{"basic", "Kubernetes pods dashboard (exec source)", "Getting Started"},
+	{"tutorial", "Interactive LiveTemplate tutorial (server state)", "Getting Started"},
+	// Data Sources
+	{"todo", "SQLite task manager with CRUD operations", "Data Sources"},
+	{"csv-inventory", "Product inventory from CSV file", "Data Sources"},
+	{"json-dashboard", "Metrics dashboard from JSON with computed expressions", "Data Sources"},
+	{"markdown-notes", "Notes manager with markdown table storage", "Data Sources"},
+	{"graphql-explorer", "Countries browser via GraphQL API", "Data Sources"},
+	// Patterns
+	{"dashboard", "Multi-source dashboard (REST API + exec)", "Patterns"},
+	{"form", "Contact form with SQLite persistence", "Patterns"},
+	{"api-explorer", "GitHub repository search (REST API)", "Patterns"},
+	{"cli-wrapper", "Web UI wrapper for CLI tools (exec)", "Patterns"},
+	// Advanced
+	{"wasm-source", "Custom TinyGo WASM data source", "Advanced"},
 }
 
 // NewCommand implements the new command.
 func NewCommand(args []string, templateName string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("project name required\n\nUsage: tinkerdown new <project-name> [--template=<name>]\n\nAvailable templates: %s", strings.Join(validTemplates, ", "))
+		return fmt.Errorf("project name required\n\nUsage: tinkerdown new <project-name> [--template=<name>]\n\nAvailable templates: %s\n\nRun 'tinkerdown new --list' to see all templates with descriptions.", strings.Join(templateNames(), ", "))
 	}
 
 	projectName := args[0]
@@ -46,7 +61,7 @@ func NewCommand(args []string, templateName string) error {
 
 	// Validate template name
 	if !isValidTemplate(templateName) {
-		return fmt.Errorf("unknown template '%s'\n\nAvailable templates: %s", templateName, strings.Join(validTemplates, ", "))
+		return fmt.Errorf("unknown template '%s'\n\nAvailable templates: %s\n\nRun 'tinkerdown new --list' to see all templates with descriptions.", templateName, strings.Join(templateNames(), ", "))
 	}
 
 	// Check if directory already exists
@@ -151,13 +166,49 @@ func NewCommand(args []string, templateName string) error {
 	return nil
 }
 
+// ListTemplates prints all available templates grouped by category.
+func ListTemplates() {
+	fmt.Println("Available templates:")
+
+	// Collect categories in order of first appearance.
+	var categories []string
+	seen := map[string]bool{}
+	for _, t := range templateCatalog {
+		if !seen[t.Category] {
+			seen[t.Category] = true
+			categories = append(categories, t.Category)
+		}
+	}
+
+	for _, cat := range categories {
+		fmt.Printf("\n  %s:\n", cat)
+		for _, t := range templateCatalog {
+			if t.Category == cat {
+				fmt.Printf("    %-20s %s\n", t.Name, t.Description)
+			}
+		}
+	}
+
+	fmt.Println()
+	fmt.Println("Usage: tinkerdown new <project-name> --template=<name>")
+	fmt.Println("Default template: basic")
+}
+
 func isValidTemplate(name string) bool {
-	for _, t := range validTemplates {
-		if t == name {
+	for _, t := range templateCatalog {
+		if t.Name == name {
 			return true
 		}
 	}
 	return false
+}
+
+func templateNames() []string {
+	names := make([]string, len(templateCatalog))
+	for i, t := range templateCatalog {
+		names[i] = t.Name
+	}
+	return names
 }
 
 func printProjectStructure(projectName string) {

@@ -1,12 +1,12 @@
-# [[.Title]]
+# <<.Title>>
 
 A CLI wrapper built with tinkerdown.
 
 ## Quick Start
 
 ```bash
-cd [[.ProjectName]]
-tinkerdown serve
+cd <<.ProjectName>>
+tinkerdown serve --allow-exec
 ```
 
 Then open http://localhost:8080
@@ -21,7 +21,7 @@ Then open http://localhost:8080
 ## Project Structure
 
 ```
-[[.ProjectName]]/
+<<.ProjectName>>/
 ├── index.md      # CLI wrapper interface
 └── README.md     # This file
 ```

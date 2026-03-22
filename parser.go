@@ -30,6 +30,7 @@ type SourceConfig struct {
 	DB          string            `yaml:"db,omitempty"`           // For sqlite: database file path
 	Table       string            `yaml:"table,omitempty"`        // For sqlite: table name
 	Path        string            `yaml:"path,omitempty"`         // For wasm: path to .wasm file
+	QueryFile   string            `yaml:"query_file,omitempty"`   // For graphql: path to .graphql file
 	Headers     map[string]string `yaml:"headers,omitempty"`      // For rest: HTTP headers (env vars expanded)
 	QueryParams map[string]string `yaml:"query_params,omitempty"` // For rest: URL query parameters
 	ResultPath  string            `yaml:"result_path,omitempty"`  // For rest: dot-path to extract array (e.g., "data.items")
