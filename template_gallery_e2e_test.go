@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -61,6 +62,7 @@ type templateE2EContext struct {
 	projectDir  string
 	ts          *httptest.Server
 	chromeCtx   *DockerChromeContext
+	mu          sync.Mutex
 	consoleLogs []string
 	url         string
 }
@@ -82,12 +84,14 @@ func setupTemplateE2E(t *testing.T, templateName string) (*templateE2EContext, f
 		url:        ConvertURLForDockerChrome(ts.URL),
 	}
 
-	// Capture console logs for debugging
+	// Capture console logs for debugging (guarded by mutex — callback fires on chromedp goroutine)
 	chromedp.ListenTarget(chromeCtx.Context, func(ev interface{}) {
 		if ev, ok := ev.(*runtime.EventConsoleAPICalled); ok {
+			ctx.mu.Lock()
 			for _, arg := range ev.Args {
 				ctx.consoleLogs = append(ctx.consoleLogs, fmt.Sprintf("[Console] %s", arg.Value))
 			}
+			ctx.mu.Unlock()
 		}
 	})
 
@@ -109,7 +113,9 @@ func (ctx *templateE2EContext) dumpDebugInfo() {
 		htmlContent = htmlContent[:maxLen]
 	}
 	ctx.t.Logf("HTML:\n%s", htmlContent)
+	ctx.mu.Lock()
 	ctx.t.Logf("Console logs: %v", ctx.consoleLogs)
+	ctx.mu.Unlock()
 }
 
 // TestTemplateCSVInventoryE2E verifies the csv-inventory template renders a product table.
@@ -255,30 +261,15 @@ func TestTemplateMarkdownNotesE2E(t *testing.T) {
 
 	bctx := ctx.chromeCtx.Context
 
-	// Navigate and wait for rendering — markdown notes uses Go templates (not lvt-columns),
-	// so the table is inside the interactive block rendered by WebSocket
+	// Navigate and wait for table to render via WebSocket
 	err := chromedp.Run(bctx,
 		chromedp.Navigate(ctx.url+"/"),
 		chromedp.WaitVisible(".tinkerdown-interactive-block", chromedp.ByQuery),
-		chromedp.Sleep(5*time.Second),
+		chromedp.WaitVisible(".tinkerdown-interactive-block table", chromedp.ByQuery),
 	)
 	if err != nil {
 		ctx.dumpDebugInfo()
-		t.Fatalf("Page did not load: %v", err)
-	}
-
-	// Check for table or rendered content
-	var hasTable bool
-	err = chromedp.Run(bctx,
-		chromedp.Evaluate(`document.querySelector('.tinkerdown-interactive-block table') !== null`, &hasTable),
-	)
-	if err != nil {
-		t.Fatalf("Failed to check for table: %v", err)
-	}
-
-	if !hasTable {
-		ctx.dumpDebugInfo()
-		t.Fatal("Notes table was not rendered from markdown source")
+		t.Fatalf("Notes table was not rendered from markdown source: %v", err)
 	}
 	t.Log("Notes table rendered from markdown file")
 
@@ -359,11 +350,11 @@ func TestTemplateCLIWrapperE2E(t *testing.T) {
 
 	bctx := ctx.chromeCtx.Context
 
-	// Navigate and wait for interactive block to render
+	// Navigate and wait for exec toolbar to render
 	err := chromedp.Run(bctx,
 		chromedp.Navigate(ctx.url+"/"),
 		chromedp.WaitVisible(".tinkerdown-interactive-block", chromedp.ByQuery),
-		chromedp.Sleep(3*time.Second),
+		chromedp.WaitVisible(".exec-toolbar-run-btn", chromedp.ByQuery),
 	)
 	if err != nil {
 		ctx.dumpDebugInfo()
@@ -371,7 +362,6 @@ func TestTemplateCLIWrapperE2E(t *testing.T) {
 	}
 	t.Log("Interactive block rendered")
 
-	// Verify the title was substituted (not literal <<.Title>> or [[.Title]])
 	var pageText string
 	err = chromedp.Run(bctx,
 		chromedp.Evaluate(`document.body.innerText`, &pageText),
@@ -399,31 +389,14 @@ func TestTemplateCLIWrapperE2E(t *testing.T) {
 	}
 	t.Log("Exec toolbar Run button present")
 
-	// Click Run and verify the command output appears inside the interactive block
+	// Click Run and wait for the output to appear in the interactive block
 	err = chromedp.Run(bctx,
 		chromedp.Click(".exec-toolbar-run-btn", chromedp.ByQuery),
-		chromedp.Sleep(3*time.Second),
+		waitForDOM(`document.querySelector('.tinkerdown-interactive-block').innerHTML.includes('Hello, World!')`, 10*time.Second),
 	)
 	if err != nil {
-		t.Fatalf("Failed to click Run: %v", err)
-	}
-
-	// Check that the output text appears inside the interactive block's rendered content
-	var blockHTML string
-	err = chromedp.Run(bctx,
-		chromedp.Evaluate(`
-			(() => {
-				const block = document.querySelector('.tinkerdown-interactive-block');
-				return block ? block.innerHTML : '';
-			})()
-		`, &blockHTML),
-	)
-	if err != nil {
-		t.Fatalf("Failed to get block HTML: %v", err)
-	}
-	if !strings.Contains(blockHTML, "Hello, World!") {
 		ctx.dumpDebugInfo()
-		t.Fatalf("Expected 'Hello, World!' in interactive block output after Run, got: %s", blockHTML[:min(500, len(blockHTML))])
+		t.Fatalf("Expected 'Hello, World!' in interactive block output after Run: %v", err)
 	}
 	t.Log("Command output rendered in block after Run")
 

@@ -19,29 +19,34 @@ type templateInfo struct {
 	Category    string
 }
 
+const (
+	categoryGettingStarted = "Getting Started"
+	categoryDataSources    = "Data Sources"
+	categoryPatterns       = "Patterns"
+	categoryAdvanced       = "Advanced"
+)
+
 var templateCatalog = []templateInfo{
-	// Getting Started
-	{"basic", "Kubernetes pods dashboard (exec source)", "Getting Started"},
-	{"tutorial", "Interactive LiveTemplate tutorial (server state)", "Getting Started"},
-	// Data Sources
-	{"todo", "SQLite task manager with CRUD operations", "Data Sources"},
-	{"csv-inventory", "Product inventory from CSV file", "Data Sources"},
-	{"json-dashboard", "Metrics dashboard from JSON with computed expressions", "Data Sources"},
-	{"markdown-notes", "Notes manager with markdown table storage", "Data Sources"},
-	{"graphql-explorer", "Countries browser via GraphQL API", "Data Sources"},
-	// Patterns
-	{"dashboard", "Multi-source dashboard (REST API + exec)", "Patterns"},
-	{"form", "Contact form with SQLite persistence", "Patterns"},
-	{"api-explorer", "GitHub repository search (REST API)", "Patterns"},
-	{"cli-wrapper", "Web UI wrapper for CLI tools (exec)", "Patterns"},
-	// Advanced
-	{"wasm-source", "Custom TinyGo WASM data source", "Advanced"},
+	{"basic", "Kubernetes pods dashboard (exec source)", categoryGettingStarted},
+	{"tutorial", "Interactive LiveTemplate tutorial (server state)", categoryGettingStarted},
+	{"todo", "SQLite task manager with CRUD operations", categoryDataSources},
+	{"csv-inventory", "Product inventory from CSV file", categoryDataSources},
+	{"json-dashboard", "Metrics dashboard from JSON with computed expressions", categoryDataSources},
+	{"markdown-notes", "Notes manager with markdown table storage", categoryDataSources},
+	{"graphql-explorer", "Countries browser via GraphQL API", categoryDataSources},
+	{"dashboard", "Multi-source dashboard (REST API + exec)", categoryPatterns},
+	{"form", "Contact form with SQLite persistence", categoryPatterns},
+	{"api-explorer", "GitHub repository search (REST API)", categoryPatterns},
+	{"cli-wrapper", "Web UI wrapper for CLI tools (exec)", categoryPatterns},
+	{"wasm-source", "Custom TinyGo WASM data source", categoryAdvanced},
 }
+
+const templateListHint = "\n\nRun 'tinkerdown new --list' to see all templates with descriptions."
 
 // NewCommand implements the new command.
 func NewCommand(args []string, templateName string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("project name required\n\nUsage: tinkerdown new <project-name> [--template=<name>]\n\nAvailable templates: %s\n\nRun 'tinkerdown new --list' to see all templates with descriptions.", strings.Join(templateNames(), ", "))
+		return fmt.Errorf("project name required\n\nUsage: tinkerdown new <project-name> [--template=<name>]\n\nAvailable templates: %s%s", strings.Join(templateNames(), ", "), templateListHint)
 	}
 
 	projectName := args[0]
@@ -61,7 +66,7 @@ func NewCommand(args []string, templateName string) error {
 
 	// Validate template name
 	if !isValidTemplate(templateName) {
-		return fmt.Errorf("unknown template '%s'\n\nAvailable templates: %s\n\nRun 'tinkerdown new --list' to see all templates with descriptions.", templateName, strings.Join(templateNames(), ", "))
+		return fmt.Errorf("unknown template '%s'\n\nAvailable templates: %s%s", templateName, strings.Join(templateNames(), ", "), templateListHint)
 	}
 
 	// Check if directory already exists
@@ -170,22 +175,20 @@ func NewCommand(args []string, templateName string) error {
 func ListTemplates() {
 	fmt.Println("Available templates:")
 
-	// Collect categories in order of first appearance.
+	// Single pass: collect templates by category, preserving order of first appearance.
 	var categories []string
-	seen := map[string]bool{}
+	grouped := map[string][]templateInfo{}
 	for _, t := range templateCatalog {
-		if !seen[t.Category] {
-			seen[t.Category] = true
+		if _, exists := grouped[t.Category]; !exists {
 			categories = append(categories, t.Category)
 		}
+		grouped[t.Category] = append(grouped[t.Category], t)
 	}
 
 	for _, cat := range categories {
 		fmt.Printf("\n  %s:\n", cat)
-		for _, t := range templateCatalog {
-			if t.Category == cat {
-				fmt.Printf("    %-20s %s\n", t.Name, t.Description)
-			}
+		for _, t := range grouped[cat] {
+			fmt.Printf("    %-20s %s\n", t.Name, t.Description)
 		}
 	}
 
