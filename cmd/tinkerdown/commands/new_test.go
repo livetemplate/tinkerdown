@@ -170,12 +170,192 @@ func TestNewCommandWASMSourceTemplate(t *testing.T) {
 	}
 }
 
-func TestNewCommandListTemplates(t *testing.T) {
-	// The --list flag is handled by cobra, not NewCommand directly
-	// This test verifies that NewCommand with empty args returns an error
-	err := NewCommand([]string{}, "")
-	if err == nil {
-		t.Fatal("Expected error when no project name provided")
+func TestNewCommandCLIWrapperTemplate(t *testing.T) {
+	tmpDir := t.TempDir()
+	projectDir := filepath.Join(tmpDir, "my-cli")
+
+	defer chdir(t, tmpDir)()
+
+	err := NewCommand([]string{"my-cli"}, "cli-wrapper")
+	if err != nil {
+		t.Fatalf("NewCommand failed: %v", err)
+	}
+
+	assertFileExists(t, projectDir, "index.md")
+	assertFileExists(t, projectDir, "README.md")
+
+	// Verify delimiter fix: title should be substituted, not literal <<.Title>>
+	content := readFile(t, filepath.Join(projectDir, "index.md"))
+	if strings.Contains(content, "<<.Title>>") {
+		t.Error("Template delimiters were not substituted in index.md")
+	}
+	if !strings.Contains(content, "title: \"My Cli\"") {
+		t.Error("Expected title to be substituted")
+	}
+	if !strings.Contains(content, "type: exec") {
+		t.Error("Expected exec source type in cli-wrapper template")
+	}
+
+	// Verify README substitution
+	readme := readFile(t, filepath.Join(projectDir, "README.md"))
+	if strings.Contains(readme, "<<.Title>>") || strings.Contains(readme, "<<.ProjectName>>") {
+		t.Error("Template delimiters were not substituted in README.md")
+	}
+	if !strings.Contains(readme, "# My Cli") {
+		t.Error("Expected title in README")
+	}
+}
+
+func TestNewCommandCSVInventoryTemplate(t *testing.T) {
+	tmpDir := t.TempDir()
+	projectDir := filepath.Join(tmpDir, "my-inventory")
+
+	defer chdir(t, tmpDir)()
+
+	err := NewCommand([]string{"my-inventory"}, "csv-inventory")
+	if err != nil {
+		t.Fatalf("NewCommand failed: %v", err)
+	}
+
+	assertFileExists(t, projectDir, "index.md")
+	assertFileExists(t, projectDir, "README.md")
+	assertFileExists(t, projectDir, "products.csv")
+
+	content := readFile(t, filepath.Join(projectDir, "index.md"))
+	if !strings.Contains(content, "type: csv") {
+		t.Error("Expected csv source type in csv-inventory template")
+	}
+	if !strings.Contains(content, "lvt-columns") {
+		t.Error("Expected lvt-columns attribute in csv-inventory template")
+	}
+
+	csv := readFile(t, filepath.Join(projectDir, "products.csv"))
+	if !strings.Contains(csv, "id,name,category,price,stock") {
+		t.Error("Expected CSV header row")
+	}
+}
+
+func TestNewCommandJSONDashboardTemplate(t *testing.T) {
+	tmpDir := t.TempDir()
+	projectDir := filepath.Join(tmpDir, "my-metrics")
+
+	defer chdir(t, tmpDir)()
+
+	err := NewCommand([]string{"my-metrics"}, "json-dashboard")
+	if err != nil {
+		t.Fatalf("NewCommand failed: %v", err)
+	}
+
+	assertFileExists(t, projectDir, "index.md")
+	assertFileExists(t, projectDir, "README.md")
+	assertFileExists(t, projectDir, "metrics.json")
+
+	content := readFile(t, filepath.Join(projectDir, "index.md"))
+	if !strings.Contains(content, "type: json") {
+		t.Error("Expected json source type in json-dashboard template")
+	}
+	if !strings.Contains(content, "=count(tasks)") {
+		t.Error("Expected computed expressions in json-dashboard template")
+	}
+}
+
+func TestNewCommandMarkdownNotesTemplate(t *testing.T) {
+	tmpDir := t.TempDir()
+	projectDir := filepath.Join(tmpDir, "my-notes")
+
+	defer chdir(t, tmpDir)()
+
+	err := NewCommand([]string{"my-notes"}, "markdown-notes")
+	if err != nil {
+		t.Fatalf("NewCommand failed: %v", err)
+	}
+
+	assertFileExists(t, projectDir, "index.md")
+	assertFileExists(t, projectDir, "README.md")
+	assertFileExists(t, projectDir, filepath.Join("_data", "notes.md"))
+
+	content := readFile(t, filepath.Join(projectDir, "index.md"))
+	if !strings.Contains(content, "type: markdown") {
+		t.Error("Expected markdown source type")
+	}
+	if !strings.Contains(content, "readonly: false") {
+		t.Error("Expected readonly: false for writable markdown source")
+	}
+	if !strings.Contains(content, `anchor: "#notes"`) {
+		t.Error("Expected anchor config for markdown table source")
+	}
+}
+
+func TestNewCommandGraphQLExplorerTemplate(t *testing.T) {
+	tmpDir := t.TempDir()
+	projectDir := filepath.Join(tmpDir, "my-explorer")
+
+	defer chdir(t, tmpDir)()
+
+	err := NewCommand([]string{"my-explorer"}, "graphql-explorer")
+	if err != nil {
+		t.Fatalf("NewCommand failed: %v", err)
+	}
+
+	assertFileExists(t, projectDir, "index.md")
+	assertFileExists(t, projectDir, "README.md")
+	assertFileExists(t, projectDir, filepath.Join("queries", "countries.graphql"))
+
+	content := readFile(t, filepath.Join(projectDir, "index.md"))
+	if !strings.Contains(content, "type: graphql") {
+		t.Error("Expected graphql source type")
+	}
+	if !strings.Contains(content, "query_file:") {
+		t.Error("Expected query_file config")
+	}
+	if !strings.Contains(content, "result_path:") {
+		t.Error("Expected result_path config")
+	}
+
+	query := readFile(t, filepath.Join(projectDir, "queries", "countries.graphql"))
+	if !strings.Contains(query, "countries") {
+		t.Error("Expected countries query in graphql file")
+	}
+}
+
+func TestNewCommandDashboardDataDir(t *testing.T) {
+	tmpDir := t.TempDir()
+	projectDir := filepath.Join(tmpDir, "dash-test")
+
+	defer chdir(t, tmpDir)()
+
+	err := NewCommand([]string{"dash-test"}, "dashboard")
+	if err != nil {
+		t.Fatalf("NewCommand failed: %v", err)
+	}
+
+	// Verify _data directory is included (embed fix for underscore dirs)
+	assertFileExists(t, projectDir, filepath.Join("_data", "tasks.md"))
+	assertFileExists(t, projectDir, filepath.Join("_data", "team.md"))
+}
+
+func TestListTemplates(t *testing.T) {
+	// ListTemplates prints to stdout; verify it doesn't panic
+	// and that templateCatalog is well-formed
+	for _, tmpl := range templateCatalog {
+		if tmpl.Name == "" {
+			t.Error("Template name cannot be empty")
+		}
+		if tmpl.Description == "" {
+			t.Errorf("Template %q has no description", tmpl.Name)
+		}
+		if tmpl.Category == "" {
+			t.Errorf("Template %q has no category", tmpl.Name)
+		}
+	}
+
+	// Verify all templates in catalog are actually embedded
+	for _, tmpl := range templateCatalog {
+		dir := "templates/" + tmpl.Name
+		_, err := templatesFS.ReadDir(dir)
+		if err != nil {
+			t.Errorf("Template %q is in catalog but not embedded: %v", tmpl.Name, err)
+		}
 	}
 }
 

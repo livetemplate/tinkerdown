@@ -312,12 +312,18 @@ func (h *WebSocketHandler) getEffectiveSource(name string) (config.SourceConfig,
 				DB:          src.DB,
 				Table:       src.Table,
 				Path:        src.Path,
+				QueryFile:   src.QueryFile,
+				Variables:   src.Variables,
 				Headers:     src.Headers,
 				QueryParams: src.QueryParams,
 				ResultPath:  src.ResultPath,
 				Readonly:    src.Readonly,
 				Options:     src.Options,
 				Manual:      src.Manual,
+				Format:      src.Format,
+				Delimiter:   src.Delimiter,
+				Env:         src.Env,
+				Timeout:     src.Timeout,
 			}, true
 		}
 	}

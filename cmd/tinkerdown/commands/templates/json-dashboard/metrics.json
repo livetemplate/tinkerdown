@@ -1,0 +1,10 @@
+[
+  {"id": 1, "task": "Design homepage", "status": "done", "priority": 3, "effort": 5},
+  {"id": 2, "task": "Build API endpoints", "status": "done", "priority": 5, "effort": 8},
+  {"id": 3, "task": "Write unit tests", "status": "in-progress", "priority": 4, "effort": 3},
+  {"id": 4, "task": "Deploy to staging", "status": "todo", "priority": 2, "effort": 2},
+  {"id": 5, "task": "User acceptance testing", "status": "todo", "priority": 3, "effort": 4},
+  {"id": 6, "task": "Performance optimization", "status": "in-progress", "priority": 4, "effort": 6},
+  {"id": 7, "task": "Documentation", "status": "done", "priority": 1, "effort": 3},
+  {"id": 8, "task": "Security audit", "status": "todo", "priority": 5, "effort": 5}
+]

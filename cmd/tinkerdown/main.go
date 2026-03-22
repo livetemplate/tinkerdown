@@ -33,8 +33,9 @@ func run() int {
 	case "fix":
 		err = commands.FixCommand(args)
 	case "new":
-		// Parse --template flag from args
+		// Parse --template and --list flags from args
 		templateName := ""
+		listTemplates := false
 		filteredArgs := make([]string, 0, len(args))
 		skipNext := false
 		for i, arg := range args {
@@ -42,7 +43,9 @@ func run() int {
 				skipNext = false
 				continue
 			}
-			if val, ok := strings.CutPrefix(arg, "--template="); ok {
+			if arg == "--list" || arg == "-l" {
+				listTemplates = true
+			} else if val, ok := strings.CutPrefix(arg, "--template="); ok {
 				templateName = val
 			} else if val, ok := strings.CutPrefix(arg, "-t="); ok {
 				templateName = val
@@ -56,7 +59,11 @@ func run() int {
 				filteredArgs = append(filteredArgs, arg)
 			}
 		}
-		err = commands.NewCommand(filteredArgs, templateName)
+		if listTemplates {
+			commands.ListTemplates()
+		} else {
+			err = commands.NewCommand(filteredArgs, templateName)
+		}
 	case "blocks":
 		err = commands.BlocksCommand(args)
 	case "cli":
@@ -91,6 +98,7 @@ func printUsage(w io.Writer) {
 	fmt.Fprintln(w, "  tinkerdown fix [directory]       Auto-fix common issues")
 	fmt.Fprintln(w, "  tinkerdown blocks [directory]    Inspect code blocks")
 	fmt.Fprintln(w, "  tinkerdown new <name>            Create new app from template")
+	fmt.Fprintln(w, "  tinkerdown new --list            List available templates")
 	fmt.Fprintln(w, "  tinkerdown cli <path> <action> <source>  CLI mode for CRUD operations")
 	fmt.Fprintln(w, "  tinkerdown version               Show version")
 	fmt.Fprintln(w, "  tinkerdown help                  Show this help")
@@ -110,6 +118,7 @@ func printUsage(w io.Writer) {
 	fmt.Fprintln(w, "  tinkerdown blocks . --verbose    # Show detailed block info")
 	fmt.Fprintln(w, "  tinkerdown new my-app            # Create new app (basic template)")
 	fmt.Fprintln(w, "  tinkerdown new my-app --template=todo  # Use todo template")
+	fmt.Fprintln(w, "  tinkerdown new --list            # List all available templates")
 	fmt.Fprintln(w, "  tinkerdown cli app.md list tasks # List items from source")
 	fmt.Fprintln(w, "  tinkerdown cli . add tasks --text=\"New task\"  # Add item")
 	fmt.Fprintln(w)
