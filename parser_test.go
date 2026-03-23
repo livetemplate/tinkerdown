@@ -943,3 +943,203 @@ func TestProcessStatusBanners(t *testing.T) {
 		})
 	}
 }
+
+func TestProcessCharts(t *testing.T) {
+	tests := []struct {
+		name         string
+		html         string
+		wantCharts   bool
+		wantContains []string
+		wantAbsent   []string
+	}{
+		{
+			name: "bar chart from heading + table",
+			html: "<h2 id=\"sales-by-region-chartbar\">Sales by Region {chart:bar}</h2>\n<table>\n<thead>\n<tr>\n<th>Region</th>\n<th>Sales</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td>North</td>\n<td>100</td>\n</tr>\n<tr>\n<td>South</td>\n<td>150</td>\n</tr>\n</tbody>\n</table>\n",
+			wantCharts: true,
+			wantContains: []string{
+				`data-chart-type="bar"`,
+				`<canvas></canvas>`,
+				`tinkerdown-chart`,
+				`North`, // appears in collapsed data table
+				`South`,
+				`tinkerdown-chart-table`,
+				`View data`,
+			},
+			wantAbsent: []string{`{chart:bar}`},
+		},
+		{
+			name: "line chart",
+			html: "<h2 id=\"trend-chartline\">Trend {chart:line}</h2>\n<table>\n<thead>\n<tr>\n<th>Month</th>\n<th>Value</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td>Jan</td>\n<td>100</td>\n</tr>\n</tbody>\n</table>\n",
+			wantCharts:   true,
+			wantContains: []string{`data-chart-type="line"`},
+		},
+		{
+			name: "pie chart",
+			html: "<h2 id=\"share-chartpie\">Share {chart:pie}</h2>\n<table>\n<thead>\n<tr>\n<th>Product</th>\n<th>Share</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td>A</td>\n<td>60</td>\n</tr>\n<tr>\n<td>B</td>\n<td>40</td>\n</tr>\n</tbody>\n</table>\n",
+			wantCharts:   true,
+			wantContains: []string{`data-chart-type="pie"`},
+		},
+		{
+			name: "auto-detect pie (few labels, single series)",
+			html: "<h2 id=\"data-chart\">Data {chart}</h2>\n<table>\n<thead>\n<tr>\n<th>Cat</th>\n<th>Val</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td>A</td>\n<td>10</td>\n</tr>\n<tr>\n<td>B</td>\n<td>20</td>\n</tr>\n</tbody>\n</table>\n",
+			wantCharts:   true,
+			wantContains: []string{`data-chart-type="pie"`},
+		},
+		{
+			name: "multi-dataset",
+			html: "<h2 id=\"quarterly-chartbar\">Quarterly {chart:bar}</h2>\n<table>\n<thead>\n<tr>\n<th>Region</th>\n<th>Q1</th>\n<th>Q2</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td>North</td>\n<td>100</td>\n<td>200</td>\n</tr>\n</tbody>\n</table>\n",
+			wantCharts:   true,
+			wantContains: []string{`Q1`, `Q2`, `datasets`},
+		},
+		{
+			name: "heading without chart annotation unchanged",
+			html: "<h2 id=\"normal\">Normal Heading</h2>\n<table>\n<thead>\n<tr>\n<th>A</th>\n<th>B</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td>1</td>\n<td>2</td>\n</tr>\n</tbody>\n</table>\n",
+			wantCharts:   false,
+			wantContains: []string{`Normal Heading`},
+		},
+		{
+			name: "chart heading without following table",
+			html: "<h2 id=\"broken-chartbar\">Broken {chart:bar}</h2>\n<p>No table here</p>",
+			wantCharts: false,
+			wantAbsent: []string{`{chart:bar}`},
+		},
+		{
+			name:       "no numeric columns skips chart",
+			html:       "<h2 id=\"text-chartbar\">Text {chart:bar}</h2>\n<table>\n<thead>\n<tr>\n<th>Name</th>\n<th>City</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td>Alice</td>\n<td>NYC</td>\n</tr>\n</tbody>\n</table>\n",
+			wantCharts: false,
+		},
+		{
+			name: "heading ID is cleaned",
+			html: "<h2 id=\"sales-chartbar\">Sales {chart:bar}</h2>\n<table>\n<thead>\n<tr>\n<th>X</th>\n<th>Y</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td>A</td>\n<td>1</td>\n</tr>\n</tbody>\n</table>\n",
+			wantCharts:   true,
+			wantContains: []string{`id="sales"`},
+			wantAbsent:   []string{`chartbar`},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, hasCharts := processCharts(tt.html, nil)
+			if hasCharts != tt.wantCharts {
+				t.Errorf("hasCharts = %v, want %v\nresult:\n%s", hasCharts, tt.wantCharts, result)
+			}
+			for _, want := range tt.wantContains {
+				if !strings.Contains(result, want) {
+					t.Errorf("expected %q in result, got:\n%s", want, result)
+				}
+			}
+			for _, absent := range tt.wantAbsent {
+				if strings.Contains(result, absent) {
+					t.Errorf("did not expect %q in result, got:\n%s", absent, result)
+				}
+			}
+		})
+	}
+}
+
+func TestParseMarkdownWithCharts(t *testing.T) {
+	content := []byte(`---
+title: "Chart Test"
+---
+
+# Dashboard
+
+## Sales by Region {chart:bar}
+
+| Region | Sales |
+|--------|-------|
+| North  | 100   |
+| South  | 150   |
+| East   | 120   |
+`)
+	fm, _, html, err := ParseMarkdown(content)
+	if err != nil {
+		t.Fatalf("ParseMarkdown failed: %v", err)
+	}
+	if !fm.HasCharts {
+		t.Error("Expected HasCharts to be true")
+	}
+	if !strings.Contains(html, "tinkerdown-chart") {
+		t.Error("Expected tinkerdown-chart class in HTML")
+	}
+	if !strings.Contains(html, `data-chart-type="bar"`) {
+		t.Error("Expected data-chart-type=bar in HTML")
+	}
+	if strings.Contains(html, "{chart:bar}") {
+		t.Error("Chart annotation should be removed from HTML")
+	}
+	if !strings.Contains(html, `North`) {
+		t.Error("Expected North in chart data or table")
+	}
+}
+
+func TestProcessChartsWithOptions(t *testing.T) {
+	tableHTML := "<h2 id=\"sales-chartbar\">Sales {chart:bar}</h2>\n<table>\n<thead>\n<tr>\n<th>X</th>\n<th>Y</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td>A</td>\n<td>1</td>\n</tr>\n</tbody>\n</table>\n"
+
+	opts := map[string]ChartOptions{
+		"sales": {
+			Colors:     []string{"#ff0000", "#00ff00"},
+			Stacked:    true,
+			Horizontal: true,
+			Legend:      boolPtr(false),
+		},
+	}
+
+	result, hasCharts := processCharts(tableHTML, opts)
+	if !hasCharts {
+		t.Fatal("Expected chart to be found")
+	}
+	if !strings.Contains(result, `data-chart-options`) {
+		t.Error("Expected data-chart-options attribute")
+	}
+	if !strings.Contains(result, `#ff0000`) {
+		t.Error("Expected custom color in options")
+	}
+	if !strings.Contains(result, `stacked`) {
+		t.Error("Expected stacked option")
+	}
+	if !strings.Contains(result, `horizontal`) {
+		t.Error("Expected horizontal option")
+	}
+}
+
+func TestParseMarkdownWithChartOptions(t *testing.T) {
+	content := []byte(`---
+title: "Chart Options Test"
+charts:
+  sales-by-region:
+    colors: ["#ff6384", "#36a2eb"]
+    stacked: true
+    horizontal: true
+    legend: false
+---
+
+## Sales by Region {chart:bar}
+
+| Region | Sales |
+|--------|-------|
+| North  | 100   |
+| South  | 150   |
+`)
+	fm, _, html, err := ParseMarkdown(content)
+	if err != nil {
+		t.Fatalf("ParseMarkdown failed: %v", err)
+	}
+	if !fm.HasCharts {
+		t.Error("Expected HasCharts to be true")
+	}
+	if len(fm.Charts) == 0 {
+		t.Fatal("Expected Charts map to be populated from frontmatter")
+	}
+	if _, ok := fm.Charts["sales-by-region"]; !ok {
+		t.Error("Expected sales-by-region in Charts map")
+	}
+	if !strings.Contains(html, "data-chart-options") {
+		t.Error("Expected data-chart-options in HTML")
+	}
+	if !strings.Contains(html, "#ff6384") {
+		t.Error("Expected custom color in chart options")
+	}
+}
+
+func boolPtr(b bool) *bool { return &b }

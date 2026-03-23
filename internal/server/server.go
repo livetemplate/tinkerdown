@@ -580,6 +580,19 @@ func (s *Server) serveAsset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Serve Chart.js
+	if path == "chart.js" {
+		js, err := assets.GetChartJS()
+		if err != nil {
+			http.Error(w, "Asset not found", http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/javascript")
+		w.Header().Set("Cache-Control", "public, max-age=31536000")
+		w.Write(js)
+		return
+	}
+
 	// Serve Pico CSS
 	if path == "pico.css" {
 		css, err := assets.GetPicoCSS()
@@ -665,6 +678,125 @@ func (s *Server) renderPage(page *tinkerdown.Page, currentPath string, host stri
 
 	// Build WebSocket URL from host with page path for multi-page routing
 	wsURL := fmt.Sprintf("ws://%s/ws?page=%s", host, url.QueryEscape(currentPath))
+
+	// Conditionally include Chart.js for pages with chart annotations
+	chartScript := ""
+	if page.HasCharts {
+		chartScript = `
+    <!-- Chart.js for data visualization (embedded) -->
+    <script src="/assets/chart.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            var isDark = document.documentElement.classList.contains('theme-dark');
+            var colors = [
+                'rgba(54, 162, 235, 0.8)',
+                'rgba(255, 99, 132, 0.8)',
+                'rgba(75, 192, 192, 0.8)',
+                'rgba(255, 205, 86, 0.8)',
+                'rgba(153, 102, 255, 0.8)',
+                'rgba(255, 159, 64, 0.8)',
+                'rgba(201, 203, 207, 0.8)'
+            ];
+            var borderColors = colors.map(function(c) { return c.replace('0.8', '1'); });
+
+            document.querySelectorAll('.tinkerdown-chart').forEach(function(container) {
+                var canvas = container.querySelector('canvas');
+                var chartType = container.dataset.chartType || 'bar';
+                var chartTitle = container.dataset.chartTitle || '';
+                var chartData, opts;
+                try {
+                    chartData = JSON.parse(container.dataset.chartData || '{}');
+                    opts = container.dataset.chartOptions ? JSON.parse(container.dataset.chartOptions) : {};
+                } catch(e) {
+                    console.warn('[Tinkerdown] Failed to parse chart data:', e);
+                    return;
+                }
+
+                // Custom colors from frontmatter or defaults
+                var chartColors = (opts.colors && opts.colors.length) ? opts.colors : colors;
+                var chartBorderColors = (opts.colors && opts.colors.length) ? opts.colors.map(function(c) {
+                    return c.startsWith('rgba') ? c.replace(/[\d.]+\)$/, '1)') : c;
+                }) : borderColors;
+
+                chartData.datasets.forEach(function(dataset, i) {
+                    if (chartType === 'pie' || chartType === 'doughnut') {
+                        dataset.backgroundColor = chartColors.slice(0, dataset.data.length);
+                        dataset.borderColor = chartBorderColors.slice(0, dataset.data.length);
+                    } else {
+                        dataset.backgroundColor = chartColors[i % chartColors.length];
+                        dataset.borderColor = chartBorderColors[i % chartBorderColors.length];
+                    }
+                    dataset.borderWidth = 1;
+                });
+
+                // Horizontal bar: use indexAxis 'y'
+                var indexAxis = (opts.horizontal && chartType === 'bar') ? 'y' : 'x';
+
+                // Legend visibility (default: show)
+                var showLegend = (opts.legend === false) ? false : true;
+
+                // Stacking
+                var stacked = !!opts.stacked;
+
+                var isPie = (chartType === 'pie' || chartType === 'doughnut');
+                var scalesConfig = isPie ? {} : {
+                    x: {
+                        stacked: stacked,
+                        ticks: { color: isDark ? '#b0b0b0' : '#555' },
+                        grid: { color: isDark ? '#404040' : '#e1e4e8' }
+                    },
+                    y: {
+                        stacked: stacked,
+                        ticks: { color: isDark ? '#b0b0b0' : '#555' },
+                        grid: { color: isDark ? '#404040' : '#e1e4e8' }
+                    }
+                };
+
+                new Chart(canvas, {
+                    type: chartType,
+                    data: chartData,
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        indexAxis: indexAxis,
+                        plugins: {
+                            title: {
+                                display: !!chartTitle,
+                                text: chartTitle,
+                                color: isDark ? '#e0e0e0' : '#333'
+                            },
+                            legend: {
+                                display: showLegend,
+                                labels: { color: isDark ? '#e0e0e0' : '#333' }
+                            }
+                        },
+                        scales: scalesConfig
+                    }
+                });
+            });
+        });
+
+        document.addEventListener('themeChanged', function(e) {
+            document.querySelectorAll('.tinkerdown-chart canvas').forEach(function(canvas) {
+                var chart = Chart.getChart(canvas);
+                if (chart) {
+                    var isDark = e.detail.theme === 'dark';
+                    chart.options.plugins.title.color = isDark ? '#e0e0e0' : '#333';
+                    chart.options.plugins.legend.labels.color = isDark ? '#e0e0e0' : '#333';
+                    if (chart.options.scales && chart.options.scales.x) {
+                        chart.options.scales.x.ticks.color = isDark ? '#b0b0b0' : '#555';
+                        chart.options.scales.x.grid.color = isDark ? '#404040' : '#e1e4e8';
+                    }
+                    if (chart.options.scales && chart.options.scales.y) {
+                        chart.options.scales.y.ticks.color = isDark ? '#b0b0b0' : '#555';
+                        chart.options.scales.y.grid.color = isDark ? '#404040' : '#e1e4e8';
+                    }
+                    chart.update();
+                }
+            });
+        });
+    </script>`
+	}
 
 	// Basic HTML wrapper with the static content
 	html := fmt.Sprintf(`<!DOCTYPE html>
@@ -916,6 +1048,38 @@ func (s *Server) renderPage(page *tinkerdown.Page, currentPath string, host stri
         .tinkerdown-interactive-block:hover {
             transform: translateY(-2px);
             box-shadow: 0 8px 24px var(--card-shadow);
+        }
+
+        /* Chart containers */
+        .tinkerdown-chart {
+            margin: 1.5rem 0;
+            padding: 1rem;
+            background: var(--card-bg);
+            border-radius: 8px;
+            border: 1px solid var(--card-border);
+            box-shadow: 0 1px 3px var(--card-shadow);
+            max-width: 100%%;
+        }
+
+        .tinkerdown-chart canvas {
+            max-width: 100%%;
+            height: auto !important;
+        }
+
+        .tinkerdown-chart-table {
+            margin: 0.5rem 0 1.5rem;
+            font-size: 0.875rem;
+        }
+
+        .tinkerdown-chart-table summary {
+            cursor: pointer;
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+            padding: 0.25rem 0;
+        }
+
+        .tinkerdown-chart-table table {
+            margin-top: 0.5rem;
         }
 
         /* Buttons - Let PicoCSS handle default styling */
@@ -2312,8 +2476,9 @@ func (s *Server) renderPage(page *tinkerdown.Page, currentPath string, host stri
             mermaid.run();
         });
     </script>
+%s
 </body>
-</html>`, wsURL, showSidebar, page.Title, sidebar, contentWithNav)
+</html>`, wsURL, showSidebar, page.Title, sidebar, contentWithNav, chartScript)
 
 	return html
 }

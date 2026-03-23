@@ -87,6 +87,16 @@ func TestGetMermaidJS(t *testing.T) {
 	}
 }
 
+func TestGetChartJS(t *testing.T) {
+	data, err := GetChartJS()
+	if err != nil {
+		t.Fatalf("GetChartJS failed: %v", err)
+	}
+	if len(data) == 0 {
+		t.Error("GetChartJS returned empty data")
+	}
+}
+
 func TestGetPicoCSS(t *testing.T) {
 	data, err := GetPicoCSS()
 	if err != nil {
