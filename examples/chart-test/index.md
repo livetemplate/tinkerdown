@@ -1,5 +1,14 @@
 ---
 title: "Chart Rendering Test"
+charts:
+  sales-by-region:
+    colors: ["#e63946", "#457b9d", "#2a9d8f", "#e9c46a"]
+    horizontal: true
+  monthly-trend:
+    stacked: true
+  market-share:
+    colors: ["#264653", "#2a9d8f", "#e9c46a"]
+    legend: false
 ---
 
 # Chart Rendering

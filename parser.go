@@ -96,6 +96,9 @@ type Frontmatter struct {
 	// Top-level convenience options
 	Sidebar *bool `yaml:"sidebar,omitempty"` // Show navigation sidebar (overrides features.sidebar)
 
+	// Chart customization (keyed by heading slug)
+	Charts map[string]ChartOptions `yaml:"charts,omitempty"`
+
 	// Config options (can override livemdtools.yaml)
 	Sources  map[string]SourceConfig `yaml:"sources,omitempty"`
 	Actions  map[string]Action       `yaml:"actions,omitempty"`
@@ -202,7 +205,7 @@ func ParseMarkdown(content []byte) (*Frontmatter, []*CodeBlock, string, error) {
 	html = processTabbedHeadings(html)
 
 	// Process chart headings (## Title {chart:bar} followed by table)
-	html, hasCharts := processCharts(html)
+	html, hasCharts := processCharts(html, frontmatter.Charts)
 	if hasCharts {
 		frontmatter.HasCharts = true
 	}
@@ -671,6 +674,14 @@ var validChartTypes = map[string]bool{
 	"bar": true, "line": true, "pie": true, "doughnut": true, "auto": true, "": true,
 }
 
+// ChartOptions holds per-chart customization from frontmatter.
+type ChartOptions struct {
+	Colors     []string `yaml:"colors,omitempty" json:"colors,omitempty"`
+	Stacked    bool     `yaml:"stacked,omitempty" json:"stacked,omitempty"`
+	Horizontal bool     `yaml:"horizontal,omitempty" json:"horizontal,omitempty"`
+	Legend     *bool    `yaml:"legend,omitempty" json:"legend,omitempty"`
+}
+
 // chartData is the JSON structure passed to Chart.js via data attributes.
 type chartData struct {
 	Labels   []string     `json:"labels"`
@@ -684,8 +695,9 @@ type chartDataset struct {
 
 // processCharts detects {chart:type} headings followed by tables and transforms
 // them into chart container elements with JSON data attributes for Chart.js.
+// chartOpts provides per-chart customization from frontmatter (keyed by heading slug).
 // Returns the modified HTML and whether any charts were found.
-func processCharts(htmlStr string) (string, bool) {
+func processCharts(htmlStr string, chartOpts map[string]ChartOptions) (string, bool) {
 	found := false
 
 	// Find all chart-annotated headings
@@ -827,10 +839,18 @@ func processCharts(htmlStr string) (string, bool) {
 		cleanID := slug.Heading(cleanTitle)
 		headingLevel := htmlStr[m[4]:m[5]]
 
+		// Look up per-chart options from frontmatter
+		optionsAttr := ""
+		if opts, ok := chartOpts[cleanID]; ok {
+			if optJSON, err := json.Marshal(opts); err == nil && string(optJSON) != "{}" {
+				optionsAttr = fmt.Sprintf(` data-chart-options='%s'`, html.EscapeString(string(optJSON)))
+			}
+		}
+
 		var buf strings.Builder
 		fmt.Fprintf(&buf, "<h%s id=\"%s\">%s%s\n", headingLevel, cleanID, cleanTitle, headingClose)
-		fmt.Fprintf(&buf, "<div class=\"tinkerdown-chart\" data-chart-type=\"%s\" data-chart-title=\"%s\" data-chart-data='%s'>\n",
-			chartType, html.EscapeString(cleanTitle), html.EscapeString(string(jsonBytes)))
+		fmt.Fprintf(&buf, "<div class=\"tinkerdown-chart\" data-chart-type=\"%s\" data-chart-title=\"%s\" data-chart-data='%s'%s>\n",
+			chartType, html.EscapeString(cleanTitle), html.EscapeString(string(jsonBytes)), optionsAttr)
 		buf.WriteString("  <canvas></canvas>\n")
 		buf.WriteString("</div>\n")
 		buf.WriteString("<details class=\"tinkerdown-chart-table\">\n")
@@ -1113,7 +1133,7 @@ func ParseMarkdownWithPartials(content []byte, baseDir string) (*Frontmatter, []
 	htmlStr = processTabbedHeadings(htmlStr)
 
 	// Process chart headings (## Title {chart:bar} followed by table)
-	htmlStr, hasCharts := processCharts(htmlStr)
+	htmlStr, hasCharts := processCharts(htmlStr, frontmatter.Charts)
 	if hasCharts {
 		frontmatter.HasCharts = true
 	}

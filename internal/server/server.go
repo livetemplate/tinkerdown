@@ -704,17 +704,47 @@ func (s *Server) renderPage(page *tinkerdown.Page, currentPath string, host stri
                 var chartType = container.dataset.chartType || 'bar';
                 var chartTitle = container.dataset.chartTitle || '';
                 var chartData = JSON.parse(container.dataset.chartData || '{}');
+                var opts = container.dataset.chartOptions ? JSON.parse(container.dataset.chartOptions) : {};
+
+                // Custom colors from frontmatter or defaults
+                var chartColors = (opts.colors && opts.colors.length) ? opts.colors.map(function(c) {
+                    return c.includes('rgba') ? c : c; // pass through as-is
+                }) : colors;
+                var chartBorderColors = (opts.colors && opts.colors.length) ? opts.colors : borderColors;
 
                 chartData.datasets.forEach(function(dataset, i) {
                     if (chartType === 'pie' || chartType === 'doughnut') {
-                        dataset.backgroundColor = colors.slice(0, dataset.data.length);
-                        dataset.borderColor = borderColors.slice(0, dataset.data.length);
+                        dataset.backgroundColor = chartColors.slice(0, dataset.data.length);
+                        dataset.borderColor = chartBorderColors.slice(0, dataset.data.length);
                     } else {
-                        dataset.backgroundColor = colors[i % colors.length];
-                        dataset.borderColor = borderColors[i % borderColors.length];
+                        dataset.backgroundColor = chartColors[i % chartColors.length];
+                        dataset.borderColor = chartBorderColors[i % chartBorderColors.length];
                     }
                     dataset.borderWidth = 1;
                 });
+
+                // Horizontal bar: use indexAxis 'y'
+                var indexAxis = (opts.horizontal && chartType === 'bar') ? 'y' : 'x';
+
+                // Legend visibility (default: show)
+                var showLegend = (opts.legend === false) ? false : true;
+
+                // Stacking
+                var stacked = !!opts.stacked;
+
+                var isPie = (chartType === 'pie' || chartType === 'doughnut');
+                var scalesConfig = isPie ? {} : {
+                    x: {
+                        stacked: stacked,
+                        ticks: { color: isDark ? '#b0b0b0' : '#555' },
+                        grid: { color: isDark ? '#404040' : '#e1e4e8' }
+                    },
+                    y: {
+                        stacked: stacked,
+                        ticks: { color: isDark ? '#b0b0b0' : '#555' },
+                        grid: { color: isDark ? '#404040' : '#e1e4e8' }
+                    }
+                };
 
                 new Chart(canvas, {
                     type: chartType,
@@ -722,6 +752,7 @@ func (s *Server) renderPage(page *tinkerdown.Page, currentPath string, host stri
                     options: {
                         responsive: true,
                         maintainAspectRatio: true,
+                        indexAxis: indexAxis,
                         plugins: {
                             title: {
                                 display: !!chartTitle,
@@ -729,19 +760,11 @@ func (s *Server) renderPage(page *tinkerdown.Page, currentPath string, host stri
                                 color: isDark ? '#e0e0e0' : '#333'
                             },
                             legend: {
+                                display: showLegend,
                                 labels: { color: isDark ? '#e0e0e0' : '#333' }
                             }
                         },
-                        scales: (chartType === 'pie' || chartType === 'doughnut') ? {} : {
-                            x: {
-                                ticks: { color: isDark ? '#b0b0b0' : '#555' },
-                                grid: { color: isDark ? '#404040' : '#e1e4e8' }
-                            },
-                            y: {
-                                ticks: { color: isDark ? '#b0b0b0' : '#555' },
-                                grid: { color: isDark ? '#404040' : '#e1e4e8' }
-                            }
-                        }
+                        scales: scalesConfig
                     }
                 });
             });

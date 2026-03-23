@@ -1019,7 +1019,7 @@ func TestProcessCharts(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, hasCharts := processCharts(tt.html)
+			result, hasCharts := processCharts(tt.html, nil)
 			if hasCharts != tt.wantCharts {
 				t.Errorf("hasCharts = %v, want %v\nresult:\n%s", hasCharts, tt.wantCharts, result)
 			}
@@ -1072,3 +1072,74 @@ title: "Chart Test"
 		t.Error("Expected North in chart data or table")
 	}
 }
+
+func TestProcessChartsWithOptions(t *testing.T) {
+	tableHTML := "<h2 id=\"sales-chartbar\">Sales {chart:bar}</h2>\n<table>\n<thead>\n<tr>\n<th>X</th>\n<th>Y</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td>A</td>\n<td>1</td>\n</tr>\n</tbody>\n</table>\n"
+
+	opts := map[string]ChartOptions{
+		"sales": {
+			Colors:     []string{"#ff0000", "#00ff00"},
+			Stacked:    true,
+			Horizontal: true,
+			Legend:      boolPtr(false),
+		},
+	}
+
+	result, hasCharts := processCharts(tableHTML, opts)
+	if !hasCharts {
+		t.Fatal("Expected chart to be found")
+	}
+	if !strings.Contains(result, `data-chart-options`) {
+		t.Error("Expected data-chart-options attribute")
+	}
+	if !strings.Contains(result, `#ff0000`) {
+		t.Error("Expected custom color in options")
+	}
+	if !strings.Contains(result, `stacked`) {
+		t.Error("Expected stacked option")
+	}
+	if !strings.Contains(result, `horizontal`) {
+		t.Error("Expected horizontal option")
+	}
+}
+
+func TestParseMarkdownWithChartOptions(t *testing.T) {
+	content := []byte(`---
+title: "Chart Options Test"
+charts:
+  sales-by-region:
+    colors: ["#ff6384", "#36a2eb"]
+    stacked: true
+    horizontal: true
+    legend: false
+---
+
+## Sales by Region {chart:bar}
+
+| Region | Sales |
+|--------|-------|
+| North  | 100   |
+| South  | 150   |
+`)
+	fm, _, html, err := ParseMarkdown(content)
+	if err != nil {
+		t.Fatalf("ParseMarkdown failed: %v", err)
+	}
+	if !fm.HasCharts {
+		t.Error("Expected HasCharts to be true")
+	}
+	if len(fm.Charts) == 0 {
+		t.Fatal("Expected Charts map to be populated from frontmatter")
+	}
+	if _, ok := fm.Charts["sales-by-region"]; !ok {
+		t.Error("Expected sales-by-region in Charts map")
+	}
+	if !strings.Contains(html, "data-chart-options") {
+		t.Error("Expected data-chart-options in HTML")
+	}
+	if !strings.Contains(html, "#ff6384") {
+		t.Error("Expected custom color in chart options")
+	}
+}
+
+func boolPtr(b bool) *bool { return &b }
