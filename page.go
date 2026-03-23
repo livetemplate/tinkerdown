@@ -49,6 +49,16 @@ func ParseFile(path string) (*Page, error) {
 		fmt.Fprintf(os.Stderr, "warning: %s\n", w)
 	}
 
+	// Pre-process: detect markdown tables under headings and match to declared sources.
+	// This requires a lightweight frontmatter pre-parse to get source configs.
+	if fmPre, _, fmErr := extractFrontmatter(processedContent); fmErr == nil && len(fmPre.Sources) > 0 {
+		var tableWarnings []string
+		processedContent, tableWarnings = preprocessAutoTables(processedContent, fmPre.Sources)
+		for _, w := range tableWarnings {
+			fmt.Fprintf(os.Stderr, "warning: %s\n", w)
+		}
+	}
+
 	// Parse markdown with partial support
 	baseDir := filepath.Dir(absPath)
 	fm, codeBlocks, staticHTML, err := ParseMarkdownWithPartials(processedContent, baseDir)

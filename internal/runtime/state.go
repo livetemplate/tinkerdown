@@ -41,6 +41,9 @@ type GenericState struct {
 	// Cache metadata for UI display
 	CacheInfo *cache.CacheInfo `json:"cache_info,omitempty"`
 
+	// Inline edit state - tracks which row is being edited (empty = none)
+	EditingID string `json:"editingId,omitempty"`
+
 	// Exec-specific fields
 	Output     string `json:"output,omitempty"`
 	Stderr     string `json:"stderr,omitempty"`
@@ -202,7 +205,14 @@ func (s *GenericState) HandleAction(action string, data map[string]interface{}) 
 		return s.runExec(data)
 	case "filter":
 		return s.handleFilter(data)
+	case "edit":
+		return s.handleEdit(data)
+	case "canceledit":
+		s.EditingID = ""
+		return nil
 	case "add", "toggle", "delete", "update":
+		// Clear editing state on successful write
+		defer func() { s.EditingID = "" }()
 		return s.handleWriteAction(action, data)
 	default:
 		// Check for datatable actions (Sort_X, NextPage_X, PrevPage_X)
@@ -417,6 +427,15 @@ func (s *GenericState) refresh() error {
 		s.Table = s.buildDataTable()
 	}
 
+	return nil
+}
+
+// handleEdit sets the editing ID to the row being edited.
+// The template checks EditingID to show inputs vs display text.
+func (s *GenericState) handleEdit(data map[string]interface{}) error {
+	if id, ok := data["id"]; ok {
+		s.EditingID = fmt.Sprintf("%v", id)
+	}
 	return nil
 }
 

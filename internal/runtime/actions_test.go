@@ -748,3 +748,38 @@ func TestExecuteExecAction_CommandSanitization(t *testing.T) {
 		})
 	}
 }
+
+func TestHandleEditAction(t *testing.T) {
+	s := &GenericState{}
+
+	// Edit sets EditingID
+	err := s.HandleAction("Edit", map[string]interface{}{"id": "42"})
+	if err != nil {
+		t.Fatalf("HandleAction(Edit) failed: %v", err)
+	}
+	if s.EditingID != "42" {
+		t.Errorf("expected EditingID '42', got %q", s.EditingID)
+	}
+
+	// CancelEdit clears EditingID
+	err = s.HandleAction("CancelEdit", nil)
+	if err != nil {
+		t.Fatalf("HandleAction(CancelEdit) failed: %v", err)
+	}
+	if s.EditingID != "" {
+		t.Errorf("expected EditingID empty after CancelEdit, got %q", s.EditingID)
+	}
+}
+
+func TestHandleEditNumericID(t *testing.T) {
+	s := &GenericState{}
+
+	// Edit with numeric ID (common for SQLite auto-increment)
+	err := s.HandleAction("Edit", map[string]interface{}{"id": 7})
+	if err != nil {
+		t.Fatalf("HandleAction(Edit) failed: %v", err)
+	}
+	if s.EditingID != "7" {
+		t.Errorf("expected EditingID '7', got %q", s.EditingID)
+	}
+}
