@@ -669,8 +669,16 @@ var chartAnnotationPattern = regexp.MustCompile(
 )
 
 // chartTablePattern matches a GFM-rendered table immediately after a heading.
+// Uses <table[^>]*> to tolerate attributes Goldmark may add via extensions.
 var chartTablePattern = regexp.MustCompile(
-	`(?s)<table>\n<thead>\n<tr>\n((?:<th>.*?</th>\n)+)</tr>\n</thead>\n<tbody>\n((?:<tr>\n(?:<td>.*?</td>\n)+</tr>\n)+)</tbody>\n</table>\n`,
+	`(?s)<table[^>]*>\n<thead>\n<tr>\n((?:<th>.*?</th>\n)+)</tr>\n</thead>\n<tbody>\n((?:<tr>\n(?:<td>.*?</td>\n)+</tr>\n)+)</tbody>\n</table>\n`,
+)
+
+// Pre-compiled regexes for table parsing (avoid recompilation per call).
+var (
+	chartThPattern = regexp.MustCompile(`<th>(.*?)</th>`)
+	chartTrPattern = regexp.MustCompile(`(?s)<tr>\n((?:<td>.*?</td>\n)+)</tr>`)
+	chartTdPattern = regexp.MustCompile(`<td>(.*?)</td>`)
 )
 
 var validChartTypes = map[string]bool{
@@ -872,8 +880,7 @@ func processCharts(htmlStr string, chartOpts map[string]ChartOptions) (string, b
 // parseChartTableHeaders extracts column headers from a GFM table's <thead>.
 // Strips HTML tags and unescapes entities to produce clean text labels.
 func parseChartTableHeaders(tableHTML string) []string {
-	thPattern := regexp.MustCompile(`<th>(.*?)</th>`)
-	matches := thPattern.FindAllStringSubmatch(tableHTML, -1)
+	matches := chartThPattern.FindAllStringSubmatch(tableHTML, -1)
 	headers := make([]string, len(matches))
 	for i, m := range matches {
 		clean := htmlTagPattern.ReplaceAllString(m[1], "")
@@ -884,20 +891,16 @@ func parseChartTableHeaders(tableHTML string) []string {
 
 // parseChartTableRows extracts row data from a GFM table's <tbody>.
 func parseChartTableRows(tableHTML string) [][]string {
-	trPattern := regexp.MustCompile(`(?s)<tr>\n((?:<td>.*?</td>\n)+)</tr>`)
-	tdPattern := regexp.MustCompile(`<td>(.*?)</td>`)
-
-	// Only match rows in tbody
 	tbodyIdx := strings.Index(tableHTML, "<tbody>")
 	if tbodyIdx < 0 {
 		return nil
 	}
 	tbody := tableHTML[tbodyIdx:]
 
-	trMatches := trPattern.FindAllStringSubmatch(tbody, -1)
+	trMatches := chartTrPattern.FindAllStringSubmatch(tbody, -1)
 	rows := make([][]string, len(trMatches))
 	for i, tr := range trMatches {
-		tdMatches := tdPattern.FindAllStringSubmatch(tr[1], -1)
+		tdMatches := chartTdPattern.FindAllStringSubmatch(tr[1], -1)
 		row := make([]string, len(tdMatches))
 		for j, td := range tdMatches {
 			row[j] = td[1]
