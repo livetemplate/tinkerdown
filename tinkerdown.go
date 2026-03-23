@@ -28,6 +28,9 @@ type Page struct {
 
 	// ScheduleWarnings contains any warnings generated during schedule parsing
 	ScheduleWarnings []schedule.ParseWarning
+
+	// HasCharts indicates the page has chart annotations requiring Chart.js
+	HasCharts bool
 }
 
 // PageConfig contains configuration for a page.

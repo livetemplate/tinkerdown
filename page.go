@@ -100,6 +100,7 @@ func ParseFile(path string) (*Page, error) {
 	if fm.ScheduleWarnings != nil {
 		page.ScheduleWarnings = fm.ScheduleWarnings
 	}
+	page.HasCharts = fm.HasCharts
 
 	// Build blocks (pass source file for error context)
 	if err := page.buildBlocks(codeBlocks, absPath); err != nil {
@@ -246,6 +247,7 @@ func BuildPage(id, sourceFile string, content []byte) (*Page, error) {
 	if fm.ScheduleWarnings != nil {
 		page.ScheduleWarnings = fm.ScheduleWarnings
 	}
+	page.HasCharts = fm.HasCharts
 
 	// Build blocks
 	if err := page.buildBlocks(codeBlocks, sourceFile); err != nil {

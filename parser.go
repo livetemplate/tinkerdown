@@ -2,15 +2,18 @@ package tinkerdown
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"html"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/livetemplate/tinkerdown/internal/schedule"
+	"github.com/livetemplate/tinkerdown/internal/slug"
 	"github.com/yuin/goldmark"
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/extension"
@@ -112,6 +115,9 @@ type Frontmatter struct {
 
 	// Schedule parsing warnings (populated during parsing)
 	ScheduleWarnings []schedule.ParseWarning `yaml:"-"`
+
+	// HasCharts indicates the page has {chart:...} annotations (populated during parsing)
+	HasCharts bool `yaml:"-"`
 }
 
 // CodeBlock represents a code block extracted from markdown.
@@ -194,6 +200,12 @@ func ParseMarkdown(content []byte) (*Frontmatter, []*CodeBlock, string, error) {
 
 	// Process tabbed headings (## [Tab1] | [Tab2] filter)
 	html = processTabbedHeadings(html)
+
+	// Process chart headings (## Title {chart:bar} followed by table)
+	html, hasCharts := processCharts(html)
+	if hasCharts {
+		frontmatter.HasCharts = true
+	}
 
 	// Parse schedule tokens and imperatives from markdown content
 	schedules, scheduleWarnings := parseScheduleTokens(remaining)
@@ -644,6 +656,232 @@ func parseTabsFromContent(content string) []Tab {
 	return tabs
 }
 
+// chartAnnotationPattern matches headings with {chart:type} or {chart} at the end.
+// Goldmark renders: <h2 id="sales-by-region-chartbar">Sales by Region {chart:bar}</h2>
+var chartAnnotationPattern = regexp.MustCompile(
+	`(<h([1-6])\s+id="[^"]*"[^>]*>)(.*?)\s*\{chart(?::(\w+))?\}\s*(</h[1-6]>)`,
+)
+
+// chartTablePattern matches a GFM-rendered table immediately after a heading.
+var chartTablePattern = regexp.MustCompile(
+	`(?s)<table>\n<thead>\n<tr>\n((?:<th>.*?</th>\n)+)</tr>\n</thead>\n<tbody>\n((?:<tr>\n(?:<td>.*?</td>\n)+</tr>\n)+)</tbody>\n</table>\n`,
+)
+
+var validChartTypes = map[string]bool{
+	"bar": true, "line": true, "pie": true, "doughnut": true, "auto": true, "": true,
+}
+
+// chartData is the JSON structure passed to Chart.js via data attributes.
+type chartData struct {
+	Labels   []string     `json:"labels"`
+	Datasets []chartDataset `json:"datasets"`
+}
+
+type chartDataset struct {
+	Label string    `json:"label"`
+	Data  []float64 `json:"data"`
+}
+
+// processCharts detects {chart:type} headings followed by tables and transforms
+// them into chart container elements with JSON data attributes for Chart.js.
+// Returns the modified HTML and whether any charts were found.
+func processCharts(htmlStr string) (string, bool) {
+	found := false
+
+	// Find all chart-annotated headings
+	matches := chartAnnotationPattern.FindAllStringSubmatchIndex(htmlStr, -1)
+	if len(matches) == 0 {
+		return htmlStr, false
+	}
+
+	// Process matches in reverse order to preserve indices
+	for i := len(matches) - 1; i >= 0; i-- {
+		m := matches[i]
+		fullMatchStart := m[0]
+		fullMatchEnd := m[1]
+
+		// Extract heading parts
+		headingText := htmlStr[m[6]:m[7]]   // "Sales by Region"
+		chartType := ""
+		if m[8] >= 0 {
+			chartType = htmlStr[m[8]:m[9]]  // "bar"
+		}
+		headingClose := htmlStr[m[10]:m[11]] // </h2>
+
+		// Validate chart type
+		if !validChartTypes[chartType] {
+			continue
+		}
+
+		// Look for a table immediately after this heading (with optional whitespace)
+		remaining := htmlStr[fullMatchEnd:]
+		trimmed := strings.TrimLeft(remaining, " \t\n\r")
+		if !strings.HasPrefix(trimmed, "<table>") {
+			// No table follows — just remove the annotation from the heading
+			cleanTitle := strings.TrimSpace(headingText)
+			cleanID := slug.Heading(cleanTitle)
+			newHeading := fmt.Sprintf(`<h%s id="%s">%s%s`, htmlStr[m[4]:m[5]], cleanID, cleanTitle, headingClose)
+			htmlStr = htmlStr[:fullMatchStart] + newHeading + htmlStr[fullMatchEnd:]
+			continue
+		}
+
+		// Find the table
+		tableMatch := chartTablePattern.FindStringIndex(trimmed)
+		if tableMatch == nil {
+			continue
+		}
+
+		tableHTML := trimmed[tableMatch[0]:tableMatch[1]]
+		// Calculate the absolute position of the table end in the original string
+		tableEndAbs := fullMatchEnd + (len(remaining) - len(trimmed)) + tableMatch[1]
+
+		// Parse table headers
+		headers := parseChartTableHeaders(tableHTML)
+		if len(headers) < 2 {
+			continue
+		}
+
+		// Parse table rows
+		rows := parseChartTableRows(tableHTML)
+		if len(rows) == 0 {
+			continue
+		}
+
+		// Determine which columns are numeric
+		numericCols := make([]bool, len(headers))
+		for col := range headers {
+			numericCols[col] = true
+			for _, row := range rows {
+				if col < len(row) {
+					_, err := strconv.ParseFloat(strings.TrimSpace(row[col]), 64)
+					if err != nil {
+						numericCols[col] = false
+						break
+					}
+				}
+			}
+		}
+
+		// Find label column (first non-numeric) and data columns
+		labelCol := -1
+		var dataCols []int
+		for col := range headers {
+			if !numericCols[col] {
+				if labelCol < 0 {
+					labelCol = col
+				}
+			} else {
+				dataCols = append(dataCols, col)
+			}
+		}
+
+		if len(dataCols) == 0 {
+			continue // No numeric columns, skip chart
+		}
+		if labelCol < 0 {
+			labelCol = 0 // All numeric, use first column as labels
+			dataCols = dataCols[1:]
+			if len(dataCols) == 0 {
+				continue
+			}
+		}
+
+		// Build chart data
+		labels := make([]string, len(rows))
+		for r, row := range rows {
+			if labelCol < len(row) {
+				labels[r] = strings.TrimSpace(html.UnescapeString(row[labelCol]))
+			}
+		}
+
+		datasets := make([]chartDataset, len(dataCols))
+		for di, col := range dataCols {
+			datasets[di].Label = headers[col]
+			datasets[di].Data = make([]float64, len(rows))
+			for r, row := range rows {
+				if col < len(row) {
+					val, _ := strconv.ParseFloat(strings.TrimSpace(row[col]), 64)
+					datasets[di].Data[r] = val
+				}
+			}
+		}
+
+		// Auto-detect chart type
+		if chartType == "" || chartType == "auto" {
+			if len(dataCols) == 1 && len(labels) <= 8 {
+				chartType = "pie"
+			} else {
+				chartType = "bar"
+			}
+		}
+
+		// Build JSON
+		cd := chartData{Labels: labels, Datasets: datasets}
+		jsonBytes, err := json.Marshal(cd)
+		if err != nil {
+			continue
+		}
+
+		// Build replacement HTML
+		cleanTitle := strings.TrimSpace(headingText)
+		cleanID := slug.Heading(cleanTitle)
+		headingLevel := htmlStr[m[4]:m[5]]
+
+		var buf strings.Builder
+		fmt.Fprintf(&buf, "<h%s id=\"%s\">%s%s\n", headingLevel, cleanID, cleanTitle, headingClose)
+		fmt.Fprintf(&buf, "<div class=\"tinkerdown-chart\" data-chart-type=\"%s\" data-chart-title=\"%s\" data-chart-data='%s'>\n",
+			chartType, html.EscapeString(cleanTitle), html.EscapeString(string(jsonBytes)))
+		buf.WriteString("  <canvas></canvas>\n")
+		buf.WriteString("</div>\n")
+		buf.WriteString("<details class=\"tinkerdown-chart-table\">\n")
+		buf.WriteString("  <summary>View data</summary>\n")
+		buf.WriteString("  ")
+		buf.WriteString(tableHTML)
+		buf.WriteString("</details>\n")
+
+		htmlStr = htmlStr[:fullMatchStart] + buf.String() + htmlStr[tableEndAbs:]
+		found = true
+	}
+
+	return htmlStr, found
+}
+
+// parseChartTableHeaders extracts column headers from a GFM table's <thead>.
+func parseChartTableHeaders(tableHTML string) []string {
+	thPattern := regexp.MustCompile(`<th>(.*?)</th>`)
+	matches := thPattern.FindAllStringSubmatch(tableHTML, -1)
+	headers := make([]string, len(matches))
+	for i, m := range matches {
+		headers[i] = strings.TrimSpace(m[1])
+	}
+	return headers
+}
+
+// parseChartTableRows extracts row data from a GFM table's <tbody>.
+func parseChartTableRows(tableHTML string) [][]string {
+	trPattern := regexp.MustCompile(`(?s)<tr>\n((?:<td>.*?</td>\n)+)</tr>`)
+	tdPattern := regexp.MustCompile(`<td>(.*?)</td>`)
+
+	// Only match rows in tbody
+	tbodyIdx := strings.Index(tableHTML, "<tbody>")
+	if tbodyIdx < 0 {
+		return nil
+	}
+	tbody := tableHTML[tbodyIdx:]
+
+	trMatches := trPattern.FindAllStringSubmatch(tbody, -1)
+	rows := make([][]string, len(trMatches))
+	for i, tr := range trMatches {
+		tdMatches := tdPattern.FindAllStringSubmatch(tr[1], -1)
+		row := make([]string, len(tdMatches))
+		for j, td := range tdMatches {
+			row[j] = td[1]
+		}
+		rows[i] = row
+	}
+	return rows
+}
+
 // parseCodeBlock parses a fenced code block and extracts livemdtools metadata.
 // Code block info string format: "go server readonly id=counter"
 func parseCodeBlock(fenced *ast.FencedCodeBlock, source []byte, lineOffset int) (*CodeBlock, error) {
@@ -873,6 +1111,12 @@ func ParseMarkdownWithPartials(content []byte, baseDir string) (*Frontmatter, []
 
 	// Process tabbed headings (## [Tab1] | [Tab2] filter)
 	htmlStr = processTabbedHeadings(htmlStr)
+
+	// Process chart headings (## Title {chart:bar} followed by table)
+	htmlStr, hasCharts := processCharts(htmlStr)
+	if hasCharts {
+		frontmatter.HasCharts = true
+	}
 
 	// Parse schedule tokens and imperatives from markdown content
 	schedules, scheduleWarnings := parseScheduleTokens(processed)

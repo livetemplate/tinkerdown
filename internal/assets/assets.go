@@ -16,6 +16,9 @@ var prismFS embed.FS
 //go:embed vendor/mermaid/*
 var mermaidFS embed.FS
 
+//go:embed vendor/chartjs/*
+var chartjsFS embed.FS
+
 //go:embed vendor/pico/*
 var picoFS embed.FS
 
@@ -73,6 +76,11 @@ func GetPrismLanguage(lang string) ([]byte, error) {
 // GetMermaidJS returns the Mermaid.js library
 func GetMermaidJS() ([]byte, error) {
 	return mermaidFS.ReadFile("vendor/mermaid/mermaid.min.js")
+}
+
+// GetChartJS returns the Chart.js library
+func GetChartJS() ([]byte, error) {
+	return chartjsFS.ReadFile("vendor/chartjs/chart.umd.min.js")
 }
 
 // GetPicoCSS returns the Pico CSS framework
