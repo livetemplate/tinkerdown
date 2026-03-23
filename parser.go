@@ -659,6 +659,9 @@ func parseTabsFromContent(content string) []Tab {
 	return tabs
 }
 
+// htmlTagPattern strips HTML tags from text (used to clean heading text and table headers).
+var htmlTagPattern = regexp.MustCompile(`<[^>]*>`)
+
 // chartAnnotationPattern matches headings with {chart:type} or {chart} at the end.
 // Goldmark renders: <h2 id="sales-by-region-chartbar">Sales by Region {chart:bar}</h2>
 var chartAnnotationPattern = regexp.MustCompile(
@@ -730,7 +733,7 @@ func processCharts(htmlStr string, chartOpts map[string]ChartOptions) (string, b
 		trimmed := strings.TrimLeft(remaining, " \t\n\r")
 		if !strings.HasPrefix(trimmed, "<table>") {
 			// No table follows — just remove the annotation from the heading
-			cleanTitle := strings.TrimSpace(headingText)
+			cleanTitle := strings.TrimSpace(html.UnescapeString(htmlTagPattern.ReplaceAllString(headingText, "")))
 			cleanID := slug.Heading(cleanTitle)
 			newHeading := fmt.Sprintf(`<h%s id="%s">%s%s`, htmlStr[m[4]:m[5]], cleanID, cleanTitle, headingClose)
 			htmlStr = htmlStr[:fullMatchStart] + newHeading + htmlStr[fullMatchEnd:]
@@ -834,8 +837,8 @@ func processCharts(htmlStr string, chartOpts map[string]ChartOptions) (string, b
 			continue
 		}
 
-		// Build replacement HTML
-		cleanTitle := strings.TrimSpace(headingText)
+		// Build replacement HTML — strip any inline HTML tags from heading text
+		cleanTitle := strings.TrimSpace(html.UnescapeString(htmlTagPattern.ReplaceAllString(headingText, "")))
 		cleanID := slug.Heading(cleanTitle)
 		headingLevel := htmlStr[m[4]:m[5]]
 
@@ -843,13 +846,13 @@ func processCharts(htmlStr string, chartOpts map[string]ChartOptions) (string, b
 		optionsAttr := ""
 		if opts, ok := chartOpts[cleanID]; ok {
 			if optJSON, err := json.Marshal(opts); err == nil && string(optJSON) != "{}" {
-				optionsAttr = fmt.Sprintf(` data-chart-options='%s'`, html.EscapeString(string(optJSON)))
+				optionsAttr = fmt.Sprintf(` data-chart-options="%s"`, html.EscapeString(string(optJSON)))
 			}
 		}
 
 		var buf strings.Builder
 		fmt.Fprintf(&buf, "<h%s id=\"%s\">%s%s\n", headingLevel, cleanID, cleanTitle, headingClose)
-		fmt.Fprintf(&buf, "<div class=\"tinkerdown-chart\" data-chart-type=\"%s\" data-chart-title=\"%s\" data-chart-data='%s'%s>\n",
+		fmt.Fprintf(&buf, "<div class=\"tinkerdown-chart\" data-chart-type=\"%s\" data-chart-title=\"%s\" data-chart-data=\"%s\"%s>\n",
 			chartType, html.EscapeString(cleanTitle), html.EscapeString(string(jsonBytes)), optionsAttr)
 		buf.WriteString("  <canvas></canvas>\n")
 		buf.WriteString("</div>\n")
@@ -867,12 +870,14 @@ func processCharts(htmlStr string, chartOpts map[string]ChartOptions) (string, b
 }
 
 // parseChartTableHeaders extracts column headers from a GFM table's <thead>.
+// Strips HTML tags and unescapes entities to produce clean text labels.
 func parseChartTableHeaders(tableHTML string) []string {
 	thPattern := regexp.MustCompile(`<th>(.*?)</th>`)
 	matches := thPattern.FindAllStringSubmatch(tableHTML, -1)
 	headers := make([]string, len(matches))
 	for i, m := range matches {
-		headers[i] = strings.TrimSpace(m[1])
+		clean := htmlTagPattern.ReplaceAllString(m[1], "")
+		headers[i] = strings.TrimSpace(html.UnescapeString(clean))
 	}
 	return headers
 }

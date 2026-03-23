@@ -703,14 +703,20 @@ func (s *Server) renderPage(page *tinkerdown.Page, currentPath string, host stri
                 var canvas = container.querySelector('canvas');
                 var chartType = container.dataset.chartType || 'bar';
                 var chartTitle = container.dataset.chartTitle || '';
-                var chartData = JSON.parse(container.dataset.chartData || '{}');
-                var opts = container.dataset.chartOptions ? JSON.parse(container.dataset.chartOptions) : {};
+                var chartData, opts;
+                try {
+                    chartData = JSON.parse(container.dataset.chartData || '{}');
+                    opts = container.dataset.chartOptions ? JSON.parse(container.dataset.chartOptions) : {};
+                } catch(e) {
+                    console.warn('[Tinkerdown] Failed to parse chart data:', e);
+                    return;
+                }
 
                 // Custom colors from frontmatter or defaults
-                var chartColors = (opts.colors && opts.colors.length) ? opts.colors.map(function(c) {
-                    return c.includes('rgba') ? c : c; // pass through as-is
-                }) : colors;
-                var chartBorderColors = (opts.colors && opts.colors.length) ? opts.colors : borderColors;
+                var chartColors = (opts.colors && opts.colors.length) ? opts.colors : colors;
+                var chartBorderColors = (opts.colors && opts.colors.length) ? opts.colors.map(function(c) {
+                    return c.startsWith('rgba') ? c.replace(/[\d.]+\)$/, '1)') : c;
+                }) : borderColors;
 
                 chartData.datasets.forEach(function(dataset, i) {
                     if (chartType === 'pie' || chartType === 'doughnut') {
@@ -777,9 +783,11 @@ func (s *Server) renderPage(page *tinkerdown.Page, currentPath string, host stri
                     var isDark = e.detail.theme === 'dark';
                     chart.options.plugins.title.color = isDark ? '#e0e0e0' : '#333';
                     chart.options.plugins.legend.labels.color = isDark ? '#e0e0e0' : '#333';
-                    if (chart.options.scales.x) {
+                    if (chart.options.scales && chart.options.scales.x) {
                         chart.options.scales.x.ticks.color = isDark ? '#b0b0b0' : '#555';
                         chart.options.scales.x.grid.color = isDark ? '#404040' : '#e1e4e8';
+                    }
+                    if (chart.options.scales && chart.options.scales.y) {
                         chart.options.scales.y.ticks.color = isDark ? '#b0b0b0' : '#555';
                         chart.options.scales.y.grid.color = isDark ? '#404040' : '#e1e4e8';
                     }
