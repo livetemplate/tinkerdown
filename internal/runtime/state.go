@@ -435,9 +435,11 @@ func (s *GenericState) refresh() error {
 // handleEdit sets the editing ID to the row being edited.
 // The template checks EditingID to show inputs vs display text.
 func (s *GenericState) handleEdit(data map[string]interface{}) error {
-	if id, ok := data["id"]; ok {
-		s.EditingID = fmt.Sprintf("%v", id)
+	id, ok := data["id"]
+	if !ok || id == nil {
+		return fmt.Errorf("Edit action requires an 'id' parameter")
 	}
+	s.EditingID = fmt.Sprintf("%v", id)
 	return nil
 }
 
