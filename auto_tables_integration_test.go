@@ -244,16 +244,10 @@ sources:
 	}
 	defer resp.Body.Close()
 
-	// Page renders (the fetch error will appear in the WebSocket-delivered content,
-	// not in the initial HTTP response). This test documents the known behavior
-	// that tables without created_at will show a fetch error at runtime.
+	// After the fix, the page should render successfully even without created_at.
+	// The SQLite source now conditionally uses ORDER BY created_at DESC only when
+	// the column exists.
 	if resp.StatusCode != 200 {
-		t.Fatalf("Expected 200 (errors shown in UI), got %d", resp.StatusCode)
+		t.Fatalf("Expected 200, got %d", resp.StatusCode)
 	}
-
-	// NOTE: This test documents a known limitation of the SQLite source —
-	// it hardcodes ORDER BY created_at DESC. Tables created outside tinkerdown
-	// (without created_at) will see a runtime error. A future improvement would
-	// be to make the ORDER BY conditional on column existence.
-	t.Log("Known limitation: SQLite source hardcodes ORDER BY created_at DESC — tables without this column get a runtime fetch error")
 }
