@@ -469,9 +469,12 @@ func TestGenerateWritableBlock(t *testing.T) {
 	if !strings.Contains(block, `$.EditingID`) {
 		t.Error("expected EditingID conditional for inline editing")
 	}
-	// Should have Update form (in edit mode)
+	// Should have Update form (external, linked via HTML form attribute)
 	if !strings.Contains(block, `lvt-submit="Update"`) {
 		t.Error("expected Update form for inline edit")
+	}
+	if !strings.Contains(block, `form="auto-table-edit-form"`) {
+		t.Error("expected inputs linked to external form via HTML form attribute")
 	}
 	// Should have CancelEdit button
 	if !strings.Contains(block, `lvt-click="CancelEdit"`) {
