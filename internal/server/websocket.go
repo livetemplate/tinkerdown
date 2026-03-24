@@ -233,7 +233,15 @@ func (h *WebSocketHandler) initializeSourceBlocks() {
 		pageActions := h.getPageActions()
 
 		factory := func() runtime.Store {
-			state, err := runtime.NewGenericStateWithMetadata(srcName, srcCfg, rootDir, curFile, blockMeta)
+			var state *runtime.GenericState
+			var err error
+
+			if srcCfg.Type == "computed" {
+				// Computed sources need a source lookup to find their parent
+				state, err = runtime.NewGenericStateForComputed(srcName, srcCfg, rootDir, curFile, blockMeta, h.lookupSource)
+			} else {
+				state, err = runtime.NewGenericStateWithMetadata(srcName, srcCfg, rootDir, curFile, blockMeta)
+			}
 			if err != nil {
 				log.Printf("[WS] Failed to create runtime state for %s: %v", srcName, err)
 				return nil

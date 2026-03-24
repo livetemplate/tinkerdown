@@ -91,10 +91,24 @@ func NewRegistryWithFile(cfg *config.Config, siteDir, currentFile string) (*Regi
 		return r, nil
 	}
 
+	// Two-pass initialization: regular sources first, computed sources second.
+	// Computed sources reference other sources by name and need them to exist.
+	var computedSources []struct {
+		name string
+		cfg  config.SourceConfig
+	}
+
 	for name, srcCfg := range cfg.Sources {
+		if srcCfg.Type == "computed" {
+			computedSources = append(computedSources, struct {
+				name string
+				cfg  config.SourceConfig
+			}{name, srcCfg})
+			continue
+		}
+
 		src, err := createSource(name, srcCfg, siteDir, currentFile)
 		if err != nil {
-			// Stop cache cleanup goroutine to avoid leak on initialization error
 			memCache.Stop()
 			return nil, err
 		}
@@ -111,13 +125,43 @@ func NewRegistryWithFile(cfg *config.Config, siteDir, currentFile string) (*Regi
 		r.sources[name] = src
 	}
 
+	// Second pass: computed sources (can reference sources from first pass)
+	for _, cs := range computedSources {
+		src, err := NewComputedSource(cs.name, cs.cfg, r)
+		if err != nil {
+			memCache.Stop()
+			return nil, err
+		}
+
+		// Wrap with caching if enabled
+		if cs.cfg.IsCacheEnabled() {
+			src := Source(src) // interface conversion for caching wrapper
+			src = NewCachedSource(src, r.cache, cs.cfg)
+			r.sources[cs.name] = src
+		} else {
+			r.sources[cs.name] = src
+		}
+	}
+
 	return r, nil
+}
+
+// NewEmptyRegistry creates an empty registry (for testing or temporary use).
+func NewEmptyRegistry() *Registry {
+	return &Registry{
+		sources: make(map[string]Source),
+	}
 }
 
 // Get returns a source by name
 func (r *Registry) Get(name string) (Source, bool) {
 	src, ok := r.sources[name]
 	return src, ok
+}
+
+// Set registers a source by name. Used for building registries incrementally.
+func (r *Registry) Set(name string, src Source) {
+	r.sources[name] = src
 }
 
 // Close releases all sources and stops the cache

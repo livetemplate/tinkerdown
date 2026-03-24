@@ -139,6 +139,11 @@ type SourceConfig struct {
 	Retry       *RetryConfig           `yaml:"retry,omitempty"`        // Retry configuration
 	Cache       *CacheConfig           `yaml:"cache,omitempty"`        // Cache configuration
 	AutoBind    *bool                  `yaml:"auto_bind,omitempty"`    // Set to false to exclude from auto-table matching
+
+	// For computed sources: derive data from another source
+	GroupBy   string            `yaml:"group_by,omitempty"`   // Field to group by (e.g., "category")
+	Aggregate map[string]string `yaml:"aggregate,omitempty"`  // Field → aggregation expression (e.g., "total": "sum(amount)")
+	Filter    string            `yaml:"filter,omitempty"`     // Optional filter expression (e.g., "status = active")
 }
 
 // RetryConfig configures retry behavior for a source

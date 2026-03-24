@@ -90,9 +90,64 @@ func NewGenericState(name string, cfg config.SourceConfig, siteDir, currentFile 
 	return NewGenericStateWithMetadata(name, cfg, siteDir, currentFile, nil)
 }
 
+// NewGenericStateForComputed creates a state for a computed source.
+// sourceLookup is used to resolve the parent source by name. If nil, the parent
+// is created from config using createSource.
+func NewGenericStateForComputed(name string, cfg config.SourceConfig, siteDir, currentFile string, metadata map[string]string, sourceLookup func(string) (source.Source, bool)) (*GenericState, error) {
+	if cfg.From == "" {
+		return nil, fmt.Errorf("computed source %q: 'from' field is required", name)
+	}
+
+	// Try sourceLookup first (from WebSocket handler's source registry)
+	var parentSrc source.Source
+	if sourceLookup != nil {
+		var ok bool
+		parentSrc, ok = sourceLookup(cfg.From)
+		if !ok {
+			return nil, fmt.Errorf("computed source %q: parent source %q not found", name, cfg.From)
+		}
+	}
+
+	// Build a minimal registry with the parent source for NewComputedSource
+	reg := source.NewEmptyRegistry()
+	if parentSrc != nil {
+		reg.Set(cfg.From, parentSrc)
+	}
+
+	computedSrc, err := source.NewComputedSource(name, cfg, reg)
+	if err != nil {
+		return nil, err
+	}
+
+	s := &GenericState{
+		source:     computedSrc,
+		sourceCfg:  cfg,
+		sourceType: cfg.Type,
+		sourceName: name,
+		siteDir:    siteDir,
+		Errors:     make(map[string]string),
+	}
+
+	if metadata != nil {
+		s.elementType = metadata["lvt-element"]
+	}
+
+	// Initial fetch
+	if err := s.refresh(); err != nil {
+		s.Error = err.Error()
+	}
+
+	return s, nil
+}
+
 // NewGenericStateWithMetadata creates a new state with block metadata for datatable support.
 // Metadata should include "lvt-element" ("table", "select", or "div") and "lvt-columns" for tables.
 func NewGenericStateWithMetadata(name string, cfg config.SourceConfig, siteDir, currentFile string, metadata map[string]string) (*GenericState, error) {
+	// For computed sources, use the specialized constructor
+	if cfg.Type == "computed" {
+		return NewGenericStateForComputed(name, cfg, siteDir, currentFile, metadata, nil)
+	}
+
 	// Create the underlying source using the existing factory
 	src, err := createSource(name, cfg, siteDir, currentFile)
 	if err != nil {
@@ -180,6 +235,11 @@ func createSource(name string, cfg config.SourceConfig, siteDir, currentFile str
 		return wasm.NewWasmSource(name, cfg.Path, siteDir, cfg.Options)
 	case "graphql":
 		return source.NewGraphQLSource(name, cfg, siteDir)
+	case "computed":
+		// Computed sources are handled specially — they need a parent source.
+		// The parent is created by the caller and passed via sourceLookup.
+		// See NewGenericStateForComputed.
+		return nil, fmt.Errorf("computed sources must be created via NewGenericStateForComputed")
 	default:
 		return nil, fmt.Errorf("unsupported source type: %s", cfg.Type)
 	}
