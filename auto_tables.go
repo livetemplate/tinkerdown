@@ -3,8 +3,10 @@ package tinkerdown
 import (
 	"bytes"
 	"fmt"
+	"html"
 	"regexp"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/livetemplate/tinkerdown/internal/slug"
 )
@@ -368,7 +370,7 @@ func generateReadonlyTableBlock(sourceName string, columns []string) string {
 	// Header
 	b.WriteString(`  <thead><tr>`)
 	for _, col := range columns {
-		b.WriteString(fmt.Sprintf(`<th>%s</th>`, col))
+		b.WriteString(fmt.Sprintf(`<th>%s</th>`, html.EscapeString(col)))
 	}
 	b.WriteString(`</tr></thead>`)
 	b.WriteString("\n")
@@ -417,7 +419,7 @@ func generateWritableTableBlock(sourceName string, columns []string) string {
 	// Header
 	b.WriteString(`  <thead><tr>`)
 	for _, col := range columns {
-		b.WriteString(fmt.Sprintf(`<th>%s</th>`, col))
+		b.WriteString(fmt.Sprintf(`<th>%s</th>`, html.EscapeString(col)))
 	}
 	b.WriteString(`<th></th>`) // actions column
 	b.WriteString(`</tr></thead>`)
@@ -515,9 +517,9 @@ func generateWritableTableBlock(sourceName string, columns []string) string {
 		inputName := toInputName(col)
 		b.WriteString(`  <div style="display: flex; flex-direction: column; gap: 2px;">`)
 		b.WriteString("\n")
-		b.WriteString(fmt.Sprintf(`    <label style="font-size: 0.8em; color: #666;">%s</label>`, col))
+		b.WriteString(fmt.Sprintf(`    <label style="font-size: 0.8em; color: #666;">%s</label>`, html.EscapeString(col)))
 		b.WriteString("\n")
-		b.WriteString(fmt.Sprintf(`    <input type="text" name="%s" placeholder="%s..." required`, inputName, col))
+		b.WriteString(fmt.Sprintf(`    <input type="text" name="%s" placeholder="%s..." required`, inputName, html.EscapeString(col)))
 		b.WriteString("\n")
 		b.WriteString(`      style="padding: 6px 8px; border: 1px solid #ccc; border-radius: 4px;">`)
 		b.WriteString("\n")
@@ -556,8 +558,10 @@ func toFieldName(column string) string {
 		if part == "" {
 			continue
 		}
-		// Capitalize first letter of each part (PascalCase)
-		result.WriteString(strings.ToUpper(part[:1]) + part[1:])
+		// Capitalize first rune of each part (PascalCase), safe for multi-byte
+		firstRune, size := utf8.DecodeRuneInString(part)
+		result.WriteString(strings.ToUpper(string(firstRune)))
+		result.WriteString(part[size:])
 	}
 
 	return result.String()
