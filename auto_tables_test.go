@@ -354,6 +354,7 @@ func TestToFieldName(t *testing.T) {
 		{"Amount", "Amount"},
 		{"some-field", "SomeField"},
 		{"  spaced  ", "Spaced"},
+		{"Name}}{{.Password", "NamePassword"}, // template injection stripped
 		{"", ""},
 	}
 
@@ -361,6 +362,33 @@ func TestToFieldName(t *testing.T) {
 		got := toFieldName(tt.input)
 		if got != tt.expect {
 			t.Errorf("toFieldName(%q) = %q, want %q", tt.input, got, tt.expect)
+		}
+	}
+}
+
+// --- toInputName tests ---
+
+func TestToInputName(t *testing.T) {
+	tests := []struct {
+		input  string
+		expect string
+	}{
+		{"Name", "name"},
+		{"Full Name", "full_name"},
+		{"first-name", "first_name"},
+		{"Amount ($)", "amount"},
+		{"user.email", "user_email"},
+		{"  spaced  ", "spaced"},
+		{"a/b/c", "a_b_c"},
+		{"---leading---", "leading"},
+		{"col with  spaces", "col_with_spaces"},
+		{"", ""},
+	}
+
+	for _, tt := range tests {
+		got := toInputName(tt.input)
+		if got != tt.expect {
+			t.Errorf("toInputName(%q) = %q, want %q", tt.input, got, tt.expect)
 		}
 	}
 }

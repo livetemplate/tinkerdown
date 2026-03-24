@@ -558,10 +558,15 @@ func toFieldName(column string) string {
 		if part == "" {
 			continue
 		}
-		// Capitalize first rune of each part (PascalCase), safe for multi-byte
+		// Capitalize first rune of each part (PascalCase), safe for multi-byte.
+		// Only emit letters and digits to prevent template injection.
 		firstRune, size := utf8.DecodeRuneInString(part)
 		result.WriteString(strings.ToUpper(string(firstRune)))
-		result.WriteString(part[size:])
+		for _, r := range part[size:] {
+			if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' {
+				result.WriteRune(r)
+			}
+		}
 	}
 
 	return result.String()
