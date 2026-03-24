@@ -22,9 +22,10 @@ type SQLiteSource struct {
 	siteDir  string
 
 	// Schema tracking
-	columns   []string
-	mu        sync.RWMutex
-	hasSchema bool
+	columns      []string
+	mu           sync.RWMutex
+	hasSchema    bool
+	hasCreatedAt bool // true if table has a created_at column (for ORDER BY)
 }
 
 // NewSQLiteSource creates a new SQLite source
@@ -89,7 +90,10 @@ func (s *SQLiteSource) Fetch(ctx context.Context) ([]map[string]interface{}, err
 		return []map[string]interface{}{}, nil
 	}
 
-	query := fmt.Sprintf("SELECT * FROM %s ORDER BY created_at DESC", s.table)
+	query := fmt.Sprintf("SELECT * FROM %s", s.table)
+	if s.hasCreatedAt {
+		query += " ORDER BY created_at DESC"
+	}
 	rows, err := s.db.QueryContext(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("sqlite source %q: fetch failed: %w", s.name, err)
@@ -342,6 +346,7 @@ func (s *SQLiteSource) ensureTable(data map[string]interface{}) error {
 	}
 
 	s.hasSchema = true
+	s.hasCreatedAt = true
 	return nil
 }
 
@@ -371,7 +376,11 @@ func (s *SQLiteSource) discoverSchema() {
 		if err := rows.Scan(&cid, &name, &typeName, &notNull, &dfltValue, &pk); err != nil {
 			continue
 		}
-		if name != "id" && name != "created_at" {
+		if name == "created_at" {
+			s.hasCreatedAt = true
+			continue
+		}
+		if name != "id" {
 			s.columns = append(s.columns, name)
 		}
 	}
