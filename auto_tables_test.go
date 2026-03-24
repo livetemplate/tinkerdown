@@ -396,7 +396,7 @@ func TestToInputName(t *testing.T) {
 // --- LVT block generation tests ---
 
 func TestGenerateReadonlyBlock(t *testing.T) {
-	block := generateAutoTableLvtBlock("users", []string{"Name", "Email"}, false)
+	block := generateAutoTableLvtBlock("users", []string{"Name", "Email"}, false, nil)
 
 	// Should have lvt-source
 	if !strings.Contains(block, `lvt-source="users"`) {
@@ -425,7 +425,7 @@ func TestGenerateReadonlyBlock(t *testing.T) {
 }
 
 func TestGenerateWritableBlock(t *testing.T) {
-	block := generateAutoTableLvtBlock("expenses", []string{"Description", "Category", "Amount"}, true)
+	block := generateAutoTableLvtBlock("expenses", []string{"Description", "Category", "Amount"}, true, nil)
 
 	// Should have lvt-source
 	if !strings.Contains(block, `lvt-source="expenses"`) {
@@ -482,6 +482,47 @@ func TestGenerateWritableBlock(t *testing.T) {
 	}
 }
 
+func TestGenerateWritableBlockWithSchema(t *testing.T) {
+	// Provide schema types — Amount is REAL, Done is BOOLEAN
+	columnTypes := map[string]string{
+		"description": "text",
+		"amount":      "real",
+		"done":        "boolean",
+		"due":         "date",
+	}
+
+	block := generateAutoTableLvtBlock("tasks", []string{"Description", "Amount", "Done", "Due"}, true, columnTypes)
+
+	// Description should be text input
+	if !strings.Contains(block, `type="text" name="description"`) {
+		t.Error("expected type=\"text\" for Description column")
+	}
+	// Amount should be number input
+	if !strings.Contains(block, `type="number" name="amount"`) {
+		t.Error("expected type=\"number\" for Amount (real) column")
+	}
+	// Done should be checkbox input
+	if !strings.Contains(block, `type="checkbox" name="done"`) {
+		t.Error("expected type=\"checkbox\" for Done (boolean) column")
+	}
+	// Due should be date input
+	if !strings.Contains(block, `type="date" name="due"`) {
+		t.Error("expected type=\"date\" for Due (date) column")
+	}
+}
+
+func TestGenerateWritableBlockWithoutSchema(t *testing.T) {
+	// No schema — all inputs should be text
+	block := generateAutoTableLvtBlock("tasks", []string{"Name", "Amount"}, true, nil)
+
+	if !strings.Contains(block, `type="text" name="name"`) {
+		t.Error("expected type=\"text\" for Name (no schema)")
+	}
+	if !strings.Contains(block, `type="text" name="amount"`) {
+		t.Error("expected type=\"text\" for Amount (no schema)")
+	}
+}
+
 // --- Full preprocessing tests ---
 
 func TestPreprocessAutoTablesExactMatch(t *testing.T) {
@@ -507,7 +548,7 @@ sources:
 		"expenses": {Type: "sqlite", DB: "./test.db", Table: "expenses", Readonly: &readonlyFalse},
 	}
 
-	result, warnings := preprocessAutoTables(content, sources)
+	result, warnings := preprocessAutoTables(content, sources, "")
 	if len(warnings) != 0 {
 		t.Errorf("unexpected warnings: %v", warnings)
 	}
@@ -550,7 +591,7 @@ title: Test
 		"users": {Type: "rest", From: "https://example.com/users"},
 	}
 
-	result, _ := preprocessAutoTables(content, sources)
+	result, _ := preprocessAutoTables(content, sources, "")
 	resultStr := string(result)
 
 	// Should contain Refresh button
@@ -573,7 +614,7 @@ func TestPreprocessAutoTablesNoMatch(t *testing.T) {
 		"expenses": {Type: "sqlite"},
 	}
 
-	result, _ := preprocessAutoTables(content, sources)
+	result, _ := preprocessAutoTables(content, sources, "")
 	resultStr := string(result)
 
 	// Should NOT have lvt code block
@@ -592,7 +633,7 @@ func TestPreprocessAutoTablesNoSources(t *testing.T) {
 |------|-------|
 `)
 
-	result, warnings := preprocessAutoTables(content, nil)
+	result, warnings := preprocessAutoTables(content, nil, "")
 	if len(warnings) != 0 {
 		t.Errorf("unexpected warnings: %v", warnings)
 	}
@@ -617,7 +658,7 @@ func TestPreprocessAutoTablesMultipleSources(t *testing.T) {
 		"contacts": {Type: "sqlite", Readonly: &readonlyFalse},
 	}
 
-	result, warnings := preprocessAutoTables(content, sources)
+	result, warnings := preprocessAutoTables(content, sources, "")
 	if len(warnings) != 0 {
 		t.Errorf("unexpected warnings: %v", warnings)
 	}
@@ -649,7 +690,7 @@ func TestPreprocessAutoTablesContainmentMatch(t *testing.T) {
 		"expenses": {Type: "sqlite"},
 	}
 
-	result, _ := preprocessAutoTables(content, sources)
+	result, _ := preprocessAutoTables(content, sources, "")
 	resultStr := string(result)
 
 	if !strings.Contains(resultStr, `lvt-source="expenses"`) {
@@ -676,7 +717,7 @@ sources:
 		"items": {Type: "sqlite"},
 	}
 
-	result, _ := preprocessAutoTables(content, sources)
+	result, _ := preprocessAutoTables(content, sources, "")
 	resultStr := string(result)
 
 	// Frontmatter should be preserved
