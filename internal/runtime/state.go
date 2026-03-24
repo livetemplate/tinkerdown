@@ -211,9 +211,11 @@ func (s *GenericState) HandleAction(action string, data map[string]interface{}) 
 		s.EditingID = ""
 		return nil
 	case "add", "toggle", "delete", "update":
-		// Clear editing state on successful write
-		defer func() { s.EditingID = "" }()
-		return s.handleWriteAction(action, data)
+		err := s.handleWriteAction(action, data)
+		if err == nil {
+			s.EditingID = ""
+		}
+		return err
 	default:
 		// Check for datatable actions (Sort_X, NextPage_X, PrevPage_X)
 		if strings.HasPrefix(actionLower, "sort") ||

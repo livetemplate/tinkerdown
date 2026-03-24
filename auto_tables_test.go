@@ -323,8 +323,9 @@ func TestContainsWord(t *testing.T) {
 		{"expenses tracker", "expenses", true},
 		{"expenses", "expenses", true},
 		{"my-expenses", "expenses", true},
-		{"myexpenses", "expenses", false}, // no word boundary
-		{"expensesmy", "expenses", false}, // no word boundary
+		{"myexpenses", "expenses", false},           // no word boundary
+		{"expensesmy", "expenses", false},           // no word boundary
+		{"myexpenses expenses", "expenses", true},   // second occurrence is valid
 		{"the expense report", "expenses", false}, // different word
 		{"team tasks board", "tasks", true},
 		{"", "tasks", false},
@@ -437,12 +438,12 @@ func TestGenerateWritableBlock(t *testing.T) {
 		t.Error("expected Edit button")
 	}
 	// Should have inline edit conditional
-	if !strings.Contains(block, `$.EditingId`) {
-		t.Error("expected EditingId conditional for inline editing")
+	if !strings.Contains(block, `$.EditingID`) {
+		t.Error("expected EditingID conditional for inline editing")
 	}
-	// Should have Save button (in edit mode)
-	if !strings.Contains(block, `lvt-click="Update"`) {
-		t.Error("expected Update/Save button")
+	// Should have Update form (in edit mode)
+	if !strings.Contains(block, `lvt-submit="Update"`) {
+		t.Error("expected Update form for inline edit")
 	}
 	// Should have CancelEdit button
 	if !strings.Contains(block, `lvt-click="CancelEdit"`) {

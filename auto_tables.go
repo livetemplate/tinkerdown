@@ -1,6 +1,7 @@
 package tinkerdown
 
 import (
+	"bytes"
 	"fmt"
 	"regexp"
 	"strings"
@@ -21,12 +22,10 @@ type tableSection struct {
 
 // Pre-compiled patterns for table detection
 var (
-	// Matches a markdown table header row: | Col1 | Col2 | Col3 |
-	tableHeaderPattern = regexp.MustCompile(`^\s*\|(.+)\|\s*$`)
+	// Matches a markdown table row (header or data): | Col1 | Col2 | Col3 |
+	tableRowPattern = regexp.MustCompile(`^\s*\|(.+)\|\s*$`)
 	// Matches the separator row: |---|---|---|
 	tableSepPattern = regexp.MustCompile(`^\s*\|[\s:]*-+[\s:|-]*\|\s*$`)
-	// Matches a table data row: | val1 | val2 | val3 |
-	tableRowPattern = regexp.MustCompile(`^\s*\|(.+)\|\s*$`)
 )
 
 // detectTableSections scans markdown content (after frontmatter) and finds
@@ -40,7 +39,7 @@ var (
 // Sections where the table is preceded by non-blank, non-table content are skipped.
 func detectTableSections(content []byte) []tableSection {
 	// Quick check: if no pipe character, no tables possible
-	if !containsByte(content, '|') {
+	if bytes.IndexByte(content, '|') < 0 {
 		return nil
 	}
 
@@ -83,7 +82,7 @@ func detectTableSections(content []byte) []tableSection {
 		}
 
 		// Check for table header row
-		headerMatch := tableHeaderPattern.FindStringSubmatch(lines[j])
+		headerMatch := tableRowPattern.FindStringSubmatch(lines[j])
 		if headerMatch == nil {
 			continue
 		}
@@ -208,30 +207,41 @@ func matchTablesToSources(sections []tableSection, sources map[string]SourceConf
 
 // containsWord checks if text contains word as a whole word (at word boundaries).
 // Both text and word should be lowercase.
+// Iterates over all occurrences so "myexpenses expenses" correctly matches "expenses".
 func containsWord(text, word string) bool {
-	idx := strings.Index(text, word)
-	if idx < 0 {
+	if word == "" {
 		return false
 	}
 
-	// Check left boundary: start of string or non-alphanumeric
-	if idx > 0 {
-		prev := text[idx-1]
-		if isAlphanumeric(prev) {
+	start := 0
+	for {
+		idx := strings.Index(text[start:], word)
+		if idx < 0 {
 			return false
 		}
-	}
+		idx += start // absolute index
 
-	// Check right boundary: end of string or non-alphanumeric
-	end := idx + len(word)
-	if end < len(text) {
-		next := text[end]
-		if isAlphanumeric(next) {
-			return false
+		// Check left boundary
+		if idx > 0 && isAlphanumeric(text[idx-1]) {
+			start = idx + len(word)
+			if start >= len(text) {
+				return false
+			}
+			continue
 		}
-	}
 
-	return true
+		// Check right boundary
+		end := idx + len(word)
+		if end < len(text) && isAlphanumeric(text[end]) {
+			start = idx + len(word)
+			if start >= len(text) {
+				return false
+			}
+			continue
+		}
+
+		return true
+	}
 }
 
 // isAlphanumeric returns true if b is a letter or digit.
@@ -419,35 +429,41 @@ func generateWritableTableBlock(sourceName string, columns []string) string {
 	b.WriteString(`  {{range .Data}}`)
 	b.WriteString("\n")
 
-	// Edit mode: show inputs when this row's ID matches EditingId
-	b.WriteString(`  {{if eq (printf "%v" .Id) $.EditingId}}`)
+	// Edit mode: show inputs when this row's ID matches EditingID
+	b.WriteString(`  {{if eq (printf "%v" .Id) $.EditingID}}`)
 	b.WriteString("\n")
 	b.WriteString(`    <tr>`)
 	b.WriteString("\n")
+	b.WriteString(`      <form lvt-submit="Update">`)
+	b.WriteString("\n")
+	b.WriteString(`        <input type="hidden" name="id" value="{{.Id}}">`)
+	b.WriteString("\n")
 	for _, col := range columns {
 		fieldName := toFieldName(col)
-		inputName := strings.ToLower(strings.ReplaceAll(col, " ", "_"))
-		b.WriteString(fmt.Sprintf(`      <td><input type="text" name="%s" value="{{.%s}}"`, inputName, fieldName))
+		inputName := toInputName(col)
+		b.WriteString(fmt.Sprintf(`        <td><input type="text" name="%s" value="{{.%s}}"`, inputName, fieldName))
 		b.WriteString("\n")
-		b.WriteString(`        style="width: 100%%; padding: 4px 6px; border: 1px solid #007bff; border-radius: 4px; box-sizing: border-box;"></td>`)
+		b.WriteString(`          style="width: 100%; padding: 4px 6px; border: 1px solid #007bff; border-radius: 4px; box-sizing: border-box;"></td>`)
 		b.WriteString("\n")
 	}
 	// Save + Cancel buttons
-	b.WriteString(`      <td style="white-space: nowrap;">`)
+	b.WriteString(`        <td style="white-space: nowrap;">`)
 	b.WriteString("\n")
-	b.WriteString(`        <button lvt-click="Update" lvt-data-id="{{.Id}}"`)
+	b.WriteString(`          <button type="submit"`)
 	b.WriteString("\n")
-	b.WriteString(`          style="padding: 4px 8px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85em; margin-right: 4px;">`)
+	b.WriteString(`            style="padding: 4px 8px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85em; margin-right: 4px;">`)
 	b.WriteString("\n")
-	b.WriteString(`          Save</button>`)
+	b.WriteString(`            Save</button>`)
 	b.WriteString("\n")
-	b.WriteString(`        <button lvt-click="CancelEdit"`)
+	b.WriteString(`          <button type="button" lvt-click="CancelEdit"`)
 	b.WriteString("\n")
-	b.WriteString(`          style="padding: 4px 8px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85em;">`)
+	b.WriteString(`            style="padding: 4px 8px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85em;">`)
 	b.WriteString("\n")
-	b.WriteString(`          Cancel</button>`)
+	b.WriteString(`            Cancel</button>`)
 	b.WriteString("\n")
-	b.WriteString(`      </td>`)
+	b.WriteString(`        </td>`)
+	b.WriteString("\n")
+	b.WriteString(`      </form>`)
 	b.WriteString("\n")
 	b.WriteString(`    </tr>`)
 	b.WriteString("\n")
@@ -496,12 +512,12 @@ func generateWritableTableBlock(sourceName string, columns []string) string {
 	b.WriteString(`<form lvt-submit="Add" lvt-reset-on:success style="display: flex; gap: 8px; align-items: flex-end; margin-top: 12px; flex-wrap: wrap;">`)
 	b.WriteString("\n")
 	for _, col := range columns {
-		fieldName := strings.ToLower(strings.ReplaceAll(col, " ", "_"))
+		inputName := toInputName(col)
 		b.WriteString(`  <div style="display: flex; flex-direction: column; gap: 2px;">`)
 		b.WriteString("\n")
 		b.WriteString(fmt.Sprintf(`    <label style="font-size: 0.8em; color: #666;">%s</label>`, col))
 		b.WriteString("\n")
-		b.WriteString(fmt.Sprintf(`    <input type="text" name="%s" placeholder="%s..." required`, fieldName, col))
+		b.WriteString(fmt.Sprintf(`    <input type="text" name="%s" placeholder="%s..." required`, inputName, col))
 		b.WriteString("\n")
 		b.WriteString(`      style="padding: 6px 8px; border: 1px solid #ccc; border-radius: 4px;">`)
 		b.WriteString("\n")
@@ -547,12 +563,24 @@ func toFieldName(column string) string {
 	return result.String()
 }
 
-// containsByte checks if b contains the byte c.
-func containsByte(b []byte, c byte) bool {
-	for _, v := range b {
-		if v == c {
-			return true
+// toInputName converts a column header to a safe HTML input name attribute.
+// Normalizes to lowercase, replaces non-alphanumeric chars with underscores,
+// collapses repeats, and trims leading/trailing underscores.
+func toInputName(column string) string {
+	column = strings.TrimSpace(column)
+	column = strings.ToLower(column)
+
+	var result strings.Builder
+	prevUnderscore := false
+	for _, r := range column {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
+			result.WriteRune(r)
+			prevUnderscore = false
+		} else if !prevUnderscore {
+			result.WriteRune('_')
+			prevUnderscore = true
 		}
 	}
-	return false
+
+	return strings.Trim(result.String(), "_")
 }
