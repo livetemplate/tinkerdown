@@ -45,6 +45,7 @@ type SourceConfig struct {
 	Delimiter   string            `yaml:"delimiter,omitempty"` // For exec CSV: field delimiter (default ",")
 	Env         map[string]string `yaml:"env,omitempty"`       // For exec: environment variables (env vars expanded)
 	Timeout     string            `yaml:"timeout,omitempty"`   // For exec/rest: timeout (e.g., "30s", "1m")
+	AutoBind    *bool             `yaml:"auto_bind,omitempty"` // Set to false to exclude from auto-table matching
 }
 
 // StylingConfig represents styling/theme configuration.

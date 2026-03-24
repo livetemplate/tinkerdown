@@ -138,6 +138,7 @@ type SourceConfig struct {
 	Timeout     string                 `yaml:"timeout,omitempty"`      // Request timeout (e.g., "30s", "1m"). Default: 10s
 	Retry       *RetryConfig           `yaml:"retry,omitempty"`        // Retry configuration
 	Cache       *CacheConfig           `yaml:"cache,omitempty"`        // Cache configuration
+	AutoBind    *bool                  `yaml:"auto_bind,omitempty"`    // Set to false to exclude from auto-table matching
 }
 
 // RetryConfig configures retry behavior for a source
