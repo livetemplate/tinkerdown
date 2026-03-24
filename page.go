@@ -53,7 +53,7 @@ func ParseFile(path string) (*Page, error) {
 	// This requires a lightweight frontmatter pre-parse to get source configs.
 	if fmPre, _, fmErr := extractFrontmatter(processedContent); fmErr == nil && len(fmPre.Sources) > 0 {
 		var tableWarnings []string
-		processedContent, tableWarnings = preprocessAutoTables(processedContent, fmPre.Sources)
+		processedContent, tableWarnings = preprocessAutoTables(processedContent, fmPre.Sources, filepath.Dir(absPath))
 		for _, w := range tableWarnings {
 			fmt.Fprintf(os.Stderr, "warning: %s\n", w)
 		}

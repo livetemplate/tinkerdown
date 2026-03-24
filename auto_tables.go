@@ -9,6 +9,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/livetemplate/tinkerdown/internal/slug"
+	"github.com/livetemplate/tinkerdown/internal/source"
 )
 
 // tableSection represents a detected markdown table under a heading.
@@ -138,9 +139,10 @@ func parseTableColumns(headerContent string) []string {
 
 // matchResult represents a successful source match for a table section.
 type matchResult struct {
-	section    tableSection
-	sourceName string
-	writable   bool
+	section     tableSection
+	sourceName  string
+	writable    bool
+	columnTypes map[string]string // column name → normalized type (from schema introspection)
 }
 
 // matchTablesToSources matches detected table sections to declared sources.
@@ -268,7 +270,7 @@ func isWritable(src SourceConfig) bool {
 //   - Tier 1: markdown tables + yaml sources → interactive data tables + CRUD
 //
 // The function does NOT modify the original file — it operates on in-memory content.
-func preprocessAutoTables(content []byte, sources map[string]SourceConfig) ([]byte, []string) {
+func preprocessAutoTables(content []byte, sources map[string]SourceConfig, siteDir string) ([]byte, []string) {
 	if len(sources) == 0 {
 		return content, nil
 	}
@@ -288,6 +290,21 @@ func preprocessAutoTables(content []byte, sources map[string]SourceConfig) ([]by
 	matches, warnings := matchTablesToSources(sections, sources)
 	if len(matches) == 0 {
 		return content, warnings
+	}
+
+	// Query schema for sources that support it (currently SQLite)
+	for i := range matches {
+		m := &matches[i]
+		srcCfg := sources[m.sourceName]
+		if srcCfg.Type == "sqlite" && srcCfg.DB != "" && srcCfg.Table != "" {
+			schema := source.QuerySQLiteSchema(srcCfg.DB, srcCfg.Table, siteDir)
+			if len(schema) > 0 {
+				m.columnTypes = make(map[string]string)
+				for _, col := range schema {
+					m.columnTypes[strings.ToLower(col.Name)] = col.Type
+				}
+			}
+		}
 	}
 
 	lines := strings.Split(string(content), "\n")
@@ -310,7 +327,7 @@ func preprocessAutoTables(content []byte, sources map[string]SourceConfig) ([]by
 			}
 		}
 
-		lvtBlock := generateAutoTableLvtBlock(m.sourceName, displayColumns, m.writable)
+		lvtBlock := generateAutoTableLvtBlock(m.sourceName, displayColumns, m.writable, m.columnTypes)
 
 		// Build replacement: heading + lvt code block
 		headingIdx := m.section.headingLine + fmLineCount
@@ -337,11 +354,26 @@ func preprocessAutoTables(content []byte, sources map[string]SourceConfig) ([]by
 //
 // For writable sources: table with edit/delete per row + add form.
 // For read-only sources: table with refresh button.
-func generateAutoTableLvtBlock(sourceName string, columns []string, writable bool) string {
+// generateAutoTableLvtBlock generates the lvt template HTML for an auto-table section.
+// columnTypes maps lowercase column names to normalized types (e.g., "integer", "real").
+// If nil, all inputs default to type="text".
+func generateAutoTableLvtBlock(sourceName string, columns []string, writable bool, columnTypes map[string]string) string {
 	if writable {
-		return generateWritableTableBlock(sourceName, columns)
+		return generateWritableTableBlock(sourceName, columns, columnTypes)
 	}
 	return generateReadonlyTableBlock(sourceName, columns)
+}
+
+// inputTypeFor returns the HTML input type for a column, using schema info if available.
+func inputTypeFor(colName string, columnTypes map[string]string) string {
+	if columnTypes == nil {
+		return "text"
+	}
+	colType, ok := columnTypes[strings.ToLower(colName)]
+	if !ok {
+		return "text"
+	}
+	return source.InputTypeForColumn(colType)
 }
 
 // generateReadonlyTableBlock generates an auto-rendered read-only table.
@@ -402,7 +434,7 @@ func generateReadonlyTableBlock(sourceName string, columns []string) string {
 // generateWritableTableBlock generates an auto-rendered writable table with full CRUD.
 // Includes inline editing: each row has Edit/Delete buttons. Clicking Edit replaces
 // the row's cells with input fields and shows Save/Cancel buttons.
-func generateWritableTableBlock(sourceName string, columns []string) string {
+func generateWritableTableBlock(sourceName string, columns []string, columnTypes map[string]string) string {
 	var b strings.Builder
 
 	b.WriteString(fmt.Sprintf(`<div lvt-source="%s">`, sourceName))
@@ -442,7 +474,8 @@ func generateWritableTableBlock(sourceName string, columns []string) string {
 		fieldName := toFieldName(col)
 		inputName := toInputName(col)
 		formID := "auto-table-edit-" + sourceName
-		b.WriteString(fmt.Sprintf(`      <td><input type="text" name="%s" value="{{.%s}}" form="%s"`, inputName, fieldName, formID))
+		iType := inputTypeFor(col, columnTypes)
+		b.WriteString(fmt.Sprintf(`      <td><input type="%s" name="%s" value="{{.%s}}" form="%s"`, iType, inputName, fieldName, formID))
 		b.WriteString("\n")
 		b.WriteString(`        style="width: 100%; padding: 4px 6px; border: 1px solid #007bff; border-radius: 4px; box-sizing: border-box;"></td>`)
 		b.WriteString("\n")
@@ -524,7 +557,8 @@ func generateWritableTableBlock(sourceName string, columns []string) string {
 		b.WriteString("\n")
 		b.WriteString(fmt.Sprintf(`    <label style="font-size: 0.8em; color: #666;">%s</label>`, html.EscapeString(col)))
 		b.WriteString("\n")
-		b.WriteString(fmt.Sprintf(`    <input type="text" name="%s" placeholder="%s..." required`, inputName, html.EscapeString(col)))
+		iType := inputTypeFor(col, columnTypes)
+		b.WriteString(fmt.Sprintf(`    <input type="%s" name="%s" placeholder="%s..." required`, iType, inputName, html.EscapeString(col)))
 		b.WriteString("\n")
 		b.WriteString(`      style="padding: 6px 8px; border: 1px solid #ccc; border-radius: 4px;">`)
 		b.WriteString("\n")

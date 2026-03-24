@@ -379,6 +379,65 @@ func (s *SQLiteSource) discoverSchema() {
 	s.hasSchema = true
 }
 
+// Schema returns column information for the table, implementing SchemaProvider.
+// Excludes internal columns (id, created_at).
+func (s *SQLiteSource) Schema(ctx context.Context) ([]ColumnInfo, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if !s.hasSchema {
+		return nil, nil
+	}
+
+	colQuery := fmt.Sprintf("PRAGMA table_info(%s)", s.table)
+	rows, err := s.db.QueryContext(ctx, colQuery)
+	if err != nil {
+		return nil, fmt.Errorf("sqlite source %q: schema query failed: %w", s.name, err)
+	}
+	defer rows.Close()
+
+	var columns []ColumnInfo
+	for rows.Next() {
+		var cid int
+		var name, typeName string
+		var notNull, pk int
+		var dfltValue interface{}
+		if err := rows.Scan(&cid, &name, &typeName, &notNull, &dfltValue, &pk); err != nil {
+			continue
+		}
+		// Skip internal columns
+		if name == "id" || name == "created_at" {
+			continue
+		}
+		columns = append(columns, ColumnInfo{
+			Name:     name,
+			Type:     normalizeSQLiteType(typeName),
+			Required: notNull == 1,
+		})
+	}
+
+	return columns, nil
+}
+
+// normalizeSQLiteType converts SQLite type affinity to a normalized type string.
+func normalizeSQLiteType(sqlType string) string {
+	sqlType = strings.ToUpper(strings.TrimSpace(sqlType))
+	switch {
+	case strings.Contains(sqlType, "INT"):
+		return "integer"
+	case strings.Contains(sqlType, "REAL") || strings.Contains(sqlType, "FLOA") || strings.Contains(sqlType, "DOUB"):
+		return "real"
+	case strings.Contains(sqlType, "BOOL"):
+		return "boolean"
+	case strings.Contains(sqlType, "DATE") && !strings.Contains(sqlType, "DATETIME"):
+		return "date"
+	case strings.Contains(sqlType, "DATETIME") || strings.Contains(sqlType, "TIMESTAMP"):
+		return "datetime"
+	default:
+		return "text"
+	}
+}
+
 // Helper functions
 
 func isValidIdentifier(name string) bool {

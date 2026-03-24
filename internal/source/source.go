@@ -39,6 +39,22 @@ type WritableSource interface {
 	IsReadonly() bool
 }
 
+// ColumnInfo describes a column in a data source's schema.
+type ColumnInfo struct {
+	Name     string // Column name (e.g., "amount")
+	Type     string // Normalized type: "text", "integer", "real", "boolean", "date", "datetime"
+	Required bool   // Whether the column is NOT NULL
+}
+
+// SchemaProvider is an optional interface for sources that can expose their schema.
+// This is used by auto-tables to generate form inputs with appropriate types
+// (e.g., <input type="number"> for integer columns).
+type SchemaProvider interface {
+	// Schema returns column info for the source's data.
+	// Columns like "id" and "created_at" (internal) should be excluded.
+	Schema(ctx context.Context) ([]ColumnInfo, error)
+}
+
 // SQLExecutor extends Source with ability to execute arbitrary SQL statements.
 // This is used by custom actions defined in frontmatter (action kind: "sql").
 type SQLExecutor interface {
