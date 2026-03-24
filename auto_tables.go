@@ -441,7 +441,8 @@ func generateWritableTableBlock(sourceName string, columns []string) string {
 	for _, col := range columns {
 		fieldName := toFieldName(col)
 		inputName := toInputName(col)
-		b.WriteString(fmt.Sprintf(`      <td><input type="text" name="%s" value="{{.%s}}" form="auto-table-edit-form"`, inputName, fieldName))
+		formID := "auto-table-edit-" + sourceName
+		b.WriteString(fmt.Sprintf(`      <td><input type="text" name="%s" value="{{.%s}}" form="%s"`, inputName, fieldName, formID))
 		b.WriteString("\n")
 		b.WriteString(`        style="width: 100%; padding: 4px 6px; border: 1px solid #007bff; border-radius: 4px; box-sizing: border-box;"></td>`)
 		b.WriteString("\n")
@@ -449,7 +450,7 @@ func generateWritableTableBlock(sourceName string, columns []string) string {
 	// Save + Cancel buttons
 	b.WriteString(`      <td style="white-space: nowrap;">`)
 	b.WriteString("\n")
-	b.WriteString(`        <button type="submit" form="auto-table-edit-form"`)
+	b.WriteString(fmt.Sprintf(`        <button type="submit" form="auto-table-edit-%s"`, sourceName))
 	b.WriteString("\n")
 	b.WriteString(`          style="padding: 4px 8px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85em; margin-right: 4px;">`)
 	b.WriteString("\n")
@@ -505,8 +506,8 @@ func generateWritableTableBlock(sourceName string, columns []string) string {
 	b.WriteString(`</table>`)
 	b.WriteString("\n")
 
-	// Hidden edit form outside the table (inputs use form="auto-table-edit-form" attribute)
-	b.WriteString(`<form id="auto-table-edit-form" lvt-submit="Update" style="display:none;">`)
+	// Hidden edit form outside the table (inputs use form attribute to link)
+	b.WriteString(fmt.Sprintf(`<form id="auto-table-edit-%s" lvt-submit="Update" style="display:none;">`, sourceName))
 	b.WriteString("\n")
 	b.WriteString(`  <input type="hidden" name="id" value="{{$.EditingID}}">`)
 	b.WriteString("\n")

@@ -473,8 +473,8 @@ func TestGenerateWritableBlock(t *testing.T) {
 	if !strings.Contains(block, `lvt-submit="Update"`) {
 		t.Error("expected Update form for inline edit")
 	}
-	if !strings.Contains(block, `form="auto-table-edit-form"`) {
-		t.Error("expected inputs linked to external form via HTML form attribute")
+	if !strings.Contains(block, `form="auto-table-edit-expenses"`) {
+		t.Error("expected inputs linked to external form via HTML form attribute with source-specific ID")
 	}
 	// Should have CancelEdit button
 	if !strings.Contains(block, `lvt-click="CancelEdit"`) {
