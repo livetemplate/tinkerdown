@@ -25,7 +25,7 @@ func TestSQLiteSource_FetchWithCreatedAt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = db.Exec(`INSERT INTO items (name) VALUES ('first'), ('second')`)
+	_, err = db.Exec(`INSERT INTO items (name, created_at) VALUES ('first', '2024-01-01'), ('second', '2024-01-02')`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,13 +46,9 @@ func TestSQLiteSource_FetchWithCreatedAt(t *testing.T) {
 		t.Fatalf("expected 2 rows, got %d", len(data))
 	}
 
-	// Verify rows were fetched successfully (ordering may vary when timestamps are identical)
-	names := map[string]bool{}
-	for _, row := range data {
-		names[row["name"].(string)] = true
-	}
-	if !names["first"] || !names["second"] {
-		t.Errorf("expected both rows returned, got %v", data)
+	// With created_at, rows should be ordered newest-first (DESC)
+	if data[0]["name"] != "second" {
+		t.Errorf("expected newest row first (created_at DESC), got %v", data[0]["name"])
 	}
 }
 

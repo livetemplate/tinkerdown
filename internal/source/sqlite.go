@@ -385,6 +385,10 @@ func (s *SQLiteSource) discoverSchema() {
 		}
 	}
 
+	if err := rows.Err(); err != nil {
+		return
+	}
+
 	s.hasSchema = true
 }
 
