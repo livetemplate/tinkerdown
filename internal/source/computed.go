@@ -65,10 +65,16 @@ func NewComputedSource(name string, cfg config.SourceConfig, registry *Registry)
 		return nil, fmt.Errorf("computed source %q: parent source %q not found", name, cfg.From)
 	}
 
-	// Parse aggregate definitions
+	// Parse aggregate definitions (sorted by output field for deterministic ordering)
+	aggKeys := make([]string, 0, len(cfg.Aggregate))
+	for k := range cfg.Aggregate {
+		aggKeys = append(aggKeys, k)
+	}
+	sort.Strings(aggKeys)
+
 	var aggs []aggDef
-	for outputField, expr := range cfg.Aggregate {
-		agg, err := parseAggExpr(outputField, expr)
+	for _, outputField := range aggKeys {
+		agg, err := parseAggExpr(outputField, cfg.Aggregate[outputField])
 		if err != nil {
 			return nil, fmt.Errorf("computed source %q: %w", name, err)
 		}
@@ -256,6 +262,9 @@ func maxValue(rows []map[string]interface{}, field string) (interface{}, error) 
 
 // getField gets a field value from a row (case-insensitive).
 func getField(row map[string]interface{}, field string) interface{} {
+	if field == "" {
+		return nil
+	}
 	if val, ok := row[field]; ok {
 		return val
 	}
