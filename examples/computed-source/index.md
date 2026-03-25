@@ -6,7 +6,7 @@ sources:
     db: ./budget.db
     table: expenses
     readonly: false
-  by_category:
+  by-category:
     type: computed
     from: expenses
     group_by: category

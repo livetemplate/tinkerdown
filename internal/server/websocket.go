@@ -332,6 +332,9 @@ func (h *WebSocketHandler) getEffectiveSource(name string) (config.SourceConfig,
 				Delimiter:   src.Delimiter,
 				Env:         src.Env,
 				Timeout:     src.Timeout,
+				GroupBy:     src.GroupBy,
+				Aggregate:   src.Aggregate,
+				Filter:      src.Filter,
 			}, true
 		}
 	}
@@ -409,29 +412,48 @@ func (h *WebSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // initializeInstances creates LiveTemplate instances for each interactive block.
 func (h *WebSocketHandler) initializeInstances(conn *websocket.Conn) {
-	// Create instances under lock
+	// Collect block info under lock, then create instances outside lock.
+	// Factory calls (especially for computed sources) may call lookupSource
+	// which also acquires h.mu — so we must not hold the lock during factory calls.
+	type blockInfo struct {
+		blockID    string
+		block      *tinkerdown.InteractiveBlock
+		stateBlock *tinkerdown.ServerBlock
+		factory    func() runtime.Store
+	}
+	var toInit []blockInfo
+
+	h.mu.Lock()
+	for blockID, block := range h.page.InteractiveBlocks {
+		stateBlock, ok := h.page.ServerBlocks[block.StateRef]
+		if !ok {
+			log.Printf("[WS] Interactive block %s references unknown state %s", blockID, block.StateRef)
+			continue
+		}
+		factory, ok := h.stateFactories[block.StateRef]
+		if !ok {
+			log.Printf("[WS] No compiled factory for state %s", block.StateRef)
+			continue
+		}
+		toInit = append(toInit, blockInfo{blockID, block, stateBlock, factory})
+	}
+	h.mu.Unlock()
+
+	// Create instances outside the lock (factory calls may acquire h.mu)
 	var instances []*BlockInstance
 	func() {
 		h.mu.Lock()
 		defer h.mu.Unlock()
 
-		for blockID, block := range h.page.InteractiveBlocks {
-			// Get the state from the server block it references
-			stateBlock, ok := h.page.ServerBlocks[block.StateRef]
-			if !ok {
-				log.Printf("[WS] Interactive block %s references unknown state %s", blockID, block.StateRef)
-				continue
-			}
+		for _, bi := range toInit {
+			blockID := bi.blockID
+			block := bi.block
+			stateBlock := bi.stateBlock
 
-			// Get the compiled state factory
-			factory, ok := h.stateFactories[block.StateRef]
-			if !ok {
-				log.Printf("[WS] No compiled factory for state %s", block.StateRef)
-				continue
-			}
-
-			// Create state instance using the compiled factory
-			state := factory()
+			// Create state instance using the compiled factory (called outside lock via closure)
+			h.mu.Unlock()
+			state := bi.factory()
+			h.mu.Lock()
 
 			// Create template from inline content
 			// Since livetemplate.New() requires template files, we use a workaround:
@@ -585,6 +607,72 @@ func (h *WebSocketHandler) handleMessage(conn *websocket.Conn, message []byte) {
 
 	// Re-render and send update
 	h.sendUpdate(instance)
+
+	// Refresh computed sources that depend on the modified source.
+	// When expenses changes, by-category and summary must re-fetch.
+	h.refreshDependentComputedSources(instance, conn)
+}
+
+// refreshDependentComputedSources finds computed source blocks whose parent
+// matches the modified block's source, refreshes their data, and sends updates.
+func (h *WebSocketHandler) refreshDependentComputedSources(modified *BlockInstance, conn *websocket.Conn) {
+	// Get the source name of the modified block
+	modifiedSource := ""
+	h.mu.RLock()
+	for _, sb := range h.page.ServerBlocks {
+		if sb.Metadata["lvt-source"] != "" {
+			// Find the server block that matches the modified instance
+			for _, ib := range h.page.InteractiveBlocks {
+				if ib.StateRef == sb.ID {
+					if inst, ok := h.instances[ib.ID]; ok && inst == modified {
+						modifiedSource = sb.Metadata["lvt-source"]
+					}
+				}
+			}
+		}
+	}
+	h.mu.RUnlock()
+
+	if modifiedSource == "" {
+		return
+	}
+
+	// Find and refresh computed sources that depend on this source
+	h.mu.RLock()
+	var toRefresh []*BlockInstance
+	for _, sb := range h.page.ServerBlocks {
+		srcName := sb.Metadata["lvt-source"]
+		if srcName == "" {
+			continue
+		}
+		// Check if this is a computed source with From == modifiedSource
+		if src, ok := h.page.Config.Sources[srcName]; ok {
+			if src.Type == "computed" && src.From == modifiedSource {
+				// Find the instance for this block
+				for _, ib := range h.page.InteractiveBlocks {
+					if ib.StateRef == sb.ID {
+						if inst, ok := h.instances[ib.ID]; ok {
+							toRefresh = append(toRefresh, inst)
+						}
+					}
+				}
+			}
+		}
+	}
+	h.mu.RUnlock()
+
+	// Refresh each dependent computed source
+	for _, inst := range toRefresh {
+		// Trigger a Refresh action to re-fetch from parent
+		func() {
+			inst.mu.Lock()
+			defer inst.mu.Unlock()
+			if store, ok := inst.state.(*runtime.GenericState); ok {
+				store.HandleAction("Refresh", nil)
+			}
+		}()
+		h.sendUpdate(inst)
+	}
 }
 
 // handleAction executes an action on the state.
@@ -1182,7 +1270,20 @@ func createSourceForAction(name string, cfg config.SourceConfig, siteDir, curren
 		return source.NewSQLiteSource(name, cfg.DB, cfg.Table, siteDir, cfg.IsReadonly())
 	case "pg":
 		return source.NewPostgresSource(name, cfg.Query, cfg.Options)
+	case "json":
+		return source.NewJSONFileSource(name, cfg.File, siteDir)
+	case "csv":
+		return source.NewCSVFileSource(name, cfg.File, siteDir, cfg.Options)
+	case "markdown":
+		return source.NewMarkdownSource(name, cfg.File, cfg.Anchor, siteDir, currentFile, cfg.IsReadonly())
+	case "rest":
+		return source.NewRestSourceWithConfig(name, cfg)
+	case "exec":
+		if !config.IsExecAllowed() {
+			return nil, fmt.Errorf("exec sources disabled (use --allow-exec)")
+		}
+		return source.NewExecSourceWithConfig(name, cfg, siteDir)
 	default:
-		return nil, fmt.Errorf("unsupported source type %q for action", cfg.Type)
+		return nil, fmt.Errorf("unsupported source type %q", cfg.Type)
 	}
 }
