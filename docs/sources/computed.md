@@ -17,7 +17,7 @@ sources:
     aggregate:
       total: sum(amount)
       count: count()
-    filter: status = active  # optional
+    filter: "status = active"  # optional
 ```
 
 | Field | Required | Description |
@@ -25,7 +25,7 @@ sources:
 | `from` | Yes | Name of the parent source to derive from |
 | `group_by` | No | Field to group rows by. If omitted, produces a single aggregate row |
 | `aggregate` | Yes | Map of output field name to aggregation expression |
-| `filter` | No | Filter expression applied before grouping (e.g., `"status = active"` — quote in YAML to avoid parsing issues) |
+| `filter` | No | Filter expression applied before grouping (e.g., `"status = active"`) |
 
 ## Aggregation Functions
 
@@ -90,7 +90,7 @@ sources:
   active_stats:
     type: computed
     from: tasks
-    filter: status = active
+    filter: "status = active"
     aggregate:
       count: count()
       total_points: sum(points)

@@ -73,7 +73,7 @@ All source types can be defined in frontmatter:
 
 | Type | Example |
 |------|---------|
-| `sqlite` | `type: sqlite`<br>`path: ./data.db`<br>`query: SELECT * FROM tasks` |
+| `sqlite` | `type: sqlite`<br>`db: ./data.db`<br>`table: tasks` |
 | `rest` | `type: rest`<br>`from: https://api.example.com/data` |
 | `json` | `type: json`<br>`path: ./_data/data.json` |
 | `csv` | `type: csv`<br>`path: ./_data/data.csv` |

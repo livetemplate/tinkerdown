@@ -71,7 +71,7 @@ sources:
 |----------|-------|-------|
 ```
 
-Supported aggregation functions: `sum()`, `count()`, `avg()`, `min()`, `max()`. Computed sources auto-refresh when the parent source changes.
+Supported aggregation functions: `sum()`, `count()`, `avg()`, `min()`, `max()`. Computed sources auto-refresh when the parent source changes. Note: a computed source cannot reference another computed source as its parent — only real data sources (SQLite, REST, etc.).
 
 ### How Source Matching Works
 
