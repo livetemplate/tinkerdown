@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/gorilla/websocket"
@@ -608,9 +609,13 @@ func (h *WebSocketHandler) handleMessage(conn *websocket.Conn, message []byte) {
 	// Re-render and send update
 	h.sendUpdate(instance)
 
-	// Refresh computed sources that depend on the modified source.
-	// When expenses changes, by-category and summary must re-fetch.
-	h.refreshDependentComputedSources(instance, conn)
+	// Refresh computed sources that depend on the modified source,
+	// but only for write-mutating actions (add, delete, update, toggle).
+	// Read-only actions (refresh, filter, edit, canceledit, sort, page) don't change data.
+	actionLower := strings.ToLower(envelope.Action)
+	if actionLower == "add" || actionLower == "delete" || actionLower == "update" || actionLower == "toggle" {
+		h.refreshDependentComputedSources(instance, conn)
+	}
 }
 
 // refreshDependentComputedSources finds computed source blocks whose parent

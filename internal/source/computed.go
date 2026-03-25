@@ -28,12 +28,11 @@ import (
 //	      total: sum(amount)
 //	      count: count()
 type ComputedSource struct {
-	name     string
-	parent   Source
-	groupBy  string
-	aggs     []aggDef
-	filter   *filterDef
-	cfg      config.SourceConfig
+	name    string
+	parent  Source
+	groupBy string
+	aggs    []aggDef
+	filter  *filterDef
 }
 
 // aggDef defines a single aggregation: output field name + function + input field.
@@ -91,7 +90,6 @@ func NewComputedSource(name string, cfg config.SourceConfig, registry *Registry)
 		groupBy: cfg.GroupBy,
 		aggs:    aggs,
 		filter:  filter,
-		cfg:     cfg,
 	}, nil
 }
 
