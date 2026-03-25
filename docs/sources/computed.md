@@ -25,7 +25,7 @@ sources:
 | `from` | Yes | Name of the parent source to derive from |
 | `group_by` | No | Field to group rows by. If omitted, produces a single aggregate row |
 | `aggregate` | Yes | Map of output field name to aggregation expression |
-| `filter` | No | Filter expression applied before grouping (e.g., `status = active`) |
+| `filter` | No | Filter expression applied before grouping (e.g., `"status = active"` — quote in YAML to avoid parsing issues) |
 
 ## Aggregation Functions
 
