@@ -5,6 +5,7 @@ package source
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/livetemplate/tinkerdown/internal/cache"
 	"github.com/livetemplate/tinkerdown/internal/config"
@@ -126,8 +127,15 @@ func NewRegistryWithFile(cfg *config.Config, siteDir, currentFile string) (*Regi
 	}
 
 	// Second pass: computed sources (can reference sources from first pass)
+	// Note: chained computed sources (computed → computed) are not supported.
 	for _, cs := range computedSources {
-		src, err := NewComputedSource(cs.name, cs.cfg, r)
+		// Validate that the parent is not itself a computed source (chaining not supported)
+		if parentCfg, exists := cfg.Sources[cs.cfg.From]; exists && parentCfg.Type == "computed" {
+			memCache.Stop()
+			return nil, fmt.Errorf("computed source %q: chaining computed sources is not supported (parent %q is also computed)", cs.name, cs.cfg.From)
+		}
+
+		computedSrc, err := NewComputedSource(cs.name, cs.cfg, r)
 		if err != nil {
 			memCache.Stop()
 			return nil, err
@@ -135,11 +143,10 @@ func NewRegistryWithFile(cfg *config.Config, siteDir, currentFile string) (*Regi
 
 		// Wrap with caching if enabled
 		if cs.cfg.IsCacheEnabled() {
-			src := Source(src) // interface conversion for caching wrapper
-			src = NewCachedSource(src, r.cache, cs.cfg)
-			r.sources[cs.name] = src
+			var wrapped Source = NewCachedSource(computedSrc, r.cache, cs.cfg)
+			r.sources[cs.name] = wrapped
 		} else {
-			r.sources[cs.name] = src
+			r.sources[cs.name] = computedSrc
 		}
 	}
 

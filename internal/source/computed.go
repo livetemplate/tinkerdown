@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/livetemplate/tinkerdown/internal/config"
@@ -126,9 +127,17 @@ func (s *ComputedSource) Fetch(ctx context.Context) ([]map[string]interface{}, e
 	// Group data by field
 	groups := groupData(data, s.groupBy)
 
+	// Sort group keys for deterministic output ordering
+	groupKeys := make([]string, 0, len(groups))
+	for k := range groups {
+		groupKeys = append(groupKeys, k)
+	}
+	sort.Strings(groupKeys)
+
 	// Compute aggregations per group
 	var results []map[string]interface{}
-	for groupValue, groupRows := range groups {
+	for _, groupValue := range groupKeys {
+		groupRows := groups[groupValue]
 		row := map[string]interface{}{
 			s.groupBy: groupValue,
 		}
