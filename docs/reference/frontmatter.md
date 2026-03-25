@@ -73,13 +73,24 @@ All source types can be defined in frontmatter:
 
 | Type | Example |
 |------|---------|
-| `sqlite` | `type: sqlite`<br>`path: ./data.db`<br>`query: SELECT * FROM tasks` |
+| `sqlite` | `type: sqlite`<br>`db: ./data.db`<br>`table: tasks` |
 | `rest` | `type: rest`<br>`from: https://api.example.com/data` |
 | `json` | `type: json`<br>`path: ./_data/data.json` |
 | `csv` | `type: csv`<br>`path: ./_data/data.csv` |
 | `exec` | `type: exec`<br>`command: uname -a` |
 | `markdown` | `type: markdown`<br>`path: ./_data/posts/` |
 | `wasm` | `type: wasm`<br>`module: ./custom.wasm` |
+| `computed` | `type: computed`<br>`from: expenses`<br>`group_by: category` |
+
+#### Source Options
+
+| Field | Applies To | Description |
+|-------|-----------|-------------|
+| `readonly` | sqlite, markdown | Set to `false` to enable write operations (default: `true`) |
+| `auto_bind` | all | Set to `false` to exclude from auto-table heading matching |
+| `group_by` | computed | Field to group rows by |
+| `aggregate` | computed | Map of output field to aggregation expression (`sum()`, `count()`, `avg()`, `min()`, `max()`) |
+| `filter` | computed | Filter expression applied before grouping (e.g., `status = active`) |
 
 See [Data Sources Guide](../guides/data-sources.md) for full details on each type.
 
