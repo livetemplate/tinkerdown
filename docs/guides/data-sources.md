@@ -36,6 +36,7 @@ sources:
 | [csv](../sources/csv.md) | CSV files | Spreadsheet data, imports |
 | [markdown](../sources/markdown.md) | Markdown files | Content management |
 | [wasm](../sources/wasm.md) | WebAssembly modules | Custom sources |
+| [computed](../sources/computed.md) | Derived/aggregated data | Dashboards, summaries |
 
 ## Frontmatter Configuration (Recommended)
 

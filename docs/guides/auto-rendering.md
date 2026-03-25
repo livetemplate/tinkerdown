@@ -1,8 +1,37 @@
 # Auto-Rendering Components
 
-Tinkerdown can automatically generate HTML for common UI patterns from data sources. This eliminates boilerplate template code for tables and select dropdowns.
+Tinkerdown can automatically generate HTML for common UI patterns from data sources. There are two levels of auto-rendering: inference-based (markdown tables) and attribute-based (HTML elements).
 
-## Select Dropdowns
+## Auto-Tables (Inference-Based)
+
+The simplest way to display data: write a standard markdown table under a heading that matches a source name. Tinkerdown infers the binding automatically.
+
+```yaml
+---
+sources:
+  users:
+    type: rest
+    from: https://jsonplaceholder.typicode.com/users
+---
+```
+
+```markdown
+## Users
+| Name | Email | Phone |
+|------|-------|-------|
+```
+
+The heading "Users" matches the source "users", so the table auto-populates with data. For writable sources, an add form and edit/delete buttons are generated automatically.
+
+For more details, see the [Progressive Complexity Guide](progressive-complexity.md).
+
+---
+
+## HTML-Based Auto-Rendering
+
+For more control over the generated UI, use HTML elements with `lvt-source` and related attributes.
+
+### Select Dropdowns
 
 Transform an empty `<select>` element into a fully populated dropdown by connecting it to a data source.
 

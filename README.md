@@ -14,8 +14,8 @@ Tinkerdown replaces typical app scaffolding with a single markdown file — data
 
 - **One file = one app.** Data connections, layout, and interactions all live in one place. No build step, no node_modules, no boilerplate.
 - **AI gets it right.** A single declarative file with no component tree or state management means less surface area for LLMs to misconfigure.
-- **8 data sources out of the box.** SQLite, PostgreSQL, REST APIs, JSON, CSV, shell commands, markdown, and WASM. Point at existing infrastructure and get a working UI.
-- **Start simple, add power as needed.** Plain markdown tables become editable grids. Add YAML frontmatter for databases, or drop to HTML + Go templates for full control.
+- **9 data sources out of the box.** SQLite, PostgreSQL, REST APIs, JSON, CSV, shell commands, markdown, WASM, and computed/derived sources. Point at existing infrastructure and get a working UI.
+- **Progressive complexity.** Write standard markdown — task lists become interactive, tables auto-bind to data sources. Need more control? Add HTML attributes. Need full custom layouts? Drop to Go templates. Each step builds on the last without rewriting. See the [Progressive Complexity Guide](docs/guides/progressive-complexity.md).
 - **Git-native and self-hosted.** Plain text in a repo. Version history, search, collaboration, offline access, no subscriptions.
 - **Made for disposable software.** The admin panel for this sprint. The tracker for that hiring round. Software you'd never scaffold a React project for, but that's useful for days or weeks.
 
@@ -36,7 +36,7 @@ tinkerdown serve
 
 ## What You Can Build
 
-Write a single markdown file with frontmatter configuration:
+Write a markdown file with a YAML source definition and a standard markdown table. Tinkerdown infers that the "Tasks" heading matches the "tasks" source and auto-generates an interactive table with add, edit, and delete:
 
 ```markdown
 ---
@@ -44,27 +44,31 @@ title: Task Manager
 sources:
   tasks:
     type: sqlite
-    path: ./tasks.db
-    query: SELECT * FROM tasks
+    db: ./tasks.db
+    table: tasks
+    readonly: false
 ---
 
 # Task Manager
 
-<table lvt-source="tasks" lvt-columns="title,status,due_date" lvt-actions="Complete,Delete">
-</table>
-
-<form lvt-submit="AddTask">
-  <input name="title" placeholder="New task" required>
-  <button type="submit">Add</button>
-</form>
+## Tasks
+| Title | Status | Due Date |
+|-------|--------|----------|
 ```
 
-Run `tinkerdown serve` and get a fully interactive app with database persistence.
+Run `tinkerdown serve` and get a fully interactive app with database persistence — no HTML needed.
+
+**Need more control?** Use HTML attributes for explicit binding:
+
+```html
+<table lvt-source="tasks" lvt-columns="title,status" lvt-datatable lvt-actions="Complete,Delete">
+</table>
+```
 
 ## Key Features
 
 - **Single-file apps**: Everything in one markdown file with frontmatter
-- **8 data sources**: SQLite, JSON, CSV, REST APIs, PostgreSQL, exec scripts, markdown, WASM
+- **9 data sources**: SQLite, JSON, CSV, REST APIs, PostgreSQL, exec scripts, markdown, WASM, computed
 - **Auto-rendering**: Tables, selects, and lists generated from data
 - **Real-time updates**: WebSocket-powered reactivity
 - **Zero config**: `tinkerdown serve` just works
@@ -102,6 +106,7 @@ sources:
 | `exec` | Shell commands | [lvt-source-exec-test](examples/lvt-source-exec-test) |
 | `markdown` | Markdown files | [markdown-data-todo](examples/markdown-data-todo) |
 | `wasm` | WASM modules | [lvt-source-wasm-test](examples/lvt-source-wasm-test) |
+| `computed` | Derived/aggregated data | [computed-source](examples/computed-source) |
 
 ## Auto-Rendering
 
@@ -189,6 +194,7 @@ See [AI Generation Guide](docs/guides/ai-generation.md) for tips on using Claude
 - [Project Structure](docs/getting-started/project-structure.md)
 
 **Guides:**
+- [Progressive Complexity](docs/guides/progressive-complexity.md)
 - [Data Sources](docs/guides/data-sources.md)
 - [Auto-Rendering](docs/guides/auto-rendering.md)
 - [Go Templates](docs/guides/go-templates.md)
