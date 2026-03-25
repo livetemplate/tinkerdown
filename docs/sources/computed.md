@@ -100,10 +100,12 @@ Only aggregates rows where `status` equals `active` (case-insensitive).
 
 ## Filter Operators
 
+Filters require the full `field operator value` form. Bare truthy checks (like `done` or `not done`) are not supported — use `done = true` instead.
+
 | Operator | Description |
 |----------|-------------|
 | `=` | Equal (case-insensitive) |
-| `!=` | Not equal |
+| `!=` | Not equal (case-insensitive) |
 | `<` | Less than (numeric) |
 | `>` | Greater than (numeric) |
 | `<=` | Less than or equal |

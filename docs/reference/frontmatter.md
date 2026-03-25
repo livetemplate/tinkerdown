@@ -80,7 +80,7 @@ All source types can be defined in frontmatter:
 | `exec` | `type: exec`<br>`command: uname -a` |
 | `markdown` | `type: markdown`<br>`path: ./_data/posts/` |
 | `wasm` | `type: wasm`<br>`module: ./custom.wasm` |
-| `computed` | `type: computed`<br>`from: expenses`<br>`group_by: category`<br>`aggregate:`<br>`  total: sum(amount)` |
+| `computed` | `type: computed`<br>`from: expenses`<br>`group_by: category` |
 
 #### Source Options
 

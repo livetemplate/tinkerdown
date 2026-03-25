@@ -79,7 +79,7 @@ Tinkerdown matches markdown table headings to source names using smart matching:
 
 1. **Exact match:** Heading "Expenses" (slug: `expenses`) matches source `expenses`
 2. **Underscore normalization:** Heading "By Category" (slug: `by-category`) also matches source `by_category`
-3. **Word containment:** Heading "My Monthly Expenses" matches source `expenses` (contains the word)
+3. **Word containment:** Heading "My Monthly Expenses" matches source `expenses` (the slug `my-monthly-expenses` contains `expenses` at a word boundary)
 4. **No match:** The table renders as a normal static markdown table
 
 If a match is ambiguous (heading matches multiple sources), Tinkerdown skips with a warning. Use `auto_bind: false` on a source to exclude it from matching:

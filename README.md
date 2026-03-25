@@ -56,7 +56,9 @@ sources:
 |-------|--------|----------|
 ```
 
-Run `tinkerdown serve` and get a fully interactive app with database persistence — no HTML needed.
+Run `tinkerdown serve` and get a fully interactive app with database persistence — no HTML needed:
+
+<!-- TODO: Add screenshot of rendered auto-table with CRUD controls -->
 
 **Need more control?** Use HTML attributes for explicit binding:
 
