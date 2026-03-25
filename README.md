@@ -56,7 +56,11 @@ sources:
 |-------|--------|----------|
 ```
 
-Run `tinkerdown serve` and get a fully interactive app with database persistence — no HTML needed. The markdown table renders as an interactive data grid with add, edit, and delete controls.
+Run `tinkerdown serve` and get a fully interactive app with database persistence — no HTML needed:
+
+<p align="center">
+  <img src="docs/assets/auto-table-demo.png" alt="Screenshot showing an auto-generated expense tracker with data table, edit/delete buttons per row, and an add form — all from a markdown table and YAML source definition" width="720">
+</p>
 
 **Need more control?** Use HTML attributes for explicit binding:
 
