@@ -182,14 +182,14 @@ func computeAgg(rows []map[string]interface{}, agg aggDef) (interface{}, error) 
 	case "sum":
 		return sumValues(rows, agg.inputField)
 	case "avg":
-		sum, err := sumValues(rows, agg.inputField)
+		sum, count, err := sumValuesWithCount(rows, agg.inputField)
 		if err != nil {
 			return nil, err
 		}
-		if len(rows) == 0 {
+		if count == 0 {
 			return 0.0, nil
 		}
-		return sum / float64(len(rows)), nil
+		return sum / float64(count), nil
 	case "min":
 		return minValue(rows, agg.inputField)
 	case "max":
@@ -199,9 +199,16 @@ func computeAgg(rows []map[string]interface{}, agg aggDef) (interface{}, error) 
 	}
 }
 
-// sumValues sums a numeric field across rows.
+// sumValues sums a numeric field across rows (skipping nil/non-numeric values).
 func sumValues(rows []map[string]interface{}, field string) (float64, error) {
+	sum, _, err := sumValuesWithCount(rows, field)
+	return sum, err
+}
+
+// sumValuesWithCount sums a numeric field and returns the count of valid (non-nil, numeric) values.
+func sumValuesWithCount(rows []map[string]interface{}, field string) (float64, int, error) {
 	var total float64
+	var count int
 	for _, row := range rows {
 		val := getField(row, field)
 		if val == nil {
@@ -212,8 +219,9 @@ func sumValues(rows []map[string]interface{}, field string) (float64, error) {
 			continue
 		}
 		total += f
+		count++
 	}
-	return total, nil
+	return total, count, nil
 }
 
 // minValue returns the minimum numeric value of a field.
