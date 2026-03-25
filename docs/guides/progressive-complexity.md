@@ -156,18 +156,7 @@ Go templates give you conditionals, loops, custom HTML structure, and access to 
 
 ## Tier 4: Custom Data Sources
 
-For data that doesn't fit built-in source types, write a custom source in TinyGo compiled to WASM:
-
-```go
-package main
-
-func Fetch() []map[string]interface{} {
-    // Custom data fetching logic
-    return []map[string]interface{}{
-        {"name": "Custom Item", "value": 42},
-    }
-}
-```
+For data that doesn't fit built-in source types, write a custom source in TinyGo compiled to WASM. The module exports a `fetch` function that returns JSON data:
 
 ```yaml
 sources:
@@ -175,6 +164,8 @@ sources:
     type: wasm
     path: ./sources/custom.wasm
 ```
+
+Use `tinkerdown new myapp --template wasm-source` to scaffold a working WASM source project with build scripts and a test app.
 
 **What you get:** Arbitrary data fetching logic, compiled to WASM, runs server-side.
 

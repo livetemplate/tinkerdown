@@ -56,9 +56,7 @@ sources:
 |-------|--------|----------|
 ```
 
-Run `tinkerdown serve` and get a fully interactive app with database persistence — no HTML needed:
-
-<!-- TODO: Add screenshot of rendered auto-table with CRUD controls -->
+Run `tinkerdown serve` and get a fully interactive app with database persistence — no HTML needed. The markdown table renders as an interactive data grid with add, edit, and delete controls.
 
 **Need more control?** Use HTML attributes for explicit binding:
 
