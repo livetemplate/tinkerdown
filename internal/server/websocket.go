@@ -440,7 +440,8 @@ func (h *WebSocketHandler) initializeInstances(conn *websocket.Conn) {
 	}
 	h.mu.Unlock()
 
-	// Create instances outside the lock (factory calls may acquire h.mu)
+	// Create instances under lock, temporarily releasing it during each factory call
+	// (computed source factories call lookupSource which also acquires h.mu).
 	var instances []*BlockInstance
 	func() {
 		h.mu.Lock()

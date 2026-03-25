@@ -65,6 +65,10 @@ func NewComputedSource(name string, cfg config.SourceConfig, registry *Registry)
 		return nil, fmt.Errorf("computed source %q: parent source %q not found", name, cfg.From)
 	}
 
+	if len(cfg.Aggregate) == 0 {
+		return nil, fmt.Errorf("computed source %q: 'aggregate' is required (at least one aggregation)", name)
+	}
+
 	// Parse aggregate definitions (sorted by output field for deterministic ordering)
 	aggKeys := make([]string, 0, len(cfg.Aggregate))
 	for k := range cfg.Aggregate {
