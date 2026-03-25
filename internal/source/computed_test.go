@@ -20,9 +20,11 @@ func (m *mockComputedParent) Fetch(_ context.Context) ([]map[string]interface{},
 }
 
 func newTestRegistry(sources map[string]Source) *Registry {
-	return &Registry{
-		sources: sources,
+	r := NewEmptyRegistry()
+	for name, src := range sources {
+		r.Set(name, src)
 	}
+	return r
 }
 
 func TestComputedSource_GroupByWithSum(t *testing.T) {

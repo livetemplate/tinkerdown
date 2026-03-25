@@ -106,6 +106,10 @@ func NewGenericStateForComputed(name string, cfg config.SourceConfig, siteDir, c
 		if !ok {
 			return nil, fmt.Errorf("computed source %q: parent source %q not found", name, cfg.From)
 		}
+		// Verify parent is not itself a computed source (chaining not supported)
+		if _, isComputed := parentSrc.(*source.ComputedSource); isComputed {
+			return nil, fmt.Errorf("computed source %q: chaining computed sources is not supported (parent %q is also computed)", name, cfg.From)
+		}
 	}
 
 	// Build a minimal registry with the parent source for NewComputedSource

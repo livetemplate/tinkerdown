@@ -451,10 +451,14 @@ func (h *WebSocketHandler) initializeInstances(conn *websocket.Conn) {
 			block := bi.block
 			stateBlock := bi.stateBlock
 
-			// Create state instance using the compiled factory (called outside lock via closure)
-			h.mu.Unlock()
-			state := bi.factory()
-			h.mu.Lock()
+			// Create state instance outside the lock — factory calls may acquire h.mu
+			// (e.g., computed sources call lookupSource which locks h.mu).
+			// Use a helper to ensure the lock is always re-acquired, even on panic.
+			state := func() runtime.Store {
+				h.mu.Unlock()
+				defer h.mu.Lock()
+				return bi.factory()
+			}()
 
 			// Create template from inline content
 			// Since livetemplate.New() requires template files, we use a workaround:
