@@ -171,7 +171,7 @@ func matchTablesToSources(sections []tableSection, sources map[string]SourceConf
 	for _, sec := range sections {
 		headingSlug := sec.anchor
 
-		// Phase 1: exact match
+		// Phase 1: exact match (try slug directly, then with underscore normalization)
 		if src, ok := eligible[headingSlug]; ok {
 			results = append(results, matchResult{
 				section:    sec,
@@ -179,6 +179,18 @@ func matchTablesToSources(sections []tableSection, sources map[string]SourceConf
 				writable:   isWritable(src),
 			})
 			continue
+		}
+		// Try underscore variant: heading "By Category" → slug "by-category" → try "by_category"
+		underscoreSlug := strings.ReplaceAll(headingSlug, "-", "_")
+		if underscoreSlug != headingSlug {
+			if src, ok := eligible[underscoreSlug]; ok {
+				results = append(results, matchResult{
+					section:    sec,
+					sourceName: underscoreSlug,
+					writable:   isWritable(src),
+				})
+				continue
+			}
 		}
 
 		// Phase 2: word-boundary containment
@@ -466,7 +478,7 @@ func generateWritableTableBlock(sourceName string, columns []string, columnTypes
 	// Edit mode: show inputs when this row's ID matches EditingID.
 	// Uses the HTML form attribute to associate inputs with a form outside the table,
 	// since <form> cannot be a direct child of <tr>.
-	b.WriteString(`  {{if eq (printf "%v" .Id) $.EditingID}}`)
+	b.WriteString(`  {{if eq (printf "%v" .Id) $.EditingId}}`)
 	b.WriteString("\n")
 	b.WriteString(`    <tr>`)
 	b.WriteString("\n")
@@ -542,7 +554,7 @@ func generateWritableTableBlock(sourceName string, columns []string, columnTypes
 	// Hidden edit form outside the table (inputs use form attribute to link)
 	b.WriteString(fmt.Sprintf(`<form id="auto-table-edit-%s" lvt-submit="Update" style="display:none;">`, sourceName))
 	b.WriteString("\n")
-	b.WriteString(`  <input type="hidden" name="id" value="{{$.EditingID}}">`)
+	b.WriteString(`  <input type="hidden" name="id" value="{{$.EditingId}}">`)
 	b.WriteString("\n")
 	b.WriteString(`</form>`)
 	b.WriteString("\n")

@@ -46,6 +46,11 @@ type SourceConfig struct {
 	Env         map[string]string `yaml:"env,omitempty"`       // For exec: environment variables (env vars expanded)
 	Timeout     string            `yaml:"timeout,omitempty"`   // For exec/rest: timeout (e.g., "30s", "1m")
 	AutoBind    *bool             `yaml:"auto_bind,omitempty"` // Set to false to exclude from auto-table matching
+
+	// For computed sources
+	GroupBy   string            `yaml:"group_by,omitempty"`   // Field to group by
+	Aggregate map[string]string `yaml:"aggregate,omitempty"`  // Field → aggregation expression
+	Filter    string            `yaml:"filter,omitempty"`     // Optional filter expression
 }
 
 // StylingConfig represents styling/theme configuration.

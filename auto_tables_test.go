@@ -466,7 +466,7 @@ func TestGenerateWritableBlock(t *testing.T) {
 		t.Error("expected Edit button")
 	}
 	// Should have inline edit conditional
-	if !strings.Contains(block, `$.EditingID`) {
+	if !strings.Contains(block, `$.EditingId`) {
 		t.Error("expected EditingID conditional for inline editing")
 	}
 	// Should have Update form (external, linked via HTML form attribute)
