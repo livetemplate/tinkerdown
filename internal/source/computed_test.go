@@ -169,6 +169,9 @@ func TestComputedSource_WithFilter(t *testing.T) {
 		t.Fatalf("Fetch failed: %v", err)
 	}
 
+	if len(data) == 0 {
+		t.Fatal("expected at least one row after filtering")
+	}
 	row := data[0]
 	if row["count"] != 2 {
 		t.Errorf("count: expected 2 (active only), got %v", row["count"])
