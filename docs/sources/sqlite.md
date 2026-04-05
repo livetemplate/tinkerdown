@@ -71,18 +71,18 @@ SQLite sources support write operations through actions:
 
 ```html
 <!-- Insert -->
-<form lvt-submit="AddTask">
+<form name="AddTask">
   <input name="title" placeholder="Task title">
   <button type="submit">Add</button>
 </form>
 
 <!-- Update -->
-<button lvt-click="ToggleTask" lvt-data-id="{{.id}}">
+<button name="ToggleTask" data-id="{{.id}}">
   Toggle
 </button>
 
 <!-- Delete -->
-<button lvt-click="DeleteTask" lvt-data-id="{{.id}}">
+<button name="DeleteTask" data-id="{{.id}}">
   Delete
 </button>
 ```
@@ -150,7 +150,7 @@ sources:
 </table>
 
 <h2>Add Task</h2>
-<form lvt-submit="AddTask">
+<form name="AddTask">
   <input name="title" placeholder="Title">
   <select name="category" lvt-source="categories" lvt-value="category" lvt-label="category">
   </select>

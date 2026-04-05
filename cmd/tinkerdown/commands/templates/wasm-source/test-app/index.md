@@ -30,6 +30,6 @@ Testing the custom WASM data source.
         </tbody>
     </table>
     {{end}}
-    <button lvt-click="Refresh">Refresh</button>
+    <button name="Refresh">Refresh</button>
 </main>
 ```

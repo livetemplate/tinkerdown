@@ -23,7 +23,7 @@ A multi-section survey demonstrating radio buttons, select dropdowns, and rating
 
     <!-- Survey Form -->
     <article>
-        <form lvt-submit="save" lvt-persist="responses">
+        <form name="save" lvt-persist="responses">
             <label>
                 Your Name
                 <input type="text" name="name" required placeholder="Enter your name">
@@ -95,7 +95,7 @@ A multi-section survey demonstrating radio buttons, select dropdowns, and rating
         </p>
         {{if .Comments}}<blockquote>{{.Comments}}</blockquote>{{end}}
         <footer>
-            <button lvt-click="Delete" lvt-data-id="{{.Id}}" >Delete</button>
+            <button name="Delete" data-id="{{.Id}}" >Delete</button>
         </footer>
     </article>
     {{end}}

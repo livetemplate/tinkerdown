@@ -37,6 +37,6 @@ Test for `lvt-source` attribute that fetches data from PostgreSQL.
     </table>
     {{end}}
 
-    <button lvt-click="Refresh">Refresh Data</button>
+    <button name="Refresh">Refresh Data</button>
 </main>
 ```

@@ -105,7 +105,7 @@ func TestExecArgsForm(t *testing.T) {
 	var inputCount int
 	for i := 0; i < 20; i++ {
 		err = chromedp.Run(ctx,
-			chromedp.Evaluate(`document.querySelector('form[lvt-submit="Run"]') !== null`, &hasForm),
+			chromedp.Evaluate(`document.querySelector('form[name="Run"]') !== null`, &hasForm),
 		)
 		if err == nil && hasForm {
 			break
@@ -114,7 +114,7 @@ func TestExecArgsForm(t *testing.T) {
 	}
 
 	err = chromedp.Run(ctx,
-		chromedp.Evaluate(`document.querySelectorAll('form[lvt-submit="Run"] input').length`, &inputCount),
+		chromedp.Evaluate(`document.querySelectorAll('form[name="Run"] input').length`, &inputCount),
 	)
 	if err != nil {
 		t.Fatalf("Failed to check form: %v", err)
@@ -127,9 +127,9 @@ func TestExecArgsForm(t *testing.T) {
 		t.Logf("HTML length: %d", len(htmlContent))
 		t.Logf("HTML: %s", htmlContent[:min(5000, len(htmlContent))])
 		t.Logf("Console logs: %v", consoleLogs)
-		t.Fatal("Form with lvt-submit='Run' not found")
+		t.Fatal("Form with name='Run' not found")
 	}
-	t.Log("Form with lvt-submit='Run' found")
+	t.Log("Form with name='Run' found")
 
 	// We expect 3 inputs: name (text), count (number), uppercase (checkbox)
 	if inputCount < 3 {
@@ -256,7 +256,7 @@ func TestExecArgsForm(t *testing.T) {
 
 	// Submit the form
 	err = chromedp.Run(ctx,
-		chromedp.Click(`form[lvt-submit="Run"] button[type="submit"]`, chromedp.ByQuery),
+		chromedp.Click(`form[name="Run"] button[type="submit"]`, chromedp.ByQuery),
 	)
 	if err != nil {
 		t.Fatalf("Failed to submit form: %v", err)

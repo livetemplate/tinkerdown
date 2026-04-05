@@ -41,7 +41,7 @@ A multi-source dashboard combining REST API data and local system information.
         </tbody>
     </table>
     {{end}}
-    <button lvt-click="Refresh">Refresh Users</button>
+    <button name="Refresh">Refresh Users</button>
 </main>
 ```
 
@@ -77,7 +77,7 @@ A multi-source dashboard combining REST API data and local system information.
         </tbody>
     </table>
     {{end}}
-    <button lvt-click="Refresh">Refresh System Info</button>
+    <button name="Refresh">Refresh System Info</button>
 </main>
 ```
 

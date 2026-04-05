@@ -2,7 +2,7 @@
 
 ## Overview
 
-Add support for custom actions declared in frontmatter. Actions can execute SQL statements, HTTP requests, or shell commands when triggered via `lvt-click` buttons.
+Add support for custom actions declared in frontmatter. Actions can execute SQL statements, HTTP requests, or shell commands when triggered via `name` attribute on buttons.
 
 ## Frontmatter Schema
 
@@ -306,7 +306,7 @@ func substituteParams(stmt string, data map[string]interface{}) (string, []inter
 
 - Create test page with SQLite source + `clear-done` action
 - Render with chromedp
-- Click `lvt-click="clear-done"` button
+- Click `name="clear-done"` button
 - Verify data refreshed and completed tasks removed
 
 ## Definition of Done

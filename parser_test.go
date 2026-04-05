@@ -149,7 +149,7 @@ func main() {}
 			content: `# Tutorial
 
 ` + "```lvt interactive state=\"counter\"" + `
-<button lvt-click="increment">{{.Counter}}</button>
+<button name="increment">{{.Counter}}</button>
 ` + "```",
 			wantBlocks: 1,
 			checkBlock: func(t *testing.T, b *CodeBlock) {
@@ -162,8 +162,8 @@ func main() {}
 				if b.Metadata["state"] != "counter" {
 					t.Errorf("Metadata[state] = %q, want \"counter\"", b.Metadata["state"])
 				}
-				if !strings.Contains(b.Content, "lvt-click") {
-					t.Errorf("Content missing \"lvt-click\"")
+				if !strings.Contains(b.Content, `name="increment"`) {
+					t.Errorf("Content missing button name=\"increment\"")
 				}
 			},
 		},
@@ -249,7 +249,7 @@ This defines the state.
 ` + "```lvt interactive state=\"counter-state\"" + `
 <div>
     <h2>Count: {{.Counter}}</h2>
-    <button lvt-click="increment">+1</button>
+    <button name="increment">+1</button>
 </div>
 ` + "```" + `
 

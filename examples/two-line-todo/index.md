@@ -15,7 +15,7 @@ A minimal interactive todo list.
 <div lvt-source="tasks">
 {{range .Data}}
 <label style="display: block; padding: 4px 0; cursor: pointer;">
-  <input type="checkbox" {{if .Done}}checked{{end}} lvt-click="Toggle" lvt-data-id="{{.Id}}">
+  <input type="checkbox" {{if .Done}}checked{{end}} lvt-on:click="Toggle" data-id="{{.Id}}">
   <span {{if .Done}}style="text-decoration: line-through; opacity: 0.6"{{end}}>{{.Text}}</span>
 </label>
 {{end}}

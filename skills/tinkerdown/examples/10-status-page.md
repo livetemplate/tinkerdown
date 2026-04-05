@@ -45,7 +45,7 @@ EOF
             <h1>Service Status</h1>
             <p>Real-time system monitoring</p>
         </hgroup>
-        <button lvt-click="Refresh" class="outline">Refresh</button>
+        <button name="Refresh" class="outline">Refresh</button>
     </header>
 
     <!-- Overall Status Banner -->
@@ -91,7 +91,7 @@ EOF
     <h2>Incident Log</h2>
 
     <article>
-        <form lvt-submit="save" lvt-persist="incidents">
+        <form name="save" lvt-persist="incidents">
             <fieldset role="group">
                 <input type="text" name="title" required placeholder="Incident description">
                 <select name="severity" required>
@@ -116,7 +116,7 @@ EOF
         </header>
         <footer>
             <small>{{.CreatedAt}}</small>
-            <button lvt-click="Delete" lvt-data-id="{{.Id}}" >Resolve</button>
+            <button name="Delete" data-id="{{.Id}}" >Resolve</button>
         </footer>
     </article>
     {{end}}
@@ -132,7 +132,7 @@ EOF
 2. **Status indicators** - Use `<ins>` for operational, `<mark>` for warnings, `<del>` for outages
 3. **Conditional styling** - `{{if eq .status "operational"}}` for status colors
 4. **Incident log** - `lvt-persist` for manual incident tracking
-5. **Refresh** - `lvt-click="Refresh"` reloads data from the script
+5. **Refresh** - `name="Refresh"` on button reloads data from the script
 
 ## Prompt to Generate This
 

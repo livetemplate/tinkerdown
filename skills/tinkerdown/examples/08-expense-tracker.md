@@ -20,7 +20,7 @@ An expense tracking app demonstrating number inputs and calculations.
     <!-- Add Expense Form -->
     <article>
         <header>Add Expense</header>
-        <form lvt-submit="save" lvt-persist="expenses">
+        <form name="save" lvt-persist="expenses">
             <fieldset role="group">
                 <input type="text" name="description" required placeholder="What did you spend on?">
                 <input type="number" name="amount" required min="0.01" step="0.01" placeholder="Amount ($)">
@@ -83,7 +83,7 @@ An expense tracking app demonstrating number inputs and calculations.
                     <td><kbd>{{.Category}}</kbd></td>
                     <td><strong>${{.Amount}}</strong></td>
                     <td>
-                        <button lvt-click="Delete" lvt-data-id="{{.Id}}" >Delete</button>
+                        <button name="Delete" data-id="{{.Id}}" >Delete</button>
                     </td>
                 </tr>
                 {{end}}

@@ -46,9 +46,9 @@ When you add your first expense, Tinkerdown automatically creates the `expenses`
 
 The template uses three actions:
 
-1. **Add** (`lvt-submit="Add"`) - Creates new expense records
-2. **Delete** (`lvt-click="Delete"`) - Removes expense by ID
-3. **Refresh** (`lvt-click="Refresh"`) - Reloads data from database
+1. **Add** (`name="Add"`) - Creates new expense records
+2. **Delete** (`name="Delete"`) - Removes expense by ID
+3. **Refresh** (`name="Refresh"`) - Reloads data from database
 
 ## Project Structure
 

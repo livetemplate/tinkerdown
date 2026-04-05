@@ -15,7 +15,7 @@ Search GitHub repositories using the GitHub API.
 
 ```lvt
 <main lvt-source="repos">
-    <form lvt-submit="SetQuery" style="margin-bottom: 16px; display: flex; gap: 8px;">
+    <form name="SetQuery" style="margin-bottom: 16px; display: flex; gap: 8px;">
         <input type="text" name="query" placeholder="Search repositories..." value="{{.Query}}"
                style="flex: 1; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
         <button type="submit"

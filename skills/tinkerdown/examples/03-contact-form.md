@@ -19,7 +19,7 @@ A contact form demonstrating form handling with multiple field types.
 
     <!-- Contact Form -->
     <article>
-        <form lvt-submit="save" lvt-persist="contacts">
+        <form name="save" lvt-persist="contacts">
             <label>
                 Name
                 <input type="text" name="name" required minlength="2" placeholder="Your name">
@@ -71,7 +71,7 @@ A contact form demonstrating form handling with multiple field types.
                 <td>{{.Subject}}</td>
                 <td>{{if .Subscribe}}Yes{{else}}No{{end}}</td>
                 <td>
-                    <button lvt-click="Delete" lvt-data-id="{{.Id}}" >Delete</button>
+                    <button name="Delete" data-id="{{.Id}}" >Delete</button>
                 </td>
             </tr>
             {{end}}

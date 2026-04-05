@@ -24,7 +24,7 @@ A blog demonstrating `lvt-persist` for posts.
     <!-- New Post Form -->
     <article>
         <header>Write a Post</header>
-        <form lvt-submit="save" lvt-persist="posts">
+        <form name="save" lvt-persist="posts">
             <input type="text" name="title" required placeholder="Post title">
             <textarea name="content" required rows="6" placeholder="Write your post content here..."></textarea>
             <input type="text" name="author" placeholder="Your name (optional)">
@@ -44,7 +44,7 @@ A blog demonstrating `lvt-persist` for posts.
         </header>
         <p>{{.Content}}</p>
         <footer>
-            <button lvt-click="Delete" lvt-data-id="{{.Id}}" >Delete Post</button>
+            <button name="Delete" data-id="{{.Id}}" >Delete Post</button>
         </footer>
     </article>
     {{end}}

@@ -101,7 +101,7 @@ Tinkerdown uses Go's `html/template` package for dynamic content rendering.
 <div class="card {{if .done}}completed{{end}}">
   <h3>{{.title}}</h3>
   <span class="priority priority-{{.priority}}">{{.priority}}</span>
-  <button lvt-click="Delete" lvt-data-id="{{.id}}">Delete</button>
+  <button name="Delete" data-id="{{.id}}">Delete</button>
 </div>
 {{end}}
 ```
@@ -114,7 +114,7 @@ Go templates work seamlessly with `lvt-*` attributes:
 {{range .tasks}}
 <div class="task">
   <span>{{.title}}</span>
-  <button lvt-click="Toggle" lvt-data-id="{{.id}}">
+  <button name="Toggle" data-id="{{.id}}">
     {{if .done}}Undo{{else}}Done{{end}}
   </button>
 </div>

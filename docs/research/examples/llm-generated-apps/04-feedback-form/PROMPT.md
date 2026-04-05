@@ -25,7 +25,7 @@ Show all submissions in a table below the form.
 Tested with Claude 3.5 Sonnet: **8/10 successful first attempts**
 
 Common issues:
-- Sometimes uses wrong attribute (`lvt-action` instead of `lvt-submit`)
+- Sometimes uses wrong attribute (`lvt-action` instead of `name` on form)
 - May forget to add the source reference on form
 - Field name mismatches between form and table
 

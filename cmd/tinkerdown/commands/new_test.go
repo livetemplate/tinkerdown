@@ -99,8 +99,8 @@ func TestNewCommandFormTemplate(t *testing.T) {
 	if !strings.Contains(content, "type: sqlite") {
 		t.Error("Expected sqlite source type in form template")
 	}
-	if !strings.Contains(content, "lvt-submit") {
-		t.Error("Expected form submit handler in form template")
+	if !strings.Contains(content, `name="`) {
+		t.Error("Expected button/form name routing in form template")
 	}
 }
 

@@ -107,7 +107,7 @@ func TestLvtSourceSQLite(t *testing.T) {
 	// Test: Add a new task
 	err = chromedp.Run(ctx,
 		chromedp.SetValue(`input[name="text"]`, "New test task", chromedp.ByQuery),
-		chromedp.Click(`form[lvt-submit="Add"] button[type="submit"]`, chromedp.ByQuery),
+		chromedp.Click(`form[name="Add"] button[type="submit"]`, chromedp.ByQuery),
 		chromedp.Sleep(500*time.Millisecond),
 	)
 	if err != nil {
@@ -131,7 +131,7 @@ func TestLvtSourceSQLite(t *testing.T) {
 	// Get the ID of the first row's checkbox before clicking
 	var toggledID string
 	err = chromedp.Run(ctx,
-		chromedp.AttributeValue(`tbody tr:first-child input[type="checkbox"]`, "lvt-data-id", &toggledID, nil, chromedp.ByQuery),
+		chromedp.AttributeValue(`tbody tr:first-child input[type="checkbox"]`, "data-id", &toggledID, nil, chromedp.ByQuery),
 	)
 	if err != nil {
 		t.Fatalf("Failed to get checkbox ID: %v", err)
@@ -165,7 +165,7 @@ func TestLvtSourceSQLite(t *testing.T) {
 
 	// Test: Delete a task
 	err = chromedp.Run(ctx,
-		chromedp.Click(`tbody tr:last-child button[lvt-click="Delete"]`, chromedp.ByQuery),
+		chromedp.Click(`tbody tr:last-child button[name="Delete"]`, chromedp.ByQuery),
 		chromedp.Sleep(500*time.Millisecond),
 	)
 	if err != nil {
@@ -186,7 +186,7 @@ func TestLvtSourceSQLite(t *testing.T) {
 
 	// Test: Refresh button
 	err = chromedp.Run(ctx,
-		chromedp.Click(`button[lvt-click="Refresh"]`, chromedp.ByQuery),
+		chromedp.Click(`button[name="Refresh"]`, chromedp.ByQuery),
 		chromedp.Sleep(500*time.Millisecond),
 	)
 	if err != nil {

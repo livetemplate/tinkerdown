@@ -21,7 +21,7 @@ A booking system demonstrating date/time inputs and scheduling.
 
     <!-- Booking Form -->
     <article>
-        <form lvt-submit="save" lvt-persist="bookings">
+        <form name="save" lvt-persist="bookings">
             <fieldset role="group">
                 <input type="text" name="name" required placeholder="Your name">
                 <input type="tel" name="phone" required placeholder="(555) 123-4567">
@@ -80,7 +80,7 @@ A booking system demonstrating date/time inputs and scheduling.
         </p>
         {{if .Notes}}<p><em>Notes: {{.Notes}}</em></p>{{end}}
         <footer>
-            <button lvt-click="Delete" lvt-data-id="{{.Id}}" >Cancel</button>
+            <button name="Delete" data-id="{{.Id}}" >Cancel</button>
         </footer>
     </article>
     {{end}}

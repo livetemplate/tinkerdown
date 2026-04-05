@@ -403,15 +403,15 @@ func TestGenerateReadonlyBlock(t *testing.T) {
 		t.Error("expected lvt-source=\"users\"")
 	}
 	// Should have Refresh button
-	if !strings.Contains(block, `lvt-click="Refresh"`) {
+	if !strings.Contains(block, `name="Refresh"`) {
 		t.Error("expected Refresh button")
 	}
 	// Should NOT have Add form
-	if strings.Contains(block, `lvt-submit="Add"`) {
+	if strings.Contains(block, `name="Add"`) {
 		t.Error("read-only block should not have Add form")
 	}
 	// Should NOT have Delete button
-	if strings.Contains(block, `lvt-click="Delete"`) {
+	if strings.Contains(block, `name="Delete"`) {
 		t.Error("read-only block should not have Delete button")
 	}
 	// Should have column headers
@@ -432,16 +432,16 @@ func TestGenerateWritableBlock(t *testing.T) {
 		t.Error("expected lvt-source=\"expenses\"")
 	}
 	// Should have Add form
-	if !strings.Contains(block, `lvt-submit="Add"`) {
+	if !strings.Contains(block, `name="Add"`) {
 		t.Error("expected Add form")
 	}
 	// Should have Delete button
-	if !strings.Contains(block, `lvt-click="Delete"`) {
+	if !strings.Contains(block, `name="Delete"`) {
 		t.Error("expected Delete button")
 	}
 	// Should have confirmation on delete
-	if !strings.Contains(block, `lvt-confirm=`) {
-		t.Error("expected lvt-confirm on delete")
+	if !strings.Contains(block, `data-confirm=`) {
+		t.Error("expected data-confirm on delete")
 	}
 	// Should have input for each column
 	if !strings.Contains(block, `name="description"`) {
@@ -462,7 +462,7 @@ func TestGenerateWritableBlock(t *testing.T) {
 		t.Error("expected error display")
 	}
 	// Should have Edit button
-	if !strings.Contains(block, `lvt-click="Edit"`) {
+	if !strings.Contains(block, `name="Edit"`) {
 		t.Error("expected Edit button")
 	}
 	// Should have inline edit conditional
@@ -470,14 +470,14 @@ func TestGenerateWritableBlock(t *testing.T) {
 		t.Error("expected EditingID conditional for inline editing")
 	}
 	// Should have Update form (external, linked via HTML form attribute)
-	if !strings.Contains(block, `lvt-submit="Update"`) {
+	if !strings.Contains(block, `name="Update"`) {
 		t.Error("expected Update form for inline edit")
 	}
 	if !strings.Contains(block, `form="auto-table-edit-expenses"`) {
 		t.Error("expected inputs linked to external form via HTML form attribute with source-specific ID")
 	}
 	// Should have CancelEdit button
-	if !strings.Contains(block, `lvt-click="CancelEdit"`) {
+	if !strings.Contains(block, `name="CancelEdit"`) {
 		t.Error("expected CancelEdit button")
 	}
 }
@@ -568,7 +568,7 @@ sources:
 		t.Error("heading should be preserved")
 	}
 	// Should have Add form (writable)
-	if !strings.Contains(resultStr, `lvt-submit="Add"`) {
+	if !strings.Contains(resultStr, `name="Add"`) {
 		t.Error("expected Add form for writable source")
 	}
 	// Original table should be removed
@@ -595,11 +595,11 @@ title: Test
 	resultStr := string(result)
 
 	// Should contain Refresh button
-	if !strings.Contains(resultStr, `lvt-click="Refresh"`) {
+	if !strings.Contains(resultStr, `name="Refresh"`) {
 		t.Error("expected Refresh button for read-only source")
 	}
 	// Should NOT contain Add form
-	if strings.Contains(resultStr, `lvt-submit="Add"`) {
+	if strings.Contains(resultStr, `name="Add"`) {
 		t.Error("should not have Add form for read-only source")
 	}
 }
@@ -805,13 +805,13 @@ sources:
 
 	// Find the block and check it doesn't have Add form
 	for _, block := range page.InteractiveBlocks {
-		if strings.Contains(block.Content, `lvt-submit="Add"`) {
+		if strings.Contains(block.Content, `name="Add"`) {
 			t.Error("read-only source should not have Add form")
 		}
-		if strings.Contains(block.Content, `lvt-click="Delete"`) {
+		if strings.Contains(block.Content, `name="Delete"`) {
 			t.Error("read-only source should not have Delete button")
 		}
-		if !strings.Contains(block.Content, `lvt-click="Refresh"`) {
+		if !strings.Contains(block.Content, `name="Refresh"`) {
 			t.Error("read-only source should have Refresh button")
 		}
 	}

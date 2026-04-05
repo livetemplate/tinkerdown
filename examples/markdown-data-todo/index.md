@@ -24,9 +24,9 @@ This example demonstrates reading AND writing task list data from a separate mar
         {{range .Data}}
         <li style="display: flex; align-items: center; gap: 8px; padding: 4px 0;">
             <input type="checkbox" {{if .Done}}checked{{end}}
-                   lvt-click="Toggle" lvt-data-id="{{.Id}}">
+                   lvt-on:click="Toggle" data-id="{{.Id}}">
             <span {{if .Done}}style="text-decoration: line-through; opacity: 0.7"{{end}}>{{.Text}}</span>
-            <button lvt-click="Delete" lvt-data-id="{{.Id}}"
+            <button name="Delete" data-id="{{.Id}}"
                     style="margin-left: auto; padding: 2px 8px; color: red; border: 1px solid red; background: transparent; border-radius: 4px; cursor: pointer;">
                 x
             </button>
@@ -38,7 +38,7 @@ This example demonstrates reading AND writing task list data from a separate mar
 
     <hr style="margin: 16px 0;">
 
-    <form lvt-submit="Add" lvt-reset-on:success style="display: flex; gap: 8px; align-items: center;">
+    <form name="Add" lvt-el:reset:on:success style="display: flex; gap: 8px; align-items: center;">
         <input type="text" name="text" placeholder="Add new task..." required
                style="flex: 1; min-width: 0; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
         <button type="submit"
@@ -47,7 +47,7 @@ This example demonstrates reading AND writing task list data from a separate mar
         </button>
     </form>
 
-    <button lvt-click="Refresh" style="margin-top: 8px;">Refresh</button>
+    <button name="Refresh" style="margin-top: 8px;">Refresh</button>
 </main>
 ```
 

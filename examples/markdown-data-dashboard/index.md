@@ -27,7 +27,7 @@ Tasks are stored in `_data/tasks.md` and can be edited here or directly in that 
     {{if .Error}}
     <p><mark>Error: {{.Error}}</mark></p>
     {{else}}
-    <form lvt-submit="Add" style="display: flex; gap: 8px; margin-bottom: 16px;">
+    <form name="Add" style="display: flex; gap: 8px; margin-bottom: 16px;">
         <input type="text" name="Task" placeholder="New task..." required
                style="flex: 1; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
         <select name="Priority" style="padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
@@ -66,7 +66,7 @@ Tasks are stored in `_data/tasks.md` and can be edited here or directly in that 
                     {{end}}
                 </td>
                 <td style="padding: 10px; text-align: center;">
-                    <button lvt-click="Delete" lvt-data-id="{{.Id}}"
+                    <button name="Delete" data-id="{{.Id}}"
                             style="padding: 4px 8px; color: #dc3545; border: 1px solid #dc3545; background: transparent; border-radius: 4px; cursor: pointer;">
                         x
                     </button>

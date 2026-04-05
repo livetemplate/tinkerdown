@@ -17,7 +17,7 @@ Track your expenses. Data is stored in this file.
 ## Add Expense
 
 ```lvt
-<form lvt-submit="add" lvt-source="expenses">
+<form name="add" lvt-source="expenses">
   <input name="date" type="date" required>
   <input name="description" placeholder="What did you buy?" required>
   <input name="amount" type="number" step="0.01" placeholder="Amount" required>

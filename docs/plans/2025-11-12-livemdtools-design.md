@@ -131,7 +131,7 @@ func main() { fmt.Println("Hello") }
 ```
 
 ```lvt interactive state="counter-state"
-<button lvt-click="increment">{{.Counter}}</button>
+<button name="increment">{{.Counter}}</button>
 ```
 ```
 
@@ -508,7 +508,7 @@ func TestCounterTutorial(t *testing.T) {
 
     // Test interactive block
     browser.Navigate(srv.URL + "/counter")
-    browser.Click("button[lvt-click='increment']")
+    browser.Click("button[name='increment']")
     browser.WaitForText("Count: 1")
 
     // Verify WebSocket

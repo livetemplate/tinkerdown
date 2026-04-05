@@ -16,7 +16,7 @@ A bookmark manager that stores data in a separate markdown file.
 ## Add New Bookmark
 
 ```lvt
-<form lvt-submit="Add" lvt-source="bookmarks" style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 16px;">
+<form name="Add" lvt-source="bookmarks" style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 16px;">
     <input name="Name" placeholder="Name" required style="min-width: 0; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
     <input name="URL" type="url" placeholder="https://..." required style="flex: 1; min-width: 200px; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
     <input name="Tags" placeholder="Tags (comma-separated)" style="min-width: 0; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
@@ -59,7 +59,7 @@ A bookmark manager that stores data in a separate markdown file.
                     {{end}}
                 </td>
                 <td style="padding: 12px; text-align: center;">
-                    <button lvt-click="Delete" lvt-data-id="{{.Id}}"
+                    <button name="Delete" data-id="{{.Id}}"
                             style="padding: 4px 8px; color: #dc3545; border: 1px solid #dc3545; background: transparent; border-radius: 4px; cursor: pointer;"
                             title="Delete bookmark">
                         x

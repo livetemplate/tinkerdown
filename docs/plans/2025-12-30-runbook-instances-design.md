@@ -145,7 +145,7 @@ The instance includes an execution log:
 |------|------|--------|--------|-----|
 
 \`\`\`lvt
-<form lvt-submit="add" lvt-source="log">
+<form name="add" lvt-source="log">
   <input name="step" placeholder="Step #">
   <select name="action">
     <option value="started">Started</option>
@@ -171,7 +171,7 @@ Each log entry is saved to the markdown file.
 When the operator wants to record what the system showed:
 
 ```html
-<button lvt-click="snapshot" lvt-data-source="containers">
+<button name="snapshot" data-source="containers">
   📸 Capture
 </button>
 ```
@@ -234,7 +234,7 @@ sources:
 Form no longer needs time input - it's added automatically:
 
 ```html
-<form lvt-submit="add" lvt-source="log">
+<form name="add" lvt-source="log">
   <!-- no time field needed -->
   <input name="step" placeholder="Step #">
   <input name="action" placeholder="What happened">
@@ -258,7 +258,7 @@ Form no longer needs time input - it's added automatically:
 **Solution:** A `snapshot` action that saves exec output to the file.
 
 ```html
-<button lvt-click="snapshot" lvt-data-source="containers" lvt-data-label="Step 1">
+<button name="snapshot" data-source="containers" data-label="Step 1">
   📸 Capture
 </button>
 ```
@@ -294,10 +294,10 @@ container output here...
 
 ```html
 <div class="step-controls" lvt-step="1" lvt-log-source="log">
-  <button lvt-click="step_start">⏳ Start</button>
-  <button lvt-click="step_done">✅ Done</button>
-  <button lvt-click="step_failed">❌ Failed</button>
-  <button lvt-click="step_skip">⏭️ Skip</button>
+  <button name="step_start">⏳ Start</button>
+  <button name="step_done">✅ Done</button>
+  <button name="step_failed">❌ Failed</button>
+  <button name="step_skip">⏭️ Skip</button>
 </div>
 ```
 
@@ -400,7 +400,7 @@ sources:
 |------|------|--------|--------|-----|
 
 \`\`\`lvt
-<form lvt-submit="add" lvt-source="log">
+<form name="add" lvt-source="log">
   <input name="step" placeholder="Step">
   <select name="action">
     <option value="started">⏳ Started</option>

@@ -131,7 +131,7 @@ export TINKERDOWN_OPERATOR=alice
 **Current:** No way to freeze exec output at a point in time.
 **Needed:**
 ```html
-<button lvt-click="snapshot" lvt-data-source="containers">
+<button name="snapshot" data-source="containers">
   📸 Capture
 </button>
 ```
@@ -509,9 +509,9 @@ slack:
 
 **What's needed:**
 ```html
-<button lvt-click="snapshot"
-        lvt-data-source="containers"
-        lvt-data-label="Step 1">
+<button name="snapshot"
+        data-source="containers"
+        data-label="Step 1">
   📸 Capture
 </button>
 ```
@@ -540,10 +540,10 @@ container output here...
 **What's needed:**
 ```html
 <div lvt-step="1" lvt-log-source="log">
-  <button lvt-click="step_start">⏳ Start</button>
-  <button lvt-click="step_done">✅ Done</button>
-  <button lvt-click="step_failed">❌ Failed</button>
-  <button lvt-click="step_skip">⏭️ Skip</button>
+  <button name="step_start">⏳ Start</button>
+  <button name="step_done">✅ Done</button>
+  <button name="step_failed">❌ Failed</button>
+  <button name="step_skip">⏭️ Skip</button>
 </div>
 ```
 
@@ -560,9 +560,9 @@ container output here...
 
 **What's needed:**
 ```html
-<button lvt-click="request_approval"
-        lvt-data-access="prod-db-write"
-        lvt-data-notify="@managers">
+<button name="request_approval"
+        data-access="prod-db-write"
+        data-notify="@managers">
   🔐 Request Access
 </button>
 ```

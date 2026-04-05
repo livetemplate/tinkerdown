@@ -22,7 +22,7 @@ A place to track articles, books, and papers I want to read.
 ## Add to Reading List
 
 ```lvt
-<form lvt-submit="add" lvt-source="toread">
+<form name="add" lvt-source="toread">
   <input name="title" placeholder="Title" required>
   <input name="url" type="url" placeholder="URL (optional)">
   <input name="source" placeholder="Where I found it">

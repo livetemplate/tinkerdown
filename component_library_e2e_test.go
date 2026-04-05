@@ -97,11 +97,11 @@ func TestAutoTableRendering(t *testing.T) {
 
 	// Test 3: Simple table with actions renders action buttons
 	t.Run("simple_table_actions", func(t *testing.T) {
-		if !strings.Contains(htmlContent, "lvt-click=\"delete\"") {
+		if !strings.Contains(htmlContent, "name=\"delete\"") {
 			t.Logf("Console logs: %v", consoleLogs)
 			t.Fatal("Delete action button not found")
 		}
-		if !strings.Contains(htmlContent, "lvt-click=\"edit\"") {
+		if !strings.Contains(htmlContent, "name=\"edit\"") {
 			t.Fatal("Edit action button not found")
 		}
 		if !strings.Contains(htmlContent, ">Delete</button>") {
@@ -230,8 +230,8 @@ func TestAutoTableGeneration(t *testing.T) {
 			input: `<table lvt-source="users" lvt-columns="name:Name" lvt-actions="delete:Delete"></table>`,
 			contains: []string{
 				"<th>Actions</th>",
-				`lvt-click="delete"`,
-				`lvt-data-id="{{.Id}}"`,
+				`name="delete"`,
+				`data-id="{{.Id}}"`,
 				">Delete</button>",
 			},
 			notContains: []string{
@@ -414,8 +414,8 @@ func TestAutoListGeneration(t *testing.T) {
 			contains: []string{
 				"{{range .Data}}",
 				"{{.Title}}",
-				`lvt-click="delete"`,
-				`lvt-data-id="{{.Id}}"`,
+				`name="delete"`,
+				`data-id="{{.Id}}"`,
 				">Delete</button>",
 			},
 		},

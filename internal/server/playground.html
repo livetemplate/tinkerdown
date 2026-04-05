@@ -116,7 +116,7 @@ title: &quot;My App&quot;
 # My App
 
 ```lvt
-<form lvt-submit=&quot;save&quot; lvt-persist=&quot;items&quot;>
+<form name=&quot;save&quot; lvt-persist=&quot;items&quot;>
     <input type=&quot;text&quot; name=&quot;title&quot; required>
     <button type=&quot;submit&quot;>Add</button>
 </form>
@@ -211,7 +211,7 @@ A simple todo app built with Livemdtools. No CSS classes needed - PicoCSS styles
 <main>
     <h1>My Todos</h1>
 
-    <form lvt-submit="save" lvt-persist="todos">
+    <form name="save" lvt-persist="todos">
         <fieldset role="group">
             <input type="text" name="title" required placeholder="What needs to be done?">
             <button type="submit">Add</button>
@@ -230,7 +230,7 @@ A simple todo app built with Livemdtools. No CSS classes needed - PicoCSS styles
             {{range .Todos}}
             <tr>
                 <td>{{.Title}}</td>
-                <td><button lvt-click="Delete" lvt-data-id="{{.Id}}" >Delete</button></td>
+                <td><button name="Delete" data-id="{{.Id}}" >Delete</button></td>
             </tr>
             {{end}}
         </tbody>

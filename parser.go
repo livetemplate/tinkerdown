@@ -73,7 +73,7 @@ type FeaturesConfig struct {
 	Sidebar   bool `yaml:"sidebar"` // Show navigation sidebar
 }
 
-// Action defines a custom action that can be triggered via lvt-click.
+// Action defines a custom action that can be triggered via button name routing or lvt-on:click.
 type Action struct {
 	Kind      string              `yaml:"kind"`                // Action kind: "sql", "http", "exec"
 	Source    string              `yaml:"source,omitempty"`    // For sql: source name to execute against

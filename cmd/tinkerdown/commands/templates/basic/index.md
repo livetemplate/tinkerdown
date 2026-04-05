@@ -42,7 +42,7 @@ A simple Kubernetes pods dashboard built with Tinkerdown.
     </table>
     {{end}}
 
-    <button lvt-click="Refresh" style="margin-top: 16px;">Refresh</button>
+    <button name="Refresh" style="margin-top: 16px;">Refresh</button>
 </main>
 ```
 

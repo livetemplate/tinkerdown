@@ -214,8 +214,8 @@ Renders an "Actions" column with buttons:
       <td>Alice</td>
       <td>alice@example.com</td>
       <td>
-        <button lvt-click="edit" lvt-data-id="...">Edit</button>
-        <button lvt-click="delete" lvt-data-id="...">Delete</button>
+        <button name="edit" data-id="...">Edit</button>
+        <button name="delete" data-id="...">Delete</button>
       </td>
     </tr>
     ...
@@ -343,14 +343,14 @@ Renders action buttons alongside each item:
 <ul>
   <li>
     Complete project setup
-    <button lvt-click="delete" lvt-data-id="1">×</button>
-    <button lvt-click="edit" lvt-data-id="1">Edit</button>
+    <button name="delete" data-id="1">×</button>
+    <button name="edit" data-id="1">Edit</button>
   </li>
   ...
 </ul>
 ```
 
-**Note:** `lvt-actions` requires `lvt-field` to be specified (object arrays only). Each object must have an `id` field, which is used for the `lvt-data-id` attribute on action buttons. Actions are ignored for simple string arrays.
+**Note:** `lvt-actions` requires `lvt-field` to be specified (object arrays only). Each object must have an `id` field, which is used for the `data-id` attribute on action buttons. Actions are ignored for simple string arrays.
 
 ### Empty State
 
@@ -455,7 +455,7 @@ sources:
 
 ## Add User
 
-<form lvt-submit="add_user">
+<form name="add_user">
   <input name="name" placeholder="Name" required>
   <input name="email" type="email" placeholder="Email" required>
   <select lvt-source="roles" lvt-value="id" lvt-label="name" name="role">

@@ -36,7 +36,7 @@ title: My First App
 
 # Welcome to My App
 
-<button lvt-click="SayHello">Click Me</button>
+<button name="SayHello">Click Me</button>
 
 <div id="output">{{.message}}</div>
 ```

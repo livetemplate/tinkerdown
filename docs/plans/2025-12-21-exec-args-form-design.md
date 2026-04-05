@@ -183,7 +183,7 @@ Populate from State when sending tree updates.
 
 ### Step 7: Form Generation (Go HTML Template)
 
-Generate the form **server-side** using `<form lvt-submit="Run">`, preserving full LiveTemplate capabilities.
+Generate the form **server-side** using `<form name="Run">`, preserving full LiveTemplate capabilities.
 
 In `generateExecSourceCode()`, include a template that renders the arg form:
 
@@ -197,7 +197,7 @@ const execTemplate = `
     {{if .Duration}}<span class="exec-duration">{{.Duration}}ms</span>{{end}}
   </div>
 
-  <form lvt-submit="Run" class="exec-args-form">
+  <form name="Run" class="exec-args-form">
     {{range .Args}}
     <label class="exec-arg" {{if .Description}}title="{{.Description}}"{{end}}>
       <span>{{.Label}}</span>
@@ -227,7 +227,7 @@ const execTemplate = `
 `
 ```
 
-**Benefits of `<form lvt-submit="Run">`:**
+**Benefits of `<form name="Run">`:**
 - Single request on submit (not on every keystroke)
 - All arg values collected via FormData automatically
 - Standard HTML form semantics
@@ -265,7 +265,7 @@ func (s *State) Run(ctx *livetemplate.Context) error {
 **Flow:**
 1. User fills in form inputs
 2. User clicks Run (submit button)
-3. `lvt-submit="Run"` collects all inputs via FormData
+3. `name="Run"` collects all inputs via FormData
 4. Server receives all arg values in single request
 5. `Run` updates `ArgValues`, builds command, executes
 
@@ -342,7 +342,7 @@ done
 ## Design Decisions
 
 1. **Server-side form generation** - Go HTML templates, full LiveTemplate reactivity preserved
-2. **`<form lvt-submit="Run">`** - Standard form, single request on submit, FormData collection
+2. **`<form name="Run">`** - Standard form, single request on submit, FormData collection
 3. **Type inference from values** - `5` → number, `true`/`false` → bool, else string
 4. **Optional type hints** - Named: `--name:string`, Positional: `label:type:value`
 5. **Positional arg labels** - Custom via `label:type:value` or auto as "arg1"/"arg2"

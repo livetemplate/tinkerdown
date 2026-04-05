@@ -173,7 +173,7 @@ private setupLvtAction(element: HTMLElement): void {
 ```
 
 **Handle existing lvt-* attributes:**
-- Ensure backwards compatibility with `lvt-click`, `lvt-change`, `lvt-submit`
+- Ensure backwards compatibility with `name` (button/form), `lvt-on:change`
 - `lvt-action` is additive, not replacing existing attributes
 
 ### Phase 4: E2E Tests

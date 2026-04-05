@@ -148,7 +148,7 @@ func TestLLMSTxtExists(t *testing.T) {
 		"# Tinkerdown",
 		"## Quick Start",
 		"## Key Attributes",
-		"lvt-click",
+		"name=",
 		"lvt-source",
 	}
 

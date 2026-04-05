@@ -23,7 +23,7 @@ A frequently asked questions page demonstrating collapsible sections.
     <details>
         <summary>+ Add New FAQ</summary>
         <article>
-            <form lvt-submit="save" lvt-persist="faqs">
+            <form name="save" lvt-persist="faqs">
                 <label>
                     Question
                     <input type="text" name="question" required placeholder="Enter the question">
@@ -56,7 +56,7 @@ A frequently asked questions page demonstrating collapsible sections.
             <kbd>{{.Category}}</kbd>
         </summary>
         <p>{{.Answer}}</p>
-        <button lvt-click="Delete" lvt-data-id="{{.Id}}" >Delete FAQ</button>
+        <button name="Delete" data-id="{{.Id}}" >Delete FAQ</button>
     </details>
     {{end}}
 

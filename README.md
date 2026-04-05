@@ -137,11 +137,11 @@ See [Auto-Rendering Guide](docs/guides/auto-rendering.md) for full details.
 | Attribute | Description |
 |-----------|-------------|
 | `lvt-source` | Connect element to a data source |
-| `lvt-click` | Handle click events |
-| `lvt-submit` | Handle form submissions |
-| `lvt-change` | Handle input changes |
-| `lvt-confirm` | Show confirmation dialog before action |
-| `lvt-data-*` | Pass data with actions |
+| `name` (on button) | Handle click events |
+| `name` (on form) | Handle form submissions |
+| `lvt-on:change` | Handle input changes |
+| `data-confirm` | Show confirmation dialog before action |
+| `data-*` | Pass data with actions |
 
 See [lvt-* Attributes Reference](docs/reference/lvt-attributes.md) for the complete list.
 

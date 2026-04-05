@@ -118,7 +118,7 @@ A simple Kubernetes pods dashboard built with Tinkerdown.
     </table>
     {{end}}
 
-    <button lvt-click="Refresh" style="margin-top: 16px;">Refresh</button>
+    <button name="Refresh" style="margin-top: 16px;">Refresh</button>
 </main>
 ```
 
@@ -220,14 +220,14 @@ A simple task manager with SQLite persistence.
             <tr>
                 <td>
                     <input type="checkbox" {{if .Done}}checked{{end}}
-                           lvt-click="Toggle" lvt-data-id="{{.Id}}">
+                           lvt-on:click="Toggle" data-id="{{.Id}}">
                 </td>
                 <td {{if .Done}}style="text-decoration: line-through; opacity: 0.6"{{end}}>
                     {{.Text}}
                 </td>
                 <td>{{.Priority}}</td>
                 <td>
-                    <button lvt-click="Delete" lvt-data-id="{{.Id}}"
+                    <button name="Delete" data-id="{{.Id}}"
                             style="color: red; border: 1px solid red; background: transparent; border-radius: 4px; cursor: pointer; padding: 2px 8px;">
                         Delete
                     </button>
@@ -242,7 +242,7 @@ A simple task manager with SQLite persistence.
     <hr style="margin: 16px 0;">
 
     <h3>Add New Task</h3>
-    <form lvt-submit="Add" style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+    <form name="Add" style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
         <input type="text" name="text" placeholder="Task description..." required
                style="flex: 1; min-width: 200px; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
         <select name="priority" style="padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
@@ -376,7 +376,7 @@ A multi-source dashboard combining REST API data and local system information.
         </tbody>
     </table>
     {{end}}
-    <button lvt-click="Refresh">Refresh Users</button>
+    <button name="Refresh">Refresh Users</button>
 </main>
 ```
 
@@ -412,7 +412,7 @@ A multi-source dashboard combining REST API data and local system information.
         </tbody>
     </table>
     {{end}}
-    <button lvt-click="Refresh">Refresh System Info</button>
+    <button name="Refresh">Refresh System Info</button>
 </main>
 ```
 
@@ -491,7 +491,7 @@ A contact form with SQLite persistence.
 
 ```lvt
 <main lvt-source="submissions">
-    <form lvt-submit="Add" style="max-width: 500px; display: flex; flex-direction: column; gap: 12px;">
+    <form name="Add" style="max-width: 500px; display: flex; flex-direction: column; gap: 12px;">
         <div>
             <label for="name" style="display: block; margin-bottom: 4px; font-weight: bold;">Name</label>
             <input type="text" id="name" name="name" required
@@ -537,7 +537,7 @@ A contact form with SQLite persistence.
                 <td>{{.Email}}</td>
                 <td>{{.Message}}</td>
                 <td>
-                    <button lvt-click="Delete" lvt-data-id="{{.Id}}"
+                    <button name="Delete" data-id="{{.Id}}"
                             style="color: red; border: 1px solid red; background: transparent; border-radius: 4px; cursor: pointer; padding: 2px 8px;">
                         Delete
                     </button>
@@ -617,7 +617,7 @@ Search GitHub repositories using the GitHub API.
 
 ```lvt
 <main lvt-source="repos">
-    <form lvt-submit="SetQuery" style="margin-bottom: 16px; display: flex; gap: 8px;">
+    <form name="SetQuery" style="margin-bottom: 16px; display: flex; gap: 8px;">
         <input type="text" name="query" placeholder="Search repositories..." value="{{.Query}}"
                style="flex: 1; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
         <button type="submit"
@@ -925,7 +925,7 @@ Testing the custom WASM data source.
         </tbody>
     </table>
     {{end}}
-    <button lvt-click="Refresh">Refresh</button>
+    <button name="Refresh">Refresh</button>
 </main>
 ```
 ```

@@ -18,7 +18,7 @@ import (
 // a browser: create DB → write markdown → start server → HTTP GET → verify
 // the page renders without errors and contains the auto-generated block.
 //
-// The lvt block content (lvt-source, lvt-click etc.) is delivered over WebSocket,
+// The lvt block content (lvt-source, button name routing etc.) is delivered over WebSocket,
 // not in the initial HTML. So we verify:
 //   - The page returns 200 (no source fetch errors during discovery)
 //   - The auto-generated block placeholder is present (data-tinkerdown-block)

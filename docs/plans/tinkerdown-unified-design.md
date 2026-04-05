@@ -880,7 +880,7 @@ CREATE TABLE tasks (
 When you need complete control over layout and interactions, use HTML with `lvt-*` attributes and Go templates:
 
 ```html
-<form lvt-submit="add" lvt-source="items">
+<form name="add" lvt-source="items">
   <input name="title" placeholder="New item" required>
   <button type="submit">Add</button>
 </form>
@@ -890,7 +890,7 @@ When you need complete control over layout and interactions, use HTML with `lvt-
   <div class="card">
     <h3>{{.title}}</h3>
     <p>Added: {{.created_at | formatDate}}</p>
-    <button lvt-click="delete" lvt-data-id="{{.id}}">Delete</button>
+    <button name="delete" data-id="{{.id}}">Delete</button>
   </div>
   {{end}}
 </div>

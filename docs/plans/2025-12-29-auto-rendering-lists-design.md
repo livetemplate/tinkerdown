@@ -59,8 +59,8 @@ Renders:
   {{range .Data}}
   <li>
     {{.Title}}
-    <button lvt-click="delete" lvt-data-id="{{.Id}}">×</button>
-    <button lvt-click="edit" lvt-data-id="{{.Id}}">Edit</button>
+    <button name="delete" data-id="{{.Id}}">×</button>
+    <button name="edit" data-id="{{.Id}}">Edit</button>
   </li>
   {{end}}
 </ul>
