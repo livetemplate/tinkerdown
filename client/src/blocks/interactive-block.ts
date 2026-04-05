@@ -16,6 +16,11 @@ export class InteractiveBlock extends BaseBlock {
   private pendingForm: HTMLFormElement | null = null;
   private pendingAction: string | null = null;
 
+  // Bound event handlers (stored for removal in destroy)
+  private readonly _handleClick = (e: Event) => this.handleClick(e);
+  private readonly _handleSubmit = (e: Event) => this.handleSubmit(e);
+  private readonly _handleChange = (e: Event) => this.handleChange(e);
+
   // Exec toolbar state
   private execToolbar: HTMLElement | null = null;
   private outputPanel: HTMLElement | null = null;
@@ -72,10 +77,12 @@ export class InteractiveBlock extends BaseBlock {
 
   destroy(): void {
     this.log("Destroying interactive block");
-    if (this.client) {
-      // Clean up the client instance
-      this.client = null;
-    }
+    this.element.removeEventListener("click", this._handleClick, true);
+    this.element.removeEventListener("submit", this._handleSubmit, true);
+    this.element.removeEventListener("change", this._handleChange, true);
+    this.client = null;
+    this.pendingForm = null;
+    this.pendingAction = null;
   }
 
   handleMessage(action: string, data: any, execMeta?: ExecMeta, cacheMeta?: CacheMeta): void {
@@ -147,10 +154,10 @@ export class InteractiveBlock extends BaseBlock {
   private attachEventHandlers(): void {
     if (!this.element) return;
 
-    // Delegate events to our custom handler
-    this.element.addEventListener("click", (e) => this.handleClick(e), true);
-    this.element.addEventListener("submit", (e) => this.handleSubmit(e), true);
-    this.element.addEventListener("change", (e) => this.handleChange(e), true);
+    // Delegate events to our custom handler (bound handlers stored for removal in destroy)
+    this.element.addEventListener("click", this._handleClick, true);
+    this.element.addEventListener("submit", this._handleSubmit, true);
+    this.element.addEventListener("change", this._handleChange, true);
   }
 
   /**
@@ -162,8 +169,8 @@ export class InteractiveBlock extends BaseBlock {
   private handleClick(e: Event): void {
     const target = e.target as HTMLElement;
 
-    // Standard HTML: button name routing
-    if (target instanceof HTMLButtonElement && target.name) {
+    // Standard HTML: orphan button name routing (buttons inside forms are handled by handleSubmit)
+    if (target instanceof HTMLButtonElement && target.name && target.form === null) {
       e.preventDefault();
 
       if (!this.checkConfirm(target)) {
@@ -201,14 +208,15 @@ export class InteractiveBlock extends BaseBlock {
     const target = e.target as HTMLFormElement;
     const submitter = (e as SubmitEvent).submitter;
 
-    // Determine action: submitter button name > form name > "submit"
+    // Determine action: submitter button name > form name
     let action = "";
     if (submitter instanceof HTMLButtonElement && submitter.name) {
       action = submitter.name;
     } else if (target.name) {
       action = target.name;
     } else {
-      action = "submit";
+      // No routing signal — let the browser handle it natively
+      return;
     }
 
     e.preventDefault();
@@ -263,9 +271,9 @@ export class InteractiveBlock extends BaseBlock {
    */
   private extractData(element: HTMLElement): Record<string, string> {
     const data: Record<string, string> = {};
-    for (const [key, value] of Object.entries(element.dataset)) {
-      // Skip internal data attributes
+    for (const key in element.dataset) {
       if (key === "confirm") continue;
+      const value = element.dataset[key];
       if (value !== undefined) {
         data[key] = value;
       }
