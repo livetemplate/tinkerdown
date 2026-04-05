@@ -119,9 +119,9 @@ Comprehensive API reference covering:
 
 | # | App | Features Demonstrated |
 |---|-----|----------------------|
-| 1 | Todo App | lvt-persist, lvt-submit, lvt-click, basic CRUD |
+| 1 | Todo App | lvt-persist, name (form/button), basic CRUD |
 | 2 | Dashboard | lvt-source (REST), datatable component, charts |
-| 3 | Contact Form | lvt-submit, validation, email notification |
+| 3 | Contact Form | name (form), validation, email notification |
 | 4 | Blog | Multiple pages, partials, markdown rendering |
 | 5 | Inventory | PostgreSQL source, search/filter, pagination |
 | 6 | Survey | Multi-step form, progress tracking, results view |
@@ -145,8 +145,8 @@ Create `docs/llms.txt` for broader AI tool compatibility:
 ...
 
 ### Key Attributes
-- lvt-click: Trigger server action on click
-- lvt-submit: Handle form submission
+- name (on button): Trigger server action on click
+- name (on form): Handle form submission
 - lvt-source: Connect to data source
 - lvt-persist: Auto-save to SQLite
 ...

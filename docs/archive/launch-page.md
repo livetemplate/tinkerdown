@@ -31,14 +31,14 @@ Now you need to `npm install`, configure your environment, set up hosting, and d
 ```markdown
 # Todo App
 
-<form lvt-submit="add" lvt-persist="todos">
+<form name="add" lvt-persist="todos">
   <input name="task" placeholder="New task">
   <button>Add</button>
 </form>
 
 <div lvt-source="todos">
 {{range .}}
-  <li>{{.task}} <button lvt-click="delete" lvt-data-id="{{.id}}">×</button></li>
+  <li>{{.task}} <button name="delete" data-id="{{.id}}">×</button></li>
 {{end}}
 </div>
 ```
@@ -59,7 +59,7 @@ tinkerdown serve todo.md
 |-----------|------------------|
 | `lvt-persist="todos"` | Database table, CRUD operations, persistence |
 | `lvt-source="pg:users"` | PostgreSQL queries, real-time updates |
-| `lvt-click="delete"` | WebSocket actions, server-side logic |
+| `name="delete"` (on button) | WebSocket actions, server-side logic |
 | `{{template "lvt:datatable"}}` | Production-ready UI components |
 
 **The Declarative Trifecta:**
@@ -127,7 +127,7 @@ echo '# Hello World
 
 ```lvt
 <h1>Hello, {{.Name}}!</h1>
-<form lvt-submit="greet">
+<form name="greet">
   <input name="name" placeholder="Your name">
   <button>Greet</button>
 </form>

@@ -35,7 +35,7 @@ export DATABASE_URL="postgres://user:pass@localhost:5432/inventory"
     <!-- Add Product Form -->
     <article>
         <header>Add Product</header>
-        <form lvt-submit="save" lvt-persist="products">
+        <form name="save" lvt-persist="products">
             <fieldset role="group">
                 <input type="text" name="name" required placeholder="Product name">
                 <input type="text" name="sku" required placeholder="SKU-001">
@@ -52,7 +52,7 @@ export DATABASE_URL="postgres://user:pass@localhost:5432/inventory"
     <article>
         <header>
             <span>Products</span>
-            <button lvt-click="Refresh" class="outline">Refresh</button>
+            <button name="Refresh" class="outline">Refresh</button>
         </header>
 
         {{if .Products}}
@@ -74,7 +74,7 @@ export DATABASE_URL="postgres://user:pass@localhost:5432/inventory"
                     <td>{{if lt .Quantity 10}}<mark>{{.Quantity}}</mark>{{else}}{{.Quantity}}{{end}}</td>
                     <td>${{.Price}}</td>
                     <td>
-                        <button lvt-click="Delete" lvt-data-id="{{.Id}}" >Delete</button>
+                        <button name="Delete" data-id="{{.Id}}" >Delete</button>
                     </td>
                 </tr>
                 {{end}}

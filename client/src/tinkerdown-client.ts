@@ -156,7 +156,7 @@ export class TinkerdownClient {
     console.log("[TinkerdownClient] Discovering blocks...");
 
     // Set up reactive attribute listeners from @livetemplate/client
-    // This handles lvt-{action}-on:{event} attributes (e.g., lvt-reset-on:success)
+    // This handles lvt-el:{method}:on:{state} attributes (e.g., lvt-el:reset:on:success)
     setupReactiveAttributeListeners();
 
     // Initialize tabs controller for tabbed headings with filtering

@@ -24,7 +24,7 @@ actions:
 
 # Custom Action Buttons
 
-This example demonstrates **custom actions** declared in frontmatter. Actions can execute SQL statements, HTTP requests, or shell commands when triggered via `lvt-click` buttons.
+This example demonstrates **custom actions** declared in frontmatter. Actions can execute SQL statements, HTTP requests, or shell commands when triggered via `name` attribute on buttons.
 
 ## Task List with Custom Actions
 
@@ -48,14 +48,14 @@ This example demonstrates **custom actions** declared in frontmatter. Actions ca
             <tr>
                 <td>
                     <input type="checkbox" {{if .Done}}checked{{end}}
-                           lvt-click="Toggle" lvt-data-id="{{.Id}}">
+                           lvt-on:click="Toggle" data-id="{{.Id}}">
                 </td>
                 <td {{if .Done}}style="text-decoration: line-through; opacity: 0.7"{{end}}>
                     {{.Text}}
                 </td>
                 <td>{{.Priority}}</td>
                 <td>
-                    <button lvt-click="Delete" lvt-data-id="{{.Id}}"
+                    <button name="Delete" data-id="{{.Id}}"
                             style="color: red; border: 1px solid red; background: transparent; border-radius: 4px; cursor: pointer; padding: 2px 8px;">
                         Delete
                     </button>
@@ -70,7 +70,7 @@ This example demonstrates **custom actions** declared in frontmatter. Actions ca
     <hr style="margin: 16px 0;">
 
     <h4>Add New Task</h4>
-    <form lvt-submit="Add" style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+    <form name="Add" style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
         <input type="text" name="text" placeholder="Task description..." required
                style="flex: 1; min-width: 200px; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
         <select name="priority" style="padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
@@ -88,15 +88,15 @@ This example demonstrates **custom actions** declared in frontmatter. Actions ca
 
     <h4>Bulk Actions (Custom Actions)</h4>
     <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-        <button lvt-click="clear-done"
+        <button name="clear-done"
                 style="padding: 8px 16px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer;">
             Clear Completed
         </button>
-        <button lvt-click="mark-all-done"
+        <button name="mark-all-done"
                 style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 4px; cursor: pointer;">
             Mark All Done
         </button>
-        <button lvt-click="Refresh" style="padding: 8px 16px;">Refresh</button>
+        <button name="Refresh" style="padding: 8px 16px;">Refresh</button>
     </div>
 </main>
 ```

@@ -409,7 +409,7 @@ actions:
 HTML + Go templates for maximum flexibility:
 
 ```html
-<form lvt-submit="add_task">
+<form name="add_task">
   <input name="title" required>
   <select name="priority">
     {{range .priorities}}<option>{{.}}</option>{{end}}
@@ -420,7 +420,7 @@ HTML + Go templates for maximum flexibility:
 {{range .tasks}}
 <div class="task">
   <h3>{{.title}}</h3>
-  <button lvt-click="delete" data-id="{{.id}}">Delete</button>
+  <button name="delete" data-id="{{.id}}">Delete</button>
 </div>
 {{end}}
 ```
@@ -555,7 +555,7 @@ No tasks yet. Add one above!
 ### Before (HTML + Templates)
 
 ```html
-<form lvt-submit="add_task">
+<form name="add_task">
   <label>Title</label>
   <input type="text" name="title" required>
 
@@ -579,7 +579,7 @@ No tasks yet. Add one above!
       <td>{{.title}}</td>
       <td>{{.priority}}</td>
       <td>
-        <button lvt-click="delete" data-id="{{.id}}">Delete</button>
+        <button name="delete" data-id="{{.id}}">Delete</button>
       </td>
     </tr>
     {{end}}

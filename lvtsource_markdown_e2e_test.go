@@ -92,9 +92,9 @@ sources:
         {{range .Data}}
         <li data-task-id="{{.Id}}" style="display: flex; align-items: center; gap: 8px; padding: 4px 0;">
             <input type="checkbox" {{if .Done}}checked{{end}}
-                   lvt-click="Toggle" lvt-data-id="{{.Id}}">
+                   lvt-on:click="Toggle" data-id="{{.Id}}">
             <span {{if .Done}}style="text-decoration: line-through; opacity: 0.7"{{end}}>{{.Text}}</span>
-            <button lvt-click="Delete" lvt-data-id="{{.Id}}" class="delete-btn"
+            <button name="Delete" data-id="{{.Id}}" class="delete-btn"
                     style="margin-left: auto; padding: 2px 8px; color: red; border: 1px solid red; background: transparent; border-radius: 4px; cursor: pointer;">
                 x
             </button>
@@ -106,7 +106,7 @@ sources:
 
     <hr style="margin: 16px 0;">
 
-    <form lvt-submit="Add" style="display: flex; gap: 8px;">
+    <form name="Add" style="display: flex; gap: 8px;">
         <input type="text" name="text" placeholder="Add new task..." required
                style="flex: 1; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
         <button type="submit"
@@ -115,7 +115,7 @@ sources:
         </button>
     </form>
 
-    <button lvt-click="Refresh" style="margin-top: 8px;">Refresh</button>
+    <button name="Refresh" style="margin-top: 8px;">Refresh</button>
 </main>
 ` + "```" + `
 `
@@ -325,7 +325,7 @@ func TestLvtSourceMarkdownTaskList(t *testing.T) {
 	// Test 4: Verify refresh button exists
 	var hasRefreshButton bool
 	err = chromedp.Run(ctx,
-		chromedp.Evaluate(`document.querySelector('[lvt-source="tasks"] button[lvt-click="Refresh"]') !== null`, &hasRefreshButton),
+		chromedp.Evaluate(`document.querySelector('[lvt-source="tasks"] button[name="Refresh"]') !== null`, &hasRefreshButton),
 	)
 	if err != nil {
 		t.Fatalf("Failed to check refresh button: %v", err)
@@ -557,7 +557,7 @@ func TestLvtSourceMarkdownAdd(t *testing.T) {
 	err := chromedp.Run(ctx,
 		chromedp.Navigate(testCtx.URL+"/"),
 		chromedp.Sleep(10*time.Second), // Wait for plugin compilation
-		chromedp.Evaluate(`document.querySelector('form[lvt-submit="Add"]') !== null`, &hasForm),
+		chromedp.Evaluate(`document.querySelector('form[name="Add"]') !== null`, &hasForm),
 	)
 	if err != nil {
 		t.Fatalf("Failed to navigate: %v", err)
@@ -588,7 +588,7 @@ func TestLvtSourceMarkdownAdd(t *testing.T) {
 		chromedp.WaitVisible(`input[name="text"]`, chromedp.ByQuery),
 		chromedp.SendKeys(`input[name="text"]`, newTaskText, chromedp.ByQuery),
 		chromedp.Sleep(200*time.Millisecond),
-		chromedp.Click(`form[lvt-submit="Add"] button[type="submit"]`, chromedp.ByQuery),
+		chromedp.Click(`form[name="Add"] button[type="submit"]`, chromedp.ByQuery),
 		chromedp.Sleep(2*time.Second), // Wait for WebSocket response
 	)
 	if err != nil {
@@ -812,14 +812,14 @@ sources:
         {{range .Data}}
         <li data-item-id="{{.Id}}">
             <span>{{.Text}}</span>
-            <button lvt-click="Delete" lvt-data-id="{{.Id}}">x</button>
+            <button name="Delete" data-id="{{.Id}}">x</button>
         </li>
         {{end}}
     </ul>
     <p><small>Total: {{len .Data}} items</small></p>
     {{end}}
 
-    <form lvt-submit="Add">
+    <form name="Add">
         <input type="text" name="text" placeholder="Add item..." required>
         <button type="submit">Add</button>
     </form>
@@ -956,7 +956,7 @@ sources:
             <tr data-product-id="{{.Id}}">
                 <td class="product-name">{{.Name}}</td>
                 <td class="product-price">{{.Price}}</td>
-                <td><button lvt-click="Delete" lvt-data-id="{{.Id}}">x</button></td>
+                <td><button name="Delete" data-id="{{.Id}}">x</button></td>
             </tr>
         {{end}}
         </tbody>
@@ -964,7 +964,7 @@ sources:
     <p><small>Total: {{len .Data}} products</small></p>
     {{end}}
 
-    <form lvt-submit="Add">
+    <form name="Add">
         <input type="text" name="name" placeholder="Product name" required>
         <input type="text" name="price" placeholder="Price" required>
         <button type="submit">Add</button>
@@ -1317,12 +1317,12 @@ func TestLvtSourceMarkdownUpdate(t *testing.T) {
 
 	// Add update functionality to the template
 	updatedContent := strings.Replace(string(indexContent),
-		`<button lvt-click="Delete" lvt-data-id="{{.Id}}" class="delete-btn"`,
-		`<button lvt-click="Delete" lvt-data-id="{{.Id}}" class="delete-btn"
+		`<button name="Delete" data-id="{{.Id}}" class="delete-btn"`,
+		`<button name="Delete" data-id="{{.Id}}" class="delete-btn"
                     style="margin-left: auto; padding: 2px 8px; color: red; border: 1px solid red; background: transparent; border-radius: 4px; cursor: pointer;">
                 x
             </button>
-            <button lvt-click="Update" lvt-data-id="{{.Id}}" lvt-data-text="Updated task text" class="update-btn"`,
+            <button name="Update" data-id="{{.Id}}" data-text="Updated task text" class="update-btn"`,
 		1)
 
 	if err := os.WriteFile(filepath.Join(tempDir, "index.md"), []byte(updatedContent), 0644); err != nil {

@@ -106,13 +106,13 @@ When auto-inference can't give you what you need — custom layouts, explicit ac
 <table lvt-source="tasks" lvt-columns="title,status" lvt-datatable lvt-actions="Complete,Delete">
 </table>
 
-<form lvt-submit="Add" lvt-reset-on:success>
+<form name="Add" lvt-el:reset:on:success>
   <input name="title" placeholder="New task" required>
   <select name="priority" lvt-source="priorities" lvt-value="id" lvt-label="name"></select>
   <button type="submit">Add</button>
 </form>
 
-<button lvt-click="ClearDone" lvt-confirm="Delete all completed tasks?">Clear Done</button>
+<button name="ClearDone" data-confirm="Delete all completed tasks?">Clear Done</button>
 ```
 
 The escape from Tier 1 to Tier 2 is clean: if the auto-generated UI isn't right, replace the markdown table with explicit HTML. The auto-generated template can serve as a starting point.
@@ -138,7 +138,7 @@ For full control over rendering, use Go template syntax inside `lvt` code blocks
       <h3>{{.Description}}</h3>
       <span class="badge">{{.Category}}</span>
       <span class="amount">${{.Amount}}</span>
-      <button lvt-click="Delete" lvt-data-id="{{.Id}}">Remove</button>
+      <button name="Delete" data-id="{{.Id}}">Remove</button>
     </div>
     {{end}}
   {{end}}

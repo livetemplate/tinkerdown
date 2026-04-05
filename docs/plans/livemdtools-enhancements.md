@@ -252,7 +252,7 @@ Break tutorial into incremental steps where each builds on previous:
 
 - **Step 2**: Add increment button
   - Add single button, see it work
-  - Explain: `lvt-click` triggers server action
+  - Explain: `name` on button triggers server action
 
 - **Step 3**: Add decrement and reset
   - Complete controls

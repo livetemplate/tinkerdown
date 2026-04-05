@@ -125,7 +125,7 @@ sources:
 
 ## Add Task
 
-<form lvt-submit="AddTask">
+<form name="AddTask">
   <input name="title" placeholder="Task title" required>
   <select name="priority">
     <option value="low">Low</option>

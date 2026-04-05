@@ -317,12 +317,12 @@ func TestGenerateAutoTaskLvtBlock(t *testing.T) {
 	}
 
 	// Should contain toggle handler
-	if !strings.Contains(block, `lvt-click="Toggle"`) {
+	if !strings.Contains(block, `lvt-on:click="Toggle"`) {
 		t.Error("block should contain Toggle action")
 	}
 
 	// Should contain add form
-	if !strings.Contains(block, `lvt-submit="Add"`) {
+	if !strings.Contains(block, `name="Add"`) {
 		t.Error("block should contain Add form")
 	}
 

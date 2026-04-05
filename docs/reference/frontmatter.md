@@ -178,7 +178,7 @@ nav:
 
 ## Add Task
 
-<form lvt-submit="AddTask">
+<form name="AddTask">
   <input name="title" placeholder="Task title" required>
   <select name="category" lvt-source="categories" lvt-value="id" lvt-label="name">
   </select>

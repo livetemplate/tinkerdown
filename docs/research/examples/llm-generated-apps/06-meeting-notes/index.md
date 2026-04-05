@@ -45,7 +45,7 @@ customer retention over new features.
 ### Add Action Item
 
 ```lvt
-<form lvt-submit="add" lvt-source="actions">
+<form name="add" lvt-source="actions">
   <input name="text" placeholder="Action item..." required style="width: 80%">
   <button type="submit">Add</button>
 </form>
@@ -68,7 +68,7 @@ customer retention over new features.
 ### Record Decision
 
 ```lvt
-<form lvt-submit="add" lvt-source="decisions">
+<form name="add" lvt-source="decisions">
   <input name="text" placeholder="Decision made..." required style="width: 80%">
   <button type="submit">Record</button>
 </form>

@@ -44,7 +44,7 @@ title: "My App"
 \`\`\`lvt
 <div>
     <h2>Add Item</h2>
-    <form lvt-submit="save" lvt-persist="items">
+    <form name="save" lvt-persist="items">
         <input type="text" name="title" required>
         <button type="submit">Add</button>
     </form>
@@ -55,7 +55,7 @@ title: "My App"
         {{range .Items}}
         <li>
             {{.Title}}
-            <button lvt-click="Delete" lvt-data-id="{{.Id}}">Delete</button>
+            <button name="Delete" data-id="{{.Id}}">Delete</button>
         </li>
         {{end}}
     </ul>
@@ -82,9 +82,8 @@ Navigate to `http://localhost:3000` - your app is running!
 |---------|--------------|
 | `lvt-persist` | Auto-saves form data to SQLite. Creates table, generates CRUD. |
 | `lvt-source` | Connects to external data (PostgreSQL, REST API, CSV, JSON, scripts) |
-| `lvt-click` | Triggers server action on click |
-| `lvt-submit` | Handles form submission |
-| `lvt-data-*` | Passes data with actions (e.g., `lvt-data-id="123"`) |
+| `name` (on button/form) | Triggers server action on click (button) or form submission (form) |
+| `data-*` | Passes data with actions (e.g., `data-id="123"`) |
 | frontmatter sources | Define data sources in frontmatter - no `tinkerdown.yaml` needed! |
 
 ## Reference

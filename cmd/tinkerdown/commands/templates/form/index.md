@@ -16,7 +16,7 @@ A contact form with SQLite persistence.
 
 ```lvt
 <main lvt-source="submissions">
-    <form lvt-submit="Add" style="max-width: 500px; display: flex; flex-direction: column; gap: 12px;">
+    <form name="Add" style="max-width: 500px; display: flex; flex-direction: column; gap: 12px;">
         <div>
             <label for="name" style="display: block; margin-bottom: 4px; font-weight: bold;">Name</label>
             <input type="text" id="name" name="name" required
@@ -62,7 +62,7 @@ A contact form with SQLite persistence.
                 <td>{{.Email}}</td>
                 <td>{{.Message}}</td>
                 <td>
-                    <button lvt-click="Delete" lvt-data-id="{{.Id}}"
+                    <button name="Delete" data-id="{{.Id}}"
                             style="color: red; border: 1px solid red; background: transparent; border-radius: 4px; cursor: pointer; padding: 2px 8px;">
                         Delete
                     </button>

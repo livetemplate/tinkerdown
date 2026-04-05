@@ -221,7 +221,7 @@ sources:
   <tr data-id="{{.id}}">
     <td>{{.text}}</td>
     <td>{{.status}}</td>
-    <td><button lvt-click="delete" lvt-source="tasks" lvt-data-id="{{.id}}">×</button></td>
+    <td><button name="delete" lvt-source="tasks" data-id="{{.id}}">×</button></td>
   </tr>
   {{end}}
 </table>
@@ -264,7 +264,7 @@ sources:
 | Create | Form submit / button | New item with generated ID appended/prepended |
 | Read | Page load | Section parsed, data rendered |
 | Update | Checkbox toggle, inline edit | Item matched by ID, modified in place |
-| Delete | Delete button with `lvt-data-id` | Item matched by ID, removed |
+| Delete | Delete button with `data-id` | Item matched by ID, removed |
 
 **Built-in action handlers for markdown sources:**
 - `add` - Creates new item from form data, generates ID
@@ -279,7 +279,7 @@ sources:
   <button type="submit">Add</button>
 </form>
 
-<button lvt-click="delete" lvt-source="todos" lvt-data-id="{{.id}}">×</button>
+<button name="delete" lvt-source="todos" data-id="{{.id}}">×</button>
 ```
 
 ## Edge Cases & Error Handling
@@ -362,8 +362,8 @@ sources:
       <td><a href="{{.url}}">{{.url}}</a></td>
       <td>{{.tags}}</td>
       <td>
-        <button lvt-click="delete" lvt-source="bookmarks" lvt-data-id="{{.id}}"
-                lvt-confirm="Delete {{.name}}?">×</button>
+        <button name="delete" lvt-source="bookmarks" data-id="{{.id}}"
+                data-confirm="Delete {{.name}}?">×</button>
       </td>
     </tr>
   {{end}}
@@ -583,10 +583,10 @@ sources:
 <ul lvt-source="todos">
   {{range .Data}}
   <li data-id="{{.id}}">
-    <input type="checkbox" lvt-click="toggle" lvt-source="todos"
-           lvt-data-id="{{.id}}" {{if .done}}checked{{end}}>
+    <input type="checkbox" lvt-on:click="toggle" lvt-source="todos"
+           data-id="{{.id}}" {{if .done}}checked{{end}}>
     {{.text}}
-    <button lvt-click="delete" lvt-source="todos" lvt-data-id="{{.id}}">×</button>
+    <button name="delete" lvt-source="todos" data-id="{{.id}}">×</button>
   </li>
   {{end}}
 </ul>
@@ -631,7 +631,7 @@ sources:
     <td>{{.name}}</td>
     <td><a href="{{.url}}">{{.url}}</a></td>
     <td>{{.tags}}</td>
-    <td><button lvt-click="delete" lvt-source="bookmarks" lvt-data-id="{{.id}}">×</button></td>
+    <td><button name="delete" lvt-source="bookmarks" data-id="{{.id}}">×</button></td>
   </tr>
   {{end}}
   </tbody>

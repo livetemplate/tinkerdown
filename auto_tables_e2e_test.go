@@ -232,7 +232,7 @@ func TestAutoTables_SQLiteRenders(t *testing.T) {
 	// Verify add form exists (writable source)
 	var hasAddForm bool
 	err = chromedp.Run(ctx,
-		chromedp.Evaluate(`document.querySelector('[lvt-source="items"] form[lvt-submit="Add"]') !== null`, &hasAddForm),
+		chromedp.Evaluate(`document.querySelector('[lvt-source="items"] form[name="Add"]') !== null`, &hasAddForm),
 	)
 	if err != nil {
 		t.Fatalf("Failed to check for add form: %v", err)
@@ -246,7 +246,7 @@ func TestAutoTables_SQLiteRenders(t *testing.T) {
 	// Verify delete buttons exist
 	var hasDeleteBtn bool
 	err = chromedp.Run(ctx,
-		chromedp.Evaluate(`document.querySelector('[lvt-source="items"] [lvt-click="Delete"]') !== null`, &hasDeleteBtn),
+		chromedp.Evaluate(`document.querySelector('[lvt-source="items"] [name="Delete"]') !== null`, &hasDeleteBtn),
 	)
 	if err != nil {
 		t.Fatalf("Failed to check for delete button: %v", err)
@@ -292,7 +292,7 @@ func TestAutoTables_SQLiteAdd(t *testing.T) {
 	err = chromedp.Run(ctx,
 		chromedp.SetValue(`[lvt-source="items"] input[name="name"]`, "New Item", chromedp.ByQuery),
 		chromedp.SetValue(`[lvt-source="items"] input[name="price"]`, "29.99", chromedp.ByQuery),
-		chromedp.Click(`[lvt-source="items"] form[lvt-submit="Add"] button[type="submit"]`, chromedp.ByQuery),
+		chromedp.Click(`[lvt-source="items"] form[name="Add"] button[type="submit"]`, chromedp.ByQuery),
 		chromedp.Sleep(3*time.Second),
 	)
 	if err != nil {
@@ -351,7 +351,7 @@ func TestAutoTables_RESTReadonly(t *testing.T) {
 	// Verify refresh button exists
 	var hasRefreshBtn bool
 	err = chromedp.Run(ctx,
-		chromedp.Evaluate(`document.querySelector('[lvt-source="users"] [lvt-click="Refresh"]') !== null`, &hasRefreshBtn),
+		chromedp.Evaluate(`document.querySelector('[lvt-source="users"] [name="Refresh"]') !== null`, &hasRefreshBtn),
 	)
 	if err != nil {
 		t.Fatalf("Failed to check for refresh button: %v", err)
@@ -364,7 +364,7 @@ func TestAutoTables_RESTReadonly(t *testing.T) {
 	// Verify NO add form (read-only)
 	var hasAddForm bool
 	err = chromedp.Run(ctx,
-		chromedp.Evaluate(`document.querySelector('[lvt-source="users"] form[lvt-submit="Add"]') !== null`, &hasAddForm),
+		chromedp.Evaluate(`document.querySelector('[lvt-source="users"] form[name="Add"]') !== null`, &hasAddForm),
 	)
 	if err != nil {
 		t.Fatalf("Failed to check for add form: %v", err)
@@ -377,7 +377,7 @@ func TestAutoTables_RESTReadonly(t *testing.T) {
 	// Verify NO delete button (read-only)
 	var hasDeleteBtn bool
 	err = chromedp.Run(ctx,
-		chromedp.Evaluate(`document.querySelector('[lvt-source="users"] [lvt-click="Delete"]') !== null`, &hasDeleteBtn),
+		chromedp.Evaluate(`document.querySelector('[lvt-source="users"] [name="Delete"]') !== null`, &hasDeleteBtn),
 	)
 	if err != nil {
 		t.Fatalf("Failed to check for delete button: %v", err)

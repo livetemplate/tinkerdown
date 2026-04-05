@@ -24,7 +24,7 @@ title: "My App"
 <main>
     <h1>Todo List</h1>
 
-    <form lvt-submit="save" lvt-persist="items">
+    <form name="save" lvt-persist="items">
         <input type="text" name="title" placeholder="Add item..." required>
         <button type="submit">Add</button>
     </form>
@@ -32,7 +32,7 @@ title: "My App"
     {{range .Items}}
     <article>
         {{.Title}}
-        <button lvt-click="Delete" lvt-data-id="{{.Id}}">Delete</button>
+        <button name="Delete" data-id="{{.Id}}">Delete</button>
     </article>
     {{end}}
 </main>
@@ -45,10 +45,10 @@ Run: `tinkerdown serve myapp.md`
 
 | Attribute | Purpose | Example |
 |-----------|---------|---------|
-| `lvt-submit` | Handle form submission | `<form lvt-submit="save">` |
+| `name` (form) | Handle form submission | `<form name="save">` |
 | `lvt-persist` | Auto-save to SQLite | `<form lvt-persist="todos">` |
-| `lvt-click` | Button action handler | `<button lvt-click="Delete">` |
-| `lvt-data-*` | Pass data with action | `lvt-data-id="{{.Id}}"` |
+| `name` (button) | Button action handler | `<button name="Delete">` |
+| `data-*` | Pass data with action | `data-id="{{.Id}}"` |
 | `lvt-source` | Connect to data source | `<div lvt-source="users">` |
 | `lvt-columns` | Smart table columns | `lvt-columns="name:Name,email:Email"` |
 
@@ -95,7 +95,7 @@ Livemdtools includes PicoCSS, a classless CSS framework. Just write semantic HTM
 Creates SQLite table automatically from form fields:
 
 ```html
-<form lvt-submit="save" lvt-persist="contacts">
+<form name="save" lvt-persist="contacts">
     <input type="text" name="name">      <!-- creates name column -->
     <input type="email" name="email">    <!-- creates email column -->
     <input type="checkbox" name="active"> <!-- creates active column -->
@@ -165,7 +165,7 @@ Script outputs JSON array:
 <main>
     <h1>My Items</h1>
 
-    <form lvt-submit="save" lvt-persist="items">
+    <form name="save" lvt-persist="items">
         <fieldset role="group">
             <input type="text" name="title" required placeholder="New item...">
             <button type="submit">Add</button>
@@ -176,7 +176,7 @@ Script outputs JSON array:
     <article>
         <header>{{.Title}}</header>
         <footer>
-            <button lvt-click="Delete" lvt-data-id="{{.Id}}">Delete</button>
+            <button name="Delete" data-id="{{.Id}}">Delete</button>
         </footer>
     </article>
     {{end}}
@@ -205,7 +205,7 @@ Script outputs JSON array:
 <main>
     <h1>Contact Us</h1>
 
-    <form lvt-submit="save" lvt-persist="messages">
+    <form name="save" lvt-persist="messages">
         <label>
             Name
             <input type="text" name="name" required>

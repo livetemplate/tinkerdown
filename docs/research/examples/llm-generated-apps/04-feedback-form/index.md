@@ -14,7 +14,7 @@ Anonymous feedback form for your team. Responses are stored locally.
 ## Submit Feedback
 
 ```lvt
-<form lvt-submit="add" lvt-source="feedback">
+<form name="add" lvt-source="feedback">
   <label>How are you feeling today?</label>
   <select name="mood" required>
     <option value="great">Great</option>

@@ -81,31 +81,31 @@ Add action buttons to table rows.
 
 ## Event Handling
 
-### lvt-click
+### name (on button)
 
-Handle click events.
+Handle click events. Use `name` attribute on `<button>` elements to trigger server actions.
 
 ```html
-<button lvt-click="AddTask">Add Task</button>
+<button name="AddTask">Add Task</button>
 ```
 
-### lvt-submit
+### name (on form)
 
-Handle form submissions.
+Handle form submissions. Use `name` attribute on `<form>` elements.
 
 ```html
-<form lvt-submit="CreateUser">
+<form name="CreateUser">
   <input name="name" />
   <button type="submit">Create</button>
 </form>
 ```
 
-### lvt-change
+### lvt-on:change
 
 Handle change events (inputs, selects).
 
 ```html
-<select lvt-change="FilterByCategory">
+<select lvt-on:change="FilterByCategory">
   <option value="all">All</option>
   <option value="active">Active</option>
 </select>
@@ -116,7 +116,7 @@ Handle change events (inputs, selects).
 Filter keyboard events by key.
 
 ```html
-<input lvt-key="Enter" lvt-click="Search">
+<input lvt-key="Enter" lvt-on:click="Search">
 ```
 
 ### lvt-click-away
@@ -142,12 +142,12 @@ Handle window-level events.
 
 ## Data Attributes
 
-### lvt-data-*
+### data-*
 
 Pass data with actions.
 
 ```html
-<button lvt-click="Delete" lvt-data-id="123">Delete</button>
+<button name="Delete" data-id="123">Delete</button>
 ```
 
 ### lvt-value-*
@@ -155,7 +155,7 @@ Pass data with actions.
 Extract values from elements.
 
 ```html
-<button lvt-click="Update" lvt-value-name="#nameInput">
+<button name="Update" lvt-value-name="#nameInput">
   Update
 </button>
 ```
@@ -250,12 +250,12 @@ Button text during form submission.
 </button>
 ```
 
-### lvt-confirm
+### data-confirm
 
 Confirmation dialog before action.
 
 ```html
-<button lvt-click="Delete" lvt-confirm="Are you sure?">
+<button name="Delete" data-confirm="Are you sure?">
   Delete
 </button>
 ```
@@ -269,7 +269,7 @@ Confirmation dialog before action.
 Throttle event handling.
 
 ```html
-<input lvt-change="Search" lvt-throttle="300">
+<input lvt-on:change="Search" lvt-throttle="300">
 ```
 
 ### lvt-debounce
@@ -277,7 +277,7 @@ Throttle event handling.
 Debounce event handling.
 
 ```html
-<input lvt-change="Search" lvt-debounce="300">
+<input lvt-on:change="Search" lvt-debounce="300">
 ```
 
 ---
@@ -290,7 +290,7 @@ Trigger actions on lifecycle events.
 
 ```html
 <!-- Reset form on success -->
-<form lvt-reset-on:success>
+<form lvt-el:reset:on:success>
 </form>
 
 <!-- Add class on error -->
@@ -326,11 +326,11 @@ Trigger actions on lifecycle events.
 
 These are processed by the `@livetemplate/client` library:
 
-- Event handling: `lvt-click`, `lvt-submit`, `lvt-change`, `lvt-key`, `lvt-click-away`
+- Event handling: `name` (button/form), `lvt-on:change`, `lvt-key`, `lvt-click-away`
 - Rate limiting: `lvt-throttle`, `lvt-debounce`
 - UI directives: `lvt-scroll`, `lvt-highlight`, `lvt-animate`, `lvt-autofocus`, `lvt-focus-trap`
 - Modals: `lvt-modal-open`, `lvt-modal-close`
-- Forms: `lvt-preserve`, `lvt-disable-with`, `lvt-confirm`
+- Forms: `lvt-preserve`, `lvt-disable-with`, `data-confirm`
 - Lifecycle: `lvt-{action}-on:{event}`
 
 ### Tinkerdown-Specific Attributes

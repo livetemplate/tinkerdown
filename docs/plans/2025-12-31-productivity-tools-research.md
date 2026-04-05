@@ -242,7 +242,7 @@ sources:
 
 ## Today's Log
 
-<form lvt-submit="add" lvt-source="log">
+<form name="add" lvt-source="log">
   <select name="habit" lvt-source="habits" lvt-value="habit" lvt-label="habit">
   </select>
   <button type="submit">✓ Done</button>
@@ -289,13 +289,13 @@ sources:
 
 <div id="timer">
   <span id="time">25:00</span>
-  <button lvt-click="start_pomodoro">▶ Start</button>
-  <button lvt-click="stop">⏹ Stop</button>
+  <button name="start_pomodoro">▶ Start</button>
+  <button name="stop">⏹ Stop</button>
 </div>
 
 ## Log Session
 
-<form lvt-submit="add" lvt-source="sessions">
+<form name="add" lvt-source="sessions">
   <input name="project" placeholder="Project">
   <input name="duration" placeholder="Minutes" type="number">
   <input name="notes" placeholder="What did you do?">
@@ -349,7 +349,7 @@ sources:
 
 ## New Entry
 
-<form lvt-submit="add" lvt-source="entries">
+<form name="add" lvt-source="entries">
   <select name="mood">
     <option value="great">😊 Great</option>
     <option value="good">🙂 Good</option>
@@ -410,7 +410,7 @@ sources:
 
 ## Add Expense
 
-<form lvt-submit="add" lvt-source="expenses">
+<form name="add" lvt-source="expenses">
   <input name="amount" type="number" step="0.01" placeholder="Amount">
   <select name="category">
     <option>Food</option>
@@ -468,7 +468,7 @@ sources:
 
 ## Post Update
 
-<form lvt-submit="add" lvt-source="updates">
+<form name="add" lvt-source="updates">
   <textarea name="yesterday" placeholder="What I did yesterday..."></textarea>
   <textarea name="today" placeholder="What I'm doing today..."></textarea>
   <textarea name="blockers" placeholder="Any blockers?"></textarea>
@@ -525,7 +525,7 @@ sources:
 
 ## Add Feedback
 
-<form lvt-submit="add" lvt-source="feedback">
+<form name="add" lvt-source="feedback">
   <select name="candidate" lvt-source="candidates" lvt-value="name" lvt-label="name">
   </select>
   <select name="round">
@@ -604,7 +604,7 @@ sources:
 
 ## Weekly Check-in
 
-<form lvt-submit="add" lvt-source="checkins">
+<form name="add" lvt-source="checkins">
   <select name="kr" lvt-source="keyresults" lvt-value="kr" lvt-label="kr">
   </select>
   <input name="current" placeholder="Current value">
@@ -649,13 +649,13 @@ sources:
 
 ## Quick Add
 
-<form lvt-submit="add" lvt-source="meetings">
+<form name="add" lvt-source="meetings">
   <textarea name="discussed" placeholder="What we discussed..."></textarea>
   <textarea name="feedback" placeholder="Feedback given/received..."></textarea>
   <button type="submit">Save Notes</button>
 </form>
 
-<form lvt-submit="add" lvt-source="actions">
+<form name="add" lvt-source="actions">
   <input name="action" placeholder="Action item">
   <input name="owner" placeholder="Owner">
   <input name="due" type="date">
@@ -708,7 +708,7 @@ sources:
 
 ## Log Interaction
 
-<form lvt-submit="add" lvt-source="interactions">
+<form name="add" lvt-source="interactions">
   <select name="contact" lvt-source="contacts" lvt-value="name" lvt-label="name">
   </select>
   <select name="type">
@@ -772,7 +772,7 @@ sources:
 | item | votes |
 |------|-------|
 
-<form lvt-submit="add" lvt-source="good">
+<form name="add" lvt-source="good">
   <input name="item" placeholder="Something that went well...">
   <button type="submit">Add</button>
 </form>
@@ -782,7 +782,7 @@ sources:
 | item | votes |
 |------|-------|
 
-<form lvt-submit="add" lvt-source="improve">
+<form name="add" lvt-source="improve">
   <input name="item" placeholder="Something to improve...">
   <button type="submit">Add</button>
 </form>
@@ -792,7 +792,7 @@ sources:
 | action | owner | due | status |
 |--------|-------|-----|--------|
 
-<form lvt-submit="add" lvt-source="actions">
+<form name="add" lvt-source="actions">
   <input name="action" placeholder="Action to take">
   <input name="owner" placeholder="Owner">
   <input name="due" type="date">
@@ -822,7 +822,7 @@ sources:
 | id | name | status |
 |----|------|--------|
 
-<form lvt-submit="add" lvt-source="items">
+<form name="add" lvt-source="items">
   <input name="name">
   <button type="submit">Add</button>
 </form>
@@ -853,7 +853,7 @@ sources:
 | timestamp | who | entry |
 |-----------|-----|-------|
 
-<form lvt-submit="add" lvt-source="log">
+<form name="add" lvt-source="log">
   <input name="entry" placeholder="What happened?">
   <button type="submit">Log</button>
 </form>

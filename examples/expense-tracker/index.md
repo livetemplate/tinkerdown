@@ -18,7 +18,7 @@ A simple expense tracking app using SQLite for persistent storage.
 ```lvt
 <div lvt-source="expenses">
     <!-- Add Expense Form -->
-    <form lvt-submit="Add" style="display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; padding: 16px; background: #f8f9fa; border-radius: 8px; margin-bottom: 24px;">
+    <form name="Add" style="display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; padding: 16px; background: #f8f9fa; border-radius: 8px; margin-bottom: 24px;">
         <div style="flex: 1; min-width: 120px;">
             <label for="date" style="display: block; font-size: 12px; color: #666; margin-bottom: 4px;">Date</label>
             <input type="date" name="date" id="date" required
@@ -80,7 +80,7 @@ A simple expense tracking app using SQLite for persistent storage.
                 </td>
                 <td style="padding: 12px; color: #666;">{{.Description}}</td>
                 <td style="padding: 12px; text-align: center;">
-                    <button lvt-click="Delete" lvt-data-id="{{.Id}}"
+                    <button name="Delete" data-id="{{.Id}}"
                             style="padding: 4px 8px; background: transparent; color: #dc3545; border: 1px solid #dc3545; border-radius: 4px; cursor: pointer; font-size: 12px;">
                         Delete
                     </button>
@@ -96,7 +96,7 @@ A simple expense tracking app using SQLite for persistent storage.
         </tbody>
     </table>
     <div style="margin-top: 16px; text-align: right;">
-        <button lvt-click="Refresh" style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">
+        <button name="Refresh" style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">
             Refresh
         </button>
     </div>

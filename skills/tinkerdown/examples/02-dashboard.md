@@ -29,7 +29,7 @@ sources:
             <h1>User Dashboard</h1>
             <p>Data from external REST API</p>
         </hgroup>
-        <button lvt-click="Refresh" class="outline">Refresh Data</button>
+        <button name="Refresh" class="outline">Refresh Data</button>
     </header>
 
     <!-- Users Table -->
@@ -87,7 +87,7 @@ sources:
 1. **Source configuration** - `tinkerdown.yaml` defines the REST API endpoint
 2. **Data binding** - `lvt-source="users"` fetches data and makes it available as `.Data`
 3. **Template rendering** - Use `{{range .Data}}` to iterate over results
-4. **Refresh** - `lvt-click="Refresh"` reloads data from the API
+4. **Refresh** - `name="Refresh"` on button reloads data from the API
 
 ## Prompt to Generate This
 

@@ -189,7 +189,7 @@ func TestLvtSourcePostgres(t *testing.T) {
 	// Test 3: Verify Refresh button exists
 	var refreshButtonExists bool
 	err = chromedp.Run(ctx,
-		chromedp.Evaluate(`document.querySelector('button[lvt-click="Refresh"]') !== null`, &refreshButtonExists),
+		chromedp.Evaluate(`document.querySelector('button[name="Refresh"]') !== null`, &refreshButtonExists),
 	)
 	if err != nil {
 		t.Fatalf("Failed to check refresh button: %v", err)
@@ -202,7 +202,7 @@ func TestLvtSourcePostgres(t *testing.T) {
 
 	// Test 4: Click refresh and verify data is still present (re-fetched)
 	err = chromedp.Run(ctx,
-		chromedp.Click(`button[lvt-click="Refresh"]`, chromedp.ByQuery),
+		chromedp.Click(`button[name="Refresh"]`, chromedp.ByQuery),
 		chromedp.Sleep(2*time.Second),
 	)
 	if err != nil {

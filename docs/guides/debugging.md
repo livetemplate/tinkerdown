@@ -94,7 +94,7 @@ Common mistakes:
 
 ```html
 <!-- Check these are correct -->
-<button lvt-click="ActionName" lvt-data-id="123">
+<button name="ActionName" data-id="123">
 ```
 
 ## Browser DevTools

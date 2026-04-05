@@ -15,7 +15,7 @@ Test for auto-generated argument forms with exec data source.
 <main lvt-source="greeting">
     <h2>Greeting Generator</h2>
 
-    <form lvt-submit="Run">
+    <form name="Run">
         {{range .Args}}
         <div class="form-field">
             {{if eq .Type "bool"}}

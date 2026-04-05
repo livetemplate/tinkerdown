@@ -40,7 +40,7 @@ Test for `lvt-source` with JSON and CSV files.
         </tbody>
     </table>
     {{end}}
-    <button lvt-click="Refresh">Refresh</button>
+    <button name="Refresh">Refresh</button>
 </main>
 ```
 
@@ -71,6 +71,6 @@ Test for `lvt-source` with JSON and CSV files.
         </tbody>
     </table>
     {{end}}
-    <button lvt-click="Refresh">Refresh</button>
+    <button name="Refresh">Refresh</button>
 </main>
 ```

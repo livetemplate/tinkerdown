@@ -93,7 +93,7 @@ When a user adds, updates, or deletes a task, the cache is automatically cleared
 Users can manually refresh cached data using the `Refresh` action:
 
 ```html
-<button lvt-click="Refresh" lvt-data-source="users">Refresh Users</button>
+<button name="Refresh" data-source="users">Refresh Users</button>
 ```
 
 This invalidates the cache for the specified source and triggers a fresh fetch.

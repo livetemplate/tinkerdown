@@ -546,7 +546,7 @@ Keep chromedp for testing things that **require a real browser:**
 
 | Keep Chromedp | Don't Need Chromedp |
 |---------------|---------------------|
-| `lvt-click` button works | WebSocket message format |
+| `name` button action works | WebSocket message format |
 | Form submit triggers action | HTML output structure |
 | Real-time updates display | Source data parsing |
 | CSS renders correctly | Action state changes |

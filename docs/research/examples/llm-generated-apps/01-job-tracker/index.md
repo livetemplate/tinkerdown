@@ -14,7 +14,7 @@ Track your job applications in one place. Data is stored in this file.
 ## Add Application
 
 ```lvt
-<form lvt-submit="add" lvt-source="jobs">
+<form name="add" lvt-source="jobs">
   <input name="company" placeholder="Company" required>
   <input name="position" placeholder="Position" required>
   <input name="status" placeholder="Status (applied/interview/offer/rejected)" value="applied">

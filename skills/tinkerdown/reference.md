@@ -18,7 +18,7 @@ Regular markdown content...
 \`\`\`lvt
 <!-- Interactive HTML with lvt-* attributes -->
 <div>
-    <form lvt-submit="save" lvt-persist="items">
+    <form name="save" lvt-persist="items">
         <input type="text" name="title">
         <button type="submit">Add</button>
     </form>
@@ -77,12 +77,12 @@ Frontmatter sources take precedence over `tinkerdown.yaml` sources if both defin
 
 ### Form Handling
 
-#### `lvt-submit`
+#### `name` (on form)
 
 Handle form submission. Used with `lvt-persist` for auto-CRUD.
 
 ```html
-<form lvt-submit="save" lvt-persist="contacts">
+<form name="save" lvt-persist="contacts">
     <input type="text" name="name" required>
     <input type="email" name="email" required>
     <button type="submit">Submit</button>
@@ -103,32 +103,32 @@ The form data is automatically:
 
 ### Click Actions
 
-#### `lvt-click`
+#### `name` (on button)
 
 Trigger a server action on click.
 
 ```html
-<button lvt-click="Delete" lvt-data-id="{{.Id}}">Delete</button>
-<button lvt-click="ToggleComplete" lvt-data-id="{{.Id}}">Toggle</button>
-<button lvt-click="Refresh">Refresh Data</button>
+<button name="Delete" data-id="{{.Id}}">Delete</button>
+<button name="ToggleComplete" data-id="{{.Id}}">Toggle</button>
+<button name="Refresh">Refresh Data</button>
 ```
 
 The action name (e.g., `Delete`) maps to a method on your Controller. With `lvt-persist`, common actions are auto-generated.
 
 ### Data Attributes
 
-#### `lvt-data-*`
+#### `data-*`
 
 Pass data with click actions. The `*` becomes the parameter name.
 
 ```html
 <!-- Single value -->
-<button lvt-click="Delete" lvt-data-id="{{.Id}}">Delete</button>
+<button name="Delete" data-id="{{.Id}}">Delete</button>
 
 <!-- Multiple values -->
-<button lvt-click="Move"
-        lvt-data-id="{{.Id}}"
-        lvt-data-target="archive">
+<button name="Move"
+        data-id="{{.Id}}"
+        data-target="archive">
     Archive
 </button>
 ```
@@ -144,7 +144,7 @@ Access in controller:
 Automatically create a SQLite table and generate CRUD operations.
 
 ```html
-<form lvt-submit="save" lvt-persist="todos">
+<form name="save" lvt-persist="todos">
     <input type="text" name="title" required>
     <input type="checkbox" name="completed">
     <button type="submit">Add Todo</button>
@@ -155,7 +155,7 @@ This auto-generates:
 - SQLite table `todos` with columns: `id`, `title`, `completed`, `created_at`
 - State struct with `Todos []Todo`
 - `Save` action (insert)
-- `Delete` action (with `lvt-data-id`)
+- `Delete` action (with `data-id`)
 
 **Template access:**
 ```html
@@ -448,7 +448,7 @@ tinkerdown build myapp.md -o myapp
 ### CRUD List
 
 ```html
-<form lvt-submit="save" lvt-persist="items">
+<form name="save" lvt-persist="items">
     <input type="text" name="title" required>
     <button type="submit">Add</button>
 </form>
@@ -456,7 +456,7 @@ tinkerdown build myapp.md -o myapp
 {{range .Items}}
 <div>
     {{.Title}}
-    <button lvt-click="Delete" lvt-data-id="{{.Id}}">Delete</button>
+    <button name="Delete" data-id="{{.Id}}">Delete</button>
 </div>
 {{end}}
 ```
@@ -479,7 +479,7 @@ sources:
 ### Form with Validation
 
 ```html
-<form lvt-submit="save" lvt-persist="contacts">
+<form name="save" lvt-persist="contacts">
     <input type="text" name="name" required minlength="2">
     <input type="email" name="email" required>
     <input type="tel" name="phone" pattern="[0-9]{10}">

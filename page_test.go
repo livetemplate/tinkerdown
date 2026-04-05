@@ -41,7 +41,7 @@ type CounterState struct {
 ## Interactive Demo
 
 ` + "```lvt interactive state=\"counter-state\"" + `
-<button lvt-click="increment">{{.Counter}}</button>
+<button name="increment">{{.Counter}}</button>
 ` + "```" + `
 
 ## Try It

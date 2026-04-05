@@ -281,28 +281,28 @@ Given this view:
 {{range .Todos}}
   <li>
     {{.Title}}
-    <button lvt-click="Delete" lvt-data-id="{{.ID}}">×</button>
-    <button lvt-click="ToggleDone" lvt-data-id="{{.ID}}">✓</button>
+    <button name="Delete" data-id="{{.ID}}">×</button>
+    <button name="ToggleDone" data-id="{{.ID}}">✓</button>
   </li>
 {{end}}
 </ul>
 <input lvt-model="NewTitle" placeholder="New todo">
-<button lvt-click="Add">Add</button>
+<button name="Add">Add</button>
 ```
 
 ### Inferred CLI commands
 
 | HTML Pattern | Inferred CLI | Reasoning |
 |--------------|--------------|-----------|
-| `lvt-click="Delete"` + `lvt-data-id` | `delete --id=<id>` | Action + data attribute → named arg |
-| `lvt-click="ToggleDone"` + `lvt-data-id` | `toggle-done --id=<id>` | CamelCase → kebab-case |
-| `lvt-click="Add"` + `lvt-model="NewTitle"` | `add <title>` | Action + nearby model → positional arg |
+| `name="Delete"` + `data-id` | `delete --id=<id>` | Action + data attribute → named arg |
+| `name="ToggleDone"` + `data-id` | `toggle-done --id=<id>` | CamelCase → kebab-case |
+| `name="Add"` + `lvt-model="NewTitle"` | `add <title>` | Action + nearby model → positional arg |
 | `lvt-model="Filter"` | (state field) | Read via `filter` command |
 
 ### Inference rules
 
-1. `lvt-click="ActionName"` → command `action-name`
-2. `lvt-data-*` on same element → `--name=value` arguments
+1. `name="ActionName"` (on button) → command `action-name`
+2. `data-*` on same element → `--name=value` arguments
 3. `lvt-model` near action → positional argument
 4. State fields → read-only commands
 5. CamelCase → kebab-case for CLI ergonomics

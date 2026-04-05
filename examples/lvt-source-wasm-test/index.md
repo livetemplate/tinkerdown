@@ -37,7 +37,7 @@ WASM sources allow community-developed data sources to be distributed as `.wasm`
     </div>
     {{end}}
 
-    <button lvt-click="Refresh" style="margin-top: 16px;">Refresh</button>
+    <button name="Refresh" style="margin-top: 16px;">Refresh</button>
 </main>
 ```
 

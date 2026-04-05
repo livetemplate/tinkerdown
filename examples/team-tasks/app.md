@@ -36,7 +36,7 @@ A collaborative task board for teams with real-time synchronization.
 ```lvt
 <article lvt-source="tasks">
     <header>Add New Task</header>
-    <form lvt-submit="Add" lvt-reset-on:success>
+    <form name="Add" lvt-el:reset:on:success>
         <label>
             Task Title
             <input type="text" name="title" required placeholder="What needs to be done?" maxlength="200">
@@ -84,7 +84,7 @@ A collaborative task board for teams with real-time synchronization.
                 <td><kbd>@{{.AssignedTo}}</kbd></td>
                 <td>{{if eq .Priority "high"}}<mark>High</mark>{{else if eq .Priority "medium"}}Medium{{else}}Low{{end}}</td>
                 <td>{{if eq .Status "done"}}<ins>Done</ins>{{else if eq .Status "in_progress"}}<em>In Progress</em>{{else}}Todo{{end}}</td>
-                <td><button lvt-click="Delete" lvt-data-id="{{.Id}}" class="outline secondary" aria-label="Delete task: {{.Title}}">Delete</button></td>
+                <td><button name="Delete" data-id="{{.Id}}" class="outline secondary" aria-label="Delete task: {{.Title}}">Delete</button></td>
             </tr>
             {{else}}
             <tr>
@@ -97,9 +97,9 @@ A collaborative task board for teams with real-time synchronization.
 
     <footer>
         <div role="group">
-            <button lvt-click="mark-mine-done">Mark My Tasks Done</button>
-            <button lvt-click="clear-done" class="secondary">Clear Completed</button>
-            <button lvt-click="Refresh" class="contrast">Refresh</button>
+            <button name="mark-mine-done">Mark My Tasks Done</button>
+            <button name="clear-done" class="secondary">Clear Completed</button>
+            <button name="Refresh" class="contrast">Refresh</button>
         </div>
     </footer>
 </article>

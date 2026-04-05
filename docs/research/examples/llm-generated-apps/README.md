@@ -150,12 +150,12 @@ sources:
 </select>
 
 ## Actions
-<form lvt-submit="action_name">
+<form name="action_name">
   <input name="field">
   <button type="submit">Submit</button>
 </form>
 
-<button lvt-click="action_name" lvt-data-id="123">Click</button>
+<button name="action_name" data-id="123">Click</button>
 
 ## Table with Actions
 <table lvt-source="name" lvt-columns="col1,col2" lvt-actions="edit:Edit,delete:Delete">

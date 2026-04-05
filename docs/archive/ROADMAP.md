@@ -256,7 +256,7 @@ This project follows [Semantic Versioning 2.0.0](https://semver.org/):
 - Breaking config changes only in major versions
 
 **lvt-* Attributes:**
-- Core attributes (`lvt-click`, `lvt-submit`, etc.) are stable
+- Core attributes (`name` on button/form, `lvt-on:change`, etc.) are stable
 - New attributes don't affect existing ones
 - Deprecated attributes work for 2 minor versions with warnings
 
@@ -297,7 +297,7 @@ Go's `html/template` is a known quantity—mustache syntax is universal, conditi
 **Already in `@livetemplate/client` (core):**
 
 *Event Handling:*
-- `lvt-click`, `lvt-submit`, `lvt-change` - Event handlers
+- `name` (button/form), `lvt-on:change` - Event handlers
 - `lvt-click-away` - Click outside detection
 - `lvt-key` - Keyboard key filtering
 - `lvt-throttle`, `lvt-debounce` - Rate limiting
@@ -305,8 +305,8 @@ Go's `html/template` is a known quantity—mustache syntax is universal, conditi
 
 *Lifecycle & Reactive:*
 - `lvt-{action}-on:{event}` - Lifecycle hooks (reset, addClass, disable, etc.)
-- `lvt-confirm` - Confirmation dialogs
-- `lvt-data-*`, `lvt-value-*` - Data extraction
+- `data-confirm` - Confirmation dialogs
+- `data-*`, `lvt-value-*` - Data extraction
 - `lvt-preserve` - Preserve form fields during DOM updates
 - `lvt-disable-with` - Button text during submit
 
@@ -325,7 +325,7 @@ Go's `html/template` is a known quantity—mustache syntax is universal, conditi
 - `lvt-empty` - Empty state message
 
 **⚠️ Cleanup: Remove duplicates from Tinkerdown client**
-- `lvt-click`, `lvt-submit`, `lvt-change` handlers already in core
+- `name` (button/form), `lvt-on:change` handlers already in core
 
 ---
 
@@ -442,7 +442,7 @@ Auto-rendering is for common patterns only. Use Go templates when you need:
 <div class="card {{if .done}}completed{{end}}">
   <h3>{{.text}}</h3>
   <span class="priority priority-{{.priority}}">{{.priority}}</span>
-  <button lvt-click="Delete" lvt-data-id="{{.id}}">Delete</button>
+  <button name="Delete" data-id="{{.id}}">Delete</button>
 </div>
 {{end}}
 
@@ -845,7 +845,7 @@ docs/
 **CSRF Protection:**
 - [ ] Generate CSRF tokens for all forms
 - [ ] Validate tokens on POST/PUT/DELETE requests
-- [ ] Auto-inject token into `lvt-submit` forms
+- [ ] Auto-inject token into forms with `name` attribute
 - [ ] Cookie-based double-submit pattern for WebSocket actions
 
 **Content Security Policy (CSP):**

@@ -227,8 +227,8 @@ func TestNewCommandFormTemplate(t *testing.T) {
 	if !strings.Contains(contentStr, "submissions.db") {
 		t.Error("submissions.db database not found in index.md")
 	}
-	if !strings.Contains(contentStr, "lvt-submit") {
-		t.Error("lvt-submit attribute not found in index.md")
+	if !strings.Contains(contentStr, "name=") {
+		t.Error("name= attribute not found in index.md")
 	}
 	if !strings.Contains(contentStr, "Contact Form") {
 		t.Error("Title 'Contact Form' not found in index.md")

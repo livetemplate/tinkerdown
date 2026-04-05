@@ -55,12 +55,12 @@ Now let's create an interactive UI using Go templates:
 	<p>Count: {{.Count}}</p>
 
 	<div class="controls">
-		<button lvt-click="increment">Increment</button>
+		<button name="increment">Increment</button>
 		<input
 			type="text"
 			value="{{.Message}}"
-			lvt-change="update-message"
-			lvt-change-data='{"message": "$value"}'
+			name="message"
+			lvt-on:change="update-message"
 		/>
 	</div>
 </div>
@@ -109,7 +109,7 @@ input {
 </style>
 ```
 
-> 💡 **Template Syntax**: Use `lvt-click` for button actions and `lvt-change` for input changes. The server automatically re-renders and pushes updates.
+> 💡 **Template Syntax**: Use `name` on buttons for button actions and `lvt-on:change` for input changes. The server automatically re-renders and pushes updates.
 
 ## Step 3: Try It Out!
 

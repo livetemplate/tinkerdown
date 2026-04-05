@@ -15,7 +15,7 @@ A simple notes manager backed by a markdown file.
 ## Add a Note
 
 ```lvt
-<form lvt-submit="Add" lvt-source="notes" lvt-reset-on:success style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 16px;">
+<form name="Add" lvt-source="notes" lvt-el:reset:on:success style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 16px;">
     <input name="Title" placeholder="Title" required style="padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
     <input name="Content" placeholder="Note content..." required style="flex: 1; min-width: 200px; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
     <input name="Tag" placeholder="Tag" style="width: 120px; padding: 8px; border: 1px solid #ccc; border-radius: 4px;">
@@ -52,7 +52,7 @@ A simple notes manager backed by a markdown file.
                     {{if .Tag}}<span style="background: #e3f2fd; color: #1565c0; padding: 2px 8px; border-radius: 12px; font-size: 0.85em;">{{.Tag}}</span>{{end}}
                 </td>
                 <td style="padding: 12px; text-align: center;">
-                    <button lvt-click="Delete" lvt-data-id="{{.Id}}"
+                    <button name="Delete" data-id="{{.Id}}"
                             style="padding: 4px 8px; color: #dc3545; border: 1px solid #dc3545; background: transparent; border-radius: 4px; cursor: pointer;"
                             title="Delete note">x</button>
                 </td>

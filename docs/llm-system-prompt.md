@@ -50,7 +50,7 @@ Description of what this app does.
 ## Add Item Form
 
 \`\`\`lvt
-<form lvt-submit="add" lvt-source="sourcename">
+<form name="add" lvt-source="sourcename">
   <input name="field1" placeholder="Field 1" required>
   <input name="field2" placeholder="Field 2">
   <button type="submit">Add</button>
@@ -142,7 +142,7 @@ sources:
 
 ### Add Form
 ```html
-<form lvt-submit="add" lvt-source="items">
+<form name="add" lvt-source="items">
   <input name="field1" required>
   <input name="field2">
   <button type="submit">Add</button>
@@ -154,7 +154,7 @@ Use `lvt-actions="delete:×"` on the table - it's automatic.
 
 ### Standalone Delete Button
 ```html
-<button lvt-click="delete" lvt-source="items" lvt-data-id="{{.id}}">Delete</button>
+<button name="delete" lvt-source="items" data-id="{{.id}}">Delete</button>
 ```
 
 ## Markdown Data Format
@@ -246,7 +246,7 @@ sources:
 ## Add a Book
 
 \`\`\`lvt
-<form lvt-submit="add" lvt-source="toread">
+<form name="add" lvt-source="toread">
   <input name="title" placeholder="Book title" required>
   <input name="author" placeholder="Author">
   <button type="submit">Add to Reading List</button>
