@@ -59,8 +59,8 @@ Now let's create an interactive UI using Go templates:
 		<input
 			type="text"
 			value="{{.Message}}"
+			name="message"
 			lvt-on:change="update-message"
-			lvt-change-data='{"message": "$value"}'
 		/>
 	</div>
 </div>
