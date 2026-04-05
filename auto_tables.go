@@ -398,7 +398,7 @@ func generateReadonlyTableBlock(sourceName string, columns []string) string {
 	// Refresh button
 	b.WriteString(`<div style="margin-bottom: 8px;">`)
 	b.WriteString("\n")
-	b.WriteString(`  <button lvt-click="Refresh" style="padding: 6px 12px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">Refresh</button>`)
+	b.WriteString(`  <button name="Refresh" style="padding: 6px 12px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">Refresh</button>`)
 	b.WriteString("\n")
 	b.WriteString(`</div>`)
 	b.WriteString("\n")
@@ -501,7 +501,7 @@ func generateWritableTableBlock(sourceName string, columns []string, columnTypes
 	b.WriteString("\n")
 	b.WriteString(`          Save</button>`)
 	b.WriteString("\n")
-	b.WriteString(`        <button type="button" lvt-click="CancelEdit"`)
+	b.WriteString(`        <button type="button" name="CancelEdit"`)
 	b.WriteString("\n")
 	b.WriteString(`          style="padding: 4px 8px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85em;">`)
 	b.WriteString("\n")
@@ -525,13 +525,13 @@ func generateWritableTableBlock(sourceName string, columns []string, columnTypes
 	// Edit + Delete buttons
 	b.WriteString(`      <td style="white-space: nowrap;">`)
 	b.WriteString("\n")
-	b.WriteString(`        <button lvt-click="Edit" lvt-data-id="{{.Id}}"`)
+	b.WriteString(`        <button name="Edit" data-id="{{.Id}}"`)
 	b.WriteString("\n")
 	b.WriteString(`          style="padding: 4px 8px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85em; margin-right: 4px;">`)
 	b.WriteString("\n")
 	b.WriteString(`          Edit</button>`)
 	b.WriteString("\n")
-	b.WriteString(`        <button lvt-click="Delete" lvt-data-id="{{.Id}}" lvt-confirm="Delete this item?"`)
+	b.WriteString(`        <button name="Delete" data-id="{{.Id}}" data-confirm="Delete this item?"`)
 	b.WriteString("\n")
 	b.WriteString(`          style="padding: 4px 8px; background: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85em;">`)
 	b.WriteString("\n")
@@ -552,7 +552,7 @@ func generateWritableTableBlock(sourceName string, columns []string, columnTypes
 	b.WriteString("\n")
 
 	// Hidden edit form outside the table (inputs use form attribute to link)
-	b.WriteString(fmt.Sprintf(`<form id="auto-table-edit-%s" lvt-submit="Update" style="display:none;">`, sourceName))
+	b.WriteString(fmt.Sprintf(`<form id="auto-table-edit-%s" name="Update" style="display:none;">`, sourceName))
 	b.WriteString("\n")
 	b.WriteString(`  <input type="hidden" name="id" value="{{$.EditingId}}">`)
 	b.WriteString("\n")
@@ -561,7 +561,7 @@ func generateWritableTableBlock(sourceName string, columns []string, columnTypes
 
 	// Add form
 	b.WriteString("\n")
-	b.WriteString(`<form lvt-submit="Add" lvt-reset-on:success style="display: flex; gap: 8px; align-items: flex-end; margin-top: 12px; flex-wrap: wrap;">`)
+	b.WriteString(`<form name="Add" lvt-el:reset:on:success style="display: flex; gap: 8px; align-items: flex-end; margin-top: 12px; flex-wrap: wrap;">`)
 	b.WriteString("\n")
 	for _, col := range columns {
 		inputName := toInputName(col)

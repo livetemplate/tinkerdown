@@ -214,11 +214,11 @@ func generateAutoTaskLvtBlock(sourceName string) string {
 	return fmt.Sprintf(`<div lvt-source="%s">
 {{range .Data}}
 <label style="display: block; padding: 4px 0; cursor: pointer;">
-  <input type="checkbox" {{if .Done}}checked{{end}} lvt-click="Toggle" lvt-data-id="{{.Id}}">
+  <input type="checkbox" {{if .Done}}checked{{end}} lvt-on:click="Toggle" data-id="{{.Id}}">
   <span {{if .Done}}style="text-decoration: line-through; opacity: 0.6"{{end}}>{{.Text}}</span>
 </label>
 {{end}}
-<form lvt-submit="Add" lvt-reset-on:success style="display: flex; gap: 8px; align-items: center; margin-top: 8px;">
+<form name="Add" lvt-el:reset:on:success style="display: flex; gap: 8px; align-items: center; margin-top: 8px;">
   <input type="text" name="text" placeholder="Add new task..." required
          style="flex: 1; min-width: 0; padding: 6px 8px; border: 1px solid #ccc; border-radius: 4px;">
   <button type="submit"

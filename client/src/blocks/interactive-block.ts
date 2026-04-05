@@ -2,7 +2,7 @@
  * InteractiveBlock - Wraps a LiveTemplateClient instance for interactive UI
  */
 
-import { LiveTemplateClient, checkLvtConfirm, extractLvtData } from "@livetemplate/client";
+import { LiveTemplateClient } from "@livetemplate/client";
 import { BaseBlock } from "./base-block";
 import { BlockConfig, ExecMeta, CacheMeta } from "../types";
 import { PersistenceManager } from "../core/persistence-manager";
@@ -104,7 +104,7 @@ export class InteractiveBlock extends BaseBlock {
 
             // Dispatch lvt:success event from the form
             // The reactive attribute listeners from @livetemplate/client handle
-            // lvt-reset-on:success and other lvt-{action}-on:{event} attributes
+            // lvt-el:reset:on:success and other lvt-el:{method}:on:{state} attributes
             this.pendingForm.dispatchEvent(
               new CustomEvent("lvt:success", { bubbles: true, detail: meta })
             );
@@ -142,7 +142,7 @@ export class InteractiveBlock extends BaseBlock {
   }
 
   /**
-   * Attach event handlers for lvt-* attributes
+   * Attach event handlers for standard HTML button/form routing and lvt-on:* attributes
    */
   private attachEventHandlers(): void {
     if (!this.element) return;
@@ -154,71 +154,123 @@ export class InteractiveBlock extends BaseBlock {
   }
 
   /**
-   * Handle click events (lvt-click)
-   * Supports lvt-data-* attributes to pass data with the action
-   * Supports lvt-confirm="message" for confirmation dialogs (uses shared utility from @livetemplate/client)
-   * Example: <button lvt-click="Delete" lvt-data-id="123" lvt-confirm="Are you sure?">Delete</button>
+   * Handle click events.
+   * Standard HTML: button[name] routes to named action.
+   * Tier 2: lvt-on:click="action" for non-button elements (e.g., checkboxes, table rows).
+   * Supports data-* attributes for passing data and data-confirm for confirmation dialogs.
    */
   private handleClick(e: Event): void {
     const target = e.target as HTMLElement;
-    const action = target.getAttribute("lvt-click");
 
+    // Standard HTML: button name routing
+    if (target instanceof HTMLButtonElement && target.name) {
+      e.preventDefault();
+
+      if (!this.checkConfirm(target)) {
+        this.log("Click action cancelled by user:", target.name);
+        return;
+      }
+
+      const data = this.extractData(target);
+      this.sendAction(target.name, data);
+      this.log("Click action (button name):", target.name, data);
+      return;
+    }
+
+    // Tier 2: lvt-on:click for non-button elements
+    const action = target.getAttribute("lvt-on:click");
     if (action) {
       e.preventDefault();
 
-      // Check for confirmation dialog (uses shared utility from @livetemplate/client)
-      if (!checkLvtConfirm(target)) {
+      if (!this.checkConfirm(target)) {
         this.log("Click action cancelled by user:", action);
         return;
       }
 
-      const data = extractLvtData(target);
+      const data = this.extractData(target);
       this.sendAction(action, data);
-      this.log("Click action:", action, data);
+      this.log("Click action (lvt-on:click):", action, data);
     }
   }
 
   /**
-   * Handle submit events (lvt-submit)
+   * Handle submit events.
+   * Action resolution: submitter button name > form name > "submit".
    */
   private handleSubmit(e: Event): void {
     const target = e.target as HTMLFormElement;
-    const action = target.getAttribute("lvt-submit");
+    const submitter = (e as SubmitEvent).submitter;
 
-    if (action) {
-      e.preventDefault();
-      const formData = new FormData(target);
-      const data: Record<string, any> = {};
-      formData.forEach((value, key) => {
-        data[key] = value;
-      });
-
-      // Track form and action for lifecycle events
-      this.pendingForm = target;
-      this.pendingAction = action;
-
-      // Dispatch lvt:pending event
-      target.dispatchEvent(
-        new CustomEvent("lvt:pending", { bubbles: true, detail: { action } })
-      );
-
-      this.sendAction(action, data);
-      this.log("Submit action:", action, data);
+    // Determine action: submitter button name > form name > "submit"
+    let action = "";
+    if (submitter instanceof HTMLButtonElement && submitter.name) {
+      action = submitter.name;
+    } else if (target.name) {
+      action = target.name;
+    } else {
+      action = "submit";
     }
+
+    e.preventDefault();
+    const formData = new FormData(target);
+    const data: Record<string, any> = {};
+    formData.forEach((value, key) => {
+      data[key] = value;
+    });
+
+    // Track form and action for lifecycle events
+    this.pendingForm = target;
+    this.pendingAction = action;
+
+    // Dispatch lvt:pending event
+    target.dispatchEvent(
+      new CustomEvent("lvt:pending", { bubbles: true, detail: { action } })
+    );
+
+    this.sendAction(action, data);
+    this.log("Submit action:", action, data);
   }
 
   /**
-   * Handle change events (lvt-change)
+   * Handle change events (lvt-on:change).
    */
   private handleChange(e: Event): void {
     const target = e.target as HTMLInputElement;
-    const action = target.getAttribute("lvt-change");
+    const action = target.getAttribute("lvt-on:change");
 
     if (action) {
       const data = { value: target.value };
       this.sendAction(action, data);
       this.log("Change action:", action, data);
     }
+  }
+
+  /**
+   * Check for data-confirm attribute and show browser confirmation dialog.
+   * Returns true if the action should proceed, false if cancelled.
+   */
+  private checkConfirm(element: HTMLElement): boolean {
+    const message = element.dataset.confirm;
+    if (message && !window.confirm(message)) {
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * Extract data-* attributes from an element.
+   * Returns a plain object of key-value pairs (without the "data-" prefix).
+   */
+  private extractData(element: HTMLElement): Record<string, string> {
+    const data: Record<string, string> = {};
+    for (const [key, value] of Object.entries(element.dataset)) {
+      // Skip internal data attributes
+      if (key === "confirm") continue;
+      if (value !== undefined) {
+        data[key] = value;
+      }
+    }
+    return data;
   }
 
   /**

@@ -610,7 +610,7 @@ func generateSimpleTable(w *strings.Builder, columns, actions, emptyMessage stri
 			w.WriteString("      <td>\n")
 			for _, act := range acts {
 				// HTML-escape action label to prevent XSS
-				w.WriteString(fmt.Sprintf("        <button lvt-click=\"%s\" lvt-data-id=\"{{.Id}}\">%s</button>\n",
+				w.WriteString(fmt.Sprintf("        <button name=\"%s\" data-id=\"{{.Id}}\">%s</button>\n",
 					html.EscapeString(act.action), html.EscapeString(act.label)))
 			}
 			w.WriteString("      </td>\n")
@@ -661,7 +661,7 @@ func generateSimpleTable(w *strings.Builder, columns, actions, emptyMessage stri
 		w.WriteString("      <td>\n")
 		for _, act := range acts {
 			// HTML-escape action label to prevent XSS
-			w.WriteString(fmt.Sprintf("        <button lvt-click=\"%s\" lvt-data-id=\"{{.Id}}\">%s</button>\n",
+			w.WriteString(fmt.Sprintf("        <button name=\"%s\" data-id=\"{{.Id}}\">%s</button>\n",
 				html.EscapeString(act.action), html.EscapeString(act.label)))
 		}
 		w.WriteString("      </td>\n")
@@ -839,7 +839,7 @@ func autoGenerateListTemplate(content string) string {
 			if len(parts) == 2 {
 				action := strings.TrimSpace(parts[0])
 				label := strings.TrimSpace(parts[1])
-				generated.WriteString(fmt.Sprintf("    <button lvt-click=\"%s\" lvt-data-id=\"{{.Id}}\">%s</button>\n",
+				generated.WriteString(fmt.Sprintf("    <button name=\"%s\" data-id=\"{{.Id}}\">%s</button>\n",
 					html.EscapeString(action), html.EscapeString(label)))
 			}
 		}
