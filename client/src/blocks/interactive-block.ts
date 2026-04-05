@@ -162,41 +162,45 @@ export class InteractiveBlock extends BaseBlock {
 
   /**
    * Handle click events.
-   * Standard HTML: button[name] routes to named action.
+   * Standard HTML: orphan button[name] routes to named action.
    * Tier 2: lvt-on:click="action" for non-button elements (e.g., checkboxes, table rows).
-   * Supports data-* attributes for passing data and data-confirm for confirmation dialogs.
+   * Uses closest() to walk up from e.target so child elements inside buttons are handled.
    */
   private handleClick(e: Event): void {
     const target = e.target as HTMLElement;
 
-    // Standard HTML: orphan button name routing (buttons inside forms are handled by handleSubmit)
-    if (target instanceof HTMLButtonElement && target.name && target.form === null) {
+    // Walk up to find nearest orphan button with name (buttons inside forms use handleSubmit)
+    const button = target.closest("button[name]") as HTMLButtonElement | null;
+    if (button && button.form === null && this.element.contains(button)) {
       e.preventDefault();
 
-      if (!this.checkConfirm(target)) {
-        this.log("Click action cancelled by user:", target.name);
+      if (!this.checkConfirm(button)) {
+        this.log("Click action cancelled by user:", button.name);
         return;
       }
 
-      const data = this.extractData(target);
-      this.sendAction(target.name, data);
-      this.log("Click action (button name):", target.name, data);
+      const data = this.extractData(button);
+      this.sendAction(button.name, data);
+      this.log("Click action (button name):", button.name, data);
       return;
     }
 
-    // Tier 2: lvt-on:click for non-button elements
-    const action = target.getAttribute("lvt-on:click");
-    if (action) {
-      e.preventDefault();
+    // Walk up to find nearest element with lvt-on:click
+    const lvtEl = target.closest("[lvt-on\\:click]") as HTMLElement | null;
+    if (lvtEl && this.element.contains(lvtEl)) {
+      const action = lvtEl.getAttribute("lvt-on:click");
+      if (action) {
+        e.preventDefault();
 
-      if (!this.checkConfirm(target)) {
-        this.log("Click action cancelled by user:", action);
-        return;
+        if (!this.checkConfirm(lvtEl)) {
+          this.log("Click action cancelled by user:", action);
+          return;
+        }
+
+        const data = this.extractData(lvtEl);
+        this.sendAction(action, data);
+        this.log("Click action (lvt-on:click):", action, data);
       }
-
-      const data = this.extractData(target);
-      this.sendAction(action, data);
-      this.log("Click action (lvt-on:click):", action, data);
     }
   }
 
@@ -223,6 +227,9 @@ export class InteractiveBlock extends BaseBlock {
     const formData = new FormData(target);
     const data: Record<string, any> = {};
     formData.forEach((value, key) => {
+      // Skip the submitter button's own name=value entry to avoid leaking
+      // the action name as a spurious key in the data payload
+      if (submitter instanceof HTMLButtonElement && key === submitter.name) return;
       data[key] = value;
     });
 
@@ -271,7 +278,7 @@ export class InteractiveBlock extends BaseBlock {
    */
   private extractData(element: HTMLElement): Record<string, string> {
     const data: Record<string, string> = {};
-    for (const key in element.dataset) {
+    for (const key of Object.keys(element.dataset)) {
       if (key === "confirm") continue;
       const value = element.dataset[key];
       if (value !== undefined) {
