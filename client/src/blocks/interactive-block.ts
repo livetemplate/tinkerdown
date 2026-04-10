@@ -216,8 +216,8 @@ export class InteractiveBlock extends BaseBlock {
     let action = "";
     if (submitter instanceof HTMLButtonElement && submitter.name) {
       action = submitter.name;
-    } else if (target.name) {
-      action = target.name;
+    } else if (target.getAttribute("name")) {
+      action = target.getAttribute("name")!;
     } else {
       // No routing signal — let the browser handle it natively
       return;
