@@ -11,6 +11,18 @@ Earlier releases (v0.1.x) are documented in the
 
 ## [Unreleased]
 
+### Changed — embedded client 0.25.6 and livetemplate v0.25.5
+
+The bundled browser client now builds on `@livetemplate/client` 0.25.6 (up from
+0.11.9), and the Go module requires `github.com/livetemplate/livetemplate`
+v0.25.5 (up from v0.21.0). An embedded livetemplate app (`embed-lvt`) can now
+use custom `lvt-x:*` attributes: the client reads handlers queued on
+`window.lvtAttributes` and passes `ctx.signal` to each one. Put the handler
+script inside the app's `<body>`, because `embed-lvt` inlines only the
+`data-lvt-id` wrapper and drops scripts in `<head>`. v0.25.5 also keeps a
+`<script>` at the start of `<body>` inside the wrapper. Before it, such an app
+rendered a second copy of its page after the first update.
+
 ## [v0.4.0] - 2026-07-24
 
 The ephemeral-UI reframe (M0–M5): Tinkerdown becomes the tool teams use to let an
