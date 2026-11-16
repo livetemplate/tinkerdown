@@ -11,6 +11,8 @@ Earlier releases (v0.1.x) are documented in the
 
 ## [Unreleased]
 
+## [v0.4.1] - 2026-11-16
+
 ### Changed — embedded client 0.25.6 and livetemplate v0.25.5
 
 The bundled browser client now builds on `@livetemplate/client` 0.25.6 (up from
