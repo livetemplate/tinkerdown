@@ -50,10 +50,10 @@ jobs:
           # (the Homebrew formula stayed pinned at a placeholder version).
           - os: darwin
             arch: amd64
-            runner: macos-14
+            runner: macos-15
           - os: darwin
             arch: arm64
-            runner: macos-14
+            runner: macos-15
           - os: linux
             arch: amd64
             runner: ubuntu-latest
@@ -97,7 +97,7 @@ jobs:
           EXPECTED_VERSION: ${{ steps.version.outputs.version }}
         run: |
           # Every matrix target is runnable on its runner: arm64 natively,
-          # amd64 under Rosetta (preinstalled on macos-14), linux natively.
+          # amd64 under Rosetta (preinstalled on macos-15), linux natively.
           # So the binary must run and report the right version — a failure
           # here is a real problem (broken build, crash, wrong version), not
           # something to skip past.
