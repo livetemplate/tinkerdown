@@ -20,6 +20,12 @@ Earlier releases (v0.1.x) are documented in the
   names a page another way (a trailing slash, `.html`, `.md`, or `/index`)
   redirects to that page. The WebSocket endpoint also 404s an unknown page
   instead of serving the first page's handler.
+- **A click in an embedded app before its WebSocket opens is no longer lost.**
+  The bundled browser client moves to `@livetemplate/client` 0.25.8 (from
+  0.25.6). The Go module moves to `github.com/livetemplate/livetemplate` v0.25.7
+  (from v0.25.5). Custom `lvt-x:*` handlers in an `embed-lvt` app now arm on the
+  server-rendered markup before the handshake, and their sends wait for it.
+  Before, on a remote site the page was clickable before any handler listened.
 
 ### Added
 
