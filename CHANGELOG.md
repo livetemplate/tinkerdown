@@ -11,6 +11,8 @@ Earlier releases (v0.1.x) are documented in the
 
 ## [Unreleased]
 
+## [v0.4.2] - 2026-11-17
+
 ### Fixed
 
 - **An unknown page is a 404, not the first page.** serve redirected any path
