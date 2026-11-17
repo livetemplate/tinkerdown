@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -527,20 +528,61 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	// Find matching route
-	for _, route := range s.routes {
-		if route.Pattern == r.URL.Path {
-			s.servePage(w, r, route)
+	if route := s.findRoute(r.URL.Path); route != nil {
+		s.servePage(w, r, route)
+		return
+	}
+
+	if len(s.routes) == 0 {
+		http.Error(w, "No pages available", http.StatusNotFound)
+		return
+	}
+	// A site without index.md still answers "/", with its first page.
+	if r.URL.Path == "/" {
+		http.Redirect(w, r, s.routes[0].Pattern, http.StatusSeeOther)
+		return
+	}
+	// A link that names a page another way reaches its canonical URL.
+	for _, alt := range pageAliases(r.URL.Path) {
+		if route := s.findRoute(alt); route != nil {
+			http.Redirect(w, r, route.Pattern, http.StatusMovedPermanently)
 			return
 		}
 	}
+	// Anything else is a 404. Serving another page here would hide a missing
+	// page behind a 200, e.g. a site page that has no tinkerdown.yaml entry.
+	http.NotFound(w, r)
+}
 
-	// No route found - redirect to first available route instead of 404
-	if len(s.routes) > 0 {
-		http.Redirect(w, r, s.routes[0].Pattern, http.StatusSeeOther)
-	} else {
-		http.Error(w, "No pages available", http.StatusNotFound)
+// pageAliases returns the canonical paths a request path may mean: the same
+// path with the trailing slash flipped, without a .html or .md suffix, or
+// without a trailing "index" ("/guides/index.html" → "/guides/").
+func pageAliases(path string) []string {
+	base := path
+	for _, ext := range []string{".html", ".md"} {
+		base = strings.TrimSuffix(base, ext)
 	}
+	if strings.HasSuffix(base, "/index") {
+		base = strings.TrimSuffix(base, "index")
+	}
+	var aliases []string
+	for _, p := range []string{base, strings.TrimSuffix(base, "/"), base + "/"} {
+		if p != path && p != "" && !slices.Contains(aliases, p) {
+			aliases = append(aliases, p)
+		}
+	}
+	return aliases
+}
+
+// findRoute returns the route whose pattern is exactly path, or nil.
+// Callers hold s.mu.
+func (s *Server) findRoute(path string) *Route {
+	for _, route := range s.routes {
+		if route.Pattern == path {
+			return route
+		}
+	}
+	return nil
 }
 
 // serveHealth handles the /health endpoint.
@@ -586,19 +628,11 @@ func (s *Server) serveWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Find the route matching the requested page
-	var route *Route
-	for _, rt := range s.routes {
-		if rt.Pattern == pagePath {
-			route = rt
-			break
-		}
-	}
-
-	// Fall back to first route if page not found
+	route := s.findRoute(pagePath)
 	if route == nil {
-		log.Printf("[WS] Page %q not found, falling back to first route", pagePath)
-		route = s.routes[0]
+		log.Printf("[WS] Page %q not found", pagePath)
+		http.NotFound(w, r)
+		return
 	}
 
 	log.Printf("[WS] WebSocket connection for page: %s (pattern: %s)", pagePath, route.Pattern)

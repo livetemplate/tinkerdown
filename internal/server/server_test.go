@@ -194,22 +194,78 @@ This is a test page.`
 }
 
 func TestServerNotFound(t *testing.T) {
+	// The page handler serves an unknown path as a 404, never as another page.
+	// A redirect there would hide a missing page behind a 200: tinkerdown site
+	// mode routes only pages tinkerdown.yaml lists, so a page without an entry
+	// looked like the home page at its own URL.
 	tmpDir := t.TempDir()
-
+	for name, body := range map[string]string{
+		"index.md":          "# Home\n",
+		"guides/scaling.md": "# Scaling\n",
+		"recipes/index.md":  "# Recipes\n",
+	} {
+		path := filepath.Join(tmpDir, name)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
 	srv := New(tmpDir)
 	if err := srv.Discover(); err != nil {
 		t.Fatalf("Discover() error: %v", err)
 	}
 
-	req := httptest.NewRequest("GET", "/nonexistent", nil)
+	for _, tc := range []struct {
+		path     string
+		status   int
+		location string
+	}{
+		{"/nonexistent", http.StatusNotFound, ""},
+		{"/guides/custom-attributes", http.StatusNotFound, ""},
+		{"/guides/scaling", http.StatusOK, ""},
+		{"/guides/scaling/", http.StatusMovedPermanently, "/guides/scaling"},
+		{"/recipes", http.StatusMovedPermanently, "/recipes/"},
+		{"/index", http.StatusMovedPermanently, "/"},
+		{"/index.html", http.StatusMovedPermanently, "/"},
+		{"/guides/scaling.md", http.StatusMovedPermanently, "/guides/scaling"},
+		{"/guides/scaling.html", http.StatusMovedPermanently, "/guides/scaling"},
+		{"/recipes/index.html", http.StatusMovedPermanently, "/recipes/"},
+		{"/guides/custom-attributes.html", http.StatusNotFound, ""},
+	} {
+		t.Run(tc.path, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			srv.ServeHTTP(w, httptest.NewRequest("GET", tc.path, nil))
+			if w.Code != tc.status {
+				t.Fatalf("status = %d, want %d", w.Code, tc.status)
+			}
+			if got := w.Header().Get("Location"); got != tc.location {
+				t.Errorf("Location = %q, want %q", got, tc.location)
+			}
+		})
+	}
+}
+
+func TestServerRootRedirectsWithoutIndex(t *testing.T) {
+	// A site without index.md still answers "/", with its first page.
+	tmpDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tmpDir, "app.md"), []byte("# App\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	srv := New(tmpDir)
+	if err := srv.Discover(); err != nil {
+		t.Fatalf("Discover() error: %v", err)
+	}
 	w := httptest.NewRecorder()
-
-	srv.ServeHTTP(w, req)
-
-	resp := w.Result()
-	// Server now redirects unknown pages to home instead of returning 404
-	if resp.StatusCode != http.StatusSeeOther && resp.StatusCode != http.StatusNotFound {
-		t.Errorf("Status = %d, want %d or %d", resp.StatusCode, http.StatusSeeOther, http.StatusNotFound)
+	srv.ServeHTTP(w, httptest.NewRequest("GET", "/", nil))
+	if w.Code != http.StatusSeeOther || w.Header().Get("Location") != "/app" {
+		t.Errorf("GET / = %d to %q, want %d to /app", w.Code, w.Header().Get("Location"), http.StatusSeeOther)
+	}
+	w = httptest.NewRecorder()
+	srv.ServeHTTP(w, httptest.NewRequest("GET", "/missing", nil))
+	if w.Code != http.StatusNotFound {
+		t.Errorf("GET /missing = %d, want 404", w.Code)
 	}
 }
 
@@ -396,8 +452,8 @@ title: "Counter"
 		}
 	})
 
-	// Test that unknown page falls back gracefully
-	t.Run("unknown page fallback", func(t *testing.T) {
+	// An unknown page is refused, not served as the first route.
+	t.Run("unknown page is a 404", func(t *testing.T) {
 		req := httptest.NewRequest("GET", "/ws?page=/nonexistent", nil)
 		w := httptest.NewRecorder()
 
@@ -406,17 +462,14 @@ title: "Counter"
 		})
 
 		resp := w.Result()
-		if resp.StatusCode != http.StatusBadRequest {
-			t.Errorf("Status = %d, want %d (failed WebSocket upgrade)", resp.StatusCode, http.StatusBadRequest)
+		if resp.StatusCode != http.StatusNotFound {
+			t.Errorf("Status = %d, want %d", resp.StatusCode, http.StatusNotFound)
 		}
-
-		// Verify log shows fallback behavior
-		if !strings.Contains(logOutput, `Page "/nonexistent" not found, falling back to first route`) {
-			t.Errorf("Expected fallback log message, got: %s", logOutput)
+		if !strings.Contains(logOutput, `Page "/nonexistent" not found`) {
+			t.Errorf("Expected not-found log message, got: %s", logOutput)
 		}
-		// Verify it fell back to home page (first route)
-		if !strings.Contains(logOutput, "WebSocket connection for page: /nonexistent (pattern: /)") {
-			t.Errorf("Expected log to show fallback to home page, got: %s", logOutput)
+		if strings.Contains(logOutput, "WebSocket connection for page: /nonexistent") {
+			t.Errorf("an unknown page must not get a WebSocket handler, got: %s", logOutput)
 		}
 	})
 }
