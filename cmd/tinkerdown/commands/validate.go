@@ -886,7 +886,8 @@ func unroutedSitePages(dir string, cfg *config.Config) ([]string, error) {
 		if err != nil {
 			return err
 		}
-		if rel = filepath.ToSlash(rel); !routed[rel] && !isRepoMetaFile(d.Name()) {
+		rel = filepath.ToSlash(rel)
+		if !routed[rel] && !(isRepoMetaFile(rel) && !strings.Contains(rel, "/")) {
 			unrouted = append(unrouted, rel)
 		}
 		return nil
@@ -896,6 +897,8 @@ func unroutedSitePages(dir string, cfg *config.Config) ([]string, error) {
 
 // isRepoMetaFile reports a repository file such as README.md, which sits beside
 // a site's pages when the site root is a repo root but is not meant as a page.
+// The caller exempts it only at the site root: deeper down, a security.md is a
+// page like any other.
 func isRepoMetaFile(name string) bool {
 	switch strings.ToUpper(strings.TrimSuffix(name, filepath.Ext(name))) {
 	case "README", "CHANGELOG", "CONTRIBUTING", "LICENSE", "CODE_OF_CONDUCT", "SECURITY":

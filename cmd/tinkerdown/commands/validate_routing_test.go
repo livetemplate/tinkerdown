@@ -41,10 +41,14 @@ func TestValidateFlagsPageMissingFromNavigation(t *testing.T) {
 		"guides/custom-attributes.md": "# Custom attributes\n",
 		"_partials/snippet.md":        "included, never served\n",
 		"README.md":                   "# Repo readme\n",
+		"guides/security.md":          "# Security\n",
 	})
 	out, err := captureStdout(t, func() error { return ValidateCommand([]string{dir}) })
 	if err == nil {
 		t.Fatalf("validate passed with an unrouted page:\n%s", out)
+	}
+	if !strings.Contains(out, "guides/security.md:") {
+		t.Errorf("a nested security.md is a page, so it must be flagged:\n%s", out)
 	}
 	if !strings.Contains(out, "guides/custom-attributes.md") || !strings.Contains(out, "no navigation entry") {
 		t.Errorf("output does not name the unrouted page:\n%s", out)

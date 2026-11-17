@@ -454,6 +454,18 @@ title: "Counter"
 		}
 	})
 
+	// A ?page= alias resolves like a URL alias does.
+	t.Run("alias resolves to its page", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/ws?page=/counter/", nil)
+		w := httptest.NewRecorder()
+		logOutput := captureLogOutput(func() {
+			srv.ServeHTTP(w, req)
+		})
+		if !strings.Contains(logOutput, "WebSocket connection for page: /counter/ (pattern: /counter)") {
+			t.Errorf("Expected /counter/ to resolve to /counter, got: %s", logOutput)
+		}
+	})
+
 	// An unknown page is refused, not served as the first route.
 	t.Run("unknown page is a 404", func(t *testing.T) {
 		req := httptest.NewRequest("GET", "/ws?page=/nonexistent", nil)

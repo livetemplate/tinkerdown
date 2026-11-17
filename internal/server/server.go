@@ -636,7 +636,15 @@ func (s *Server) serveWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Resolve ?page= the way the page handler resolves a URL, so the two
+	// endpoints agree on what names a page.
 	route := s.findRoute(pagePath)
+	for _, alt := range pageAliases(pagePath) {
+		if route != nil {
+			break
+		}
+		route = s.findRoute(alt)
+	}
 	if route == nil {
 		log.Printf("[WS] Page %q not found", pagePath)
 		http.NotFound(w, r)
