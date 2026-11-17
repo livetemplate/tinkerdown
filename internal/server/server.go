@@ -538,6 +538,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// A site without index.md still answers "/", with its first page.
+	// sortRoutes orders the routes, so this is the same page on every run.
 	if r.URL.Path == "/" {
 		http.Redirect(w, r, s.routes[0].Pattern, http.StatusSeeOther)
 		return
@@ -545,7 +546,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// A link that names a page another way reaches its canonical URL.
 	for _, alt := range pageAliases(r.URL.Path) {
 		if route := s.findRoute(alt); route != nil {
-			http.Redirect(w, r, route.Pattern, http.StatusMovedPermanently)
+			target := route.Pattern
+			if r.URL.RawQuery != "" {
+				target += "?" + r.URL.RawQuery
+			}
+			http.Redirect(w, r, target, http.StatusMovedPermanently)
 			return
 		}
 	}
@@ -560,7 +565,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func pageAliases(path string) []string {
 	base := path
 	for _, ext := range []string{".html", ".md"} {
-		base = strings.TrimSuffix(base, ext)
+		if strings.HasSuffix(base, ext) {
+			base = strings.TrimSuffix(base, ext)
+			break
+		}
 	}
 	if strings.HasSuffix(base, "/index") {
 		base = strings.TrimSuffix(base, "index")

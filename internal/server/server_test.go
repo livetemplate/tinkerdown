@@ -233,6 +233,8 @@ func TestServerNotFound(t *testing.T) {
 		{"/guides/scaling.html", http.StatusMovedPermanently, "/guides/scaling"},
 		{"/recipes/index.html", http.StatusMovedPermanently, "/recipes/"},
 		{"/guides/custom-attributes.html", http.StatusNotFound, ""},
+		{"/guides/scaling/?tab=x", http.StatusMovedPermanently, "/guides/scaling?tab=x"},
+		{"/guides/scaling.md.html", http.StatusNotFound, ""},
 	} {
 		t.Run(tc.path, func(t *testing.T) {
 			w := httptest.NewRecorder()

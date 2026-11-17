@@ -853,7 +853,9 @@ func printOperationSummary(absDir string, manifest *config.Config) error {
 // unroutedSitePages returns the .md pages under dir, relative to dir, that a
 // site-mode serve would not route: site mode with explicit navigation registers
 // only the pages the nav lists (plus site.home). Any other mode routes every
-// page, so it returns nil.
+// page, so it returns nil, as it does for a single-file target, which has no
+// site to route. It discovers through site.Manager, the same code serve builds
+// its site routes from, so the two cannot disagree about what is routed.
 func unroutedSitePages(dir string, cfg *config.Config) ([]string, error) {
 	if cfg == nil || !cfg.IsSiteMode() || len(cfg.Navigation) == 0 || configDir(dir) != dir {
 		return nil, nil
