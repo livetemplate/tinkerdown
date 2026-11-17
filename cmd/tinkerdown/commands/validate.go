@@ -18,6 +18,7 @@ import (
 	"github.com/livetemplate/tinkerdown"
 	"github.com/livetemplate/tinkerdown/internal/config"
 	"github.com/livetemplate/tinkerdown/internal/server"
+	"github.com/livetemplate/tinkerdown/internal/site"
 	"github.com/livetemplate/tinkerdown/internal/source"
 	"golang.org/x/net/html"
 )
@@ -239,6 +240,22 @@ func ValidateCommand(args []string) error {
 
 	if err != nil {
 		return fmt.Errorf("failed to walk directory: %w", err)
+	}
+
+	// Routing: in a site with explicit navigation, serve routes only the pages
+	// the nav lists and 404s the rest. Every check above passes for a page with
+	// no nav entry, so without this one a whole page can ship unreachable.
+	unrouted, err := unroutedSitePages(absDir, manifest)
+	if err != nil {
+		fileErrors = append(fileErrors, fileValidationError{file: "tinkerdown.yaml", error: err.Error()})
+		totalErrors++
+	}
+	for _, rel := range unrouted {
+		fileErrors = append(fileErrors, fileValidationError{
+			file:  rel,
+			error: "no navigation entry in tinkerdown.yaml lists this page, so serve answers its URL with 404; add it to navigation, or move it under a _ directory if it is only included",
+		})
+		totalErrors++
 	}
 
 	// Print errors
@@ -831,6 +848,63 @@ func printOperationSummary(absDir string, manifest *config.Config) error {
 	}
 	fmt.Println(string(out))
 	return nil
+}
+
+// unroutedSitePages returns the .md pages under dir, relative to dir, that a
+// site-mode serve would not route: site mode with explicit navigation registers
+// only the pages the nav lists (plus site.home). Any other mode routes every
+// page, so it returns nil, as it does for a single-file target, which has no
+// site to route. It discovers through site.Manager, the same code serve builds
+// its site routes from, so the two cannot disagree about what is routed.
+func unroutedSitePages(dir string, cfg *config.Config) ([]string, error) {
+	if cfg == nil || !cfg.IsSiteMode() || len(cfg.Navigation) == 0 || configDir(dir) != dir {
+		return nil, nil
+	}
+	mgr := site.New(dir, cfg)
+	if err := mgr.Discover(); err != nil {
+		return nil, fmt.Errorf("navigation: %w", err)
+	}
+	routed := map[string]bool{}
+	for _, page := range mgr.AllPages() {
+		routed[filepath.ToSlash(filepath.Clean(page.FilePath))] = true
+	}
+	var unrouted []string
+	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if path != dir && skipWalkDir(d.Name()) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if filepath.Ext(path) != ".md" {
+			return nil
+		}
+		rel, err := filepath.Rel(dir, path)
+		if err != nil {
+			return err
+		}
+		rel = filepath.ToSlash(rel)
+		if !routed[rel] && !(isRepoMetaFile(rel) && !strings.Contains(rel, "/")) {
+			unrouted = append(unrouted, rel)
+		}
+		return nil
+	})
+	return unrouted, err
+}
+
+// isRepoMetaFile reports a repository file such as README.md, which sits beside
+// a site's pages when the site root is a repo root but is not meant as a page.
+// The caller exempts it only at the site root: deeper down, a security.md is a
+// page like any other.
+func isRepoMetaFile(name string) bool {
+	switch strings.ToUpper(strings.TrimSuffix(name, filepath.Ext(name))) {
+	case "README", "CHANGELOG", "CONTRIBUTING", "LICENSE", "CODE_OF_CONDUCT", "SECURITY":
+		return true
+	}
+	return false
 }
 
 // skipWalkDir reports whether a directory is not worth descending into. Shared so the

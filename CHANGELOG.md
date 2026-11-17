@@ -11,6 +11,23 @@ Earlier releases (v0.1.x) are documented in the
 
 ## [Unreleased]
 
+### Fixed
+
+- **An unknown page is a 404, not the first page.** serve redirected any path
+  it had no route for to its first page. In a site with navigation, that hid a
+  page missing from `tinkerdown.yaml`: its URL showed the home page with a 200.
+  `/` still goes to the first page when there is no `index.md`. A path that
+  names a page another way (a trailing slash, `.html`, `.md`, or `/index`)
+  redirects to that page. The WebSocket endpoint also 404s an unknown page
+  instead of serving the first page's handler.
+
+### Added
+
+- **`tinkerdown validate` fails on a page no navigation entry lists.** In a
+  site with explicit navigation, serve routes only listed pages, so an unlisted
+  `.md` file ships unreachable while every other check passes. Pages under a
+  `_` directory are skipped, since they are only included.
+
 ## [v0.4.1] - 2026-11-16
 
 ### Changed — embedded client 0.25.6 and livetemplate v0.25.5
