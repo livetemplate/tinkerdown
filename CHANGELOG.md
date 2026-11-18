@@ -11,6 +11,15 @@ Earlier releases (v0.1.x) are documented in the
 
 ## [Unreleased]
 
+### Fixed
+
+- **An `lvt-on:*` click in an embedded app before its WebSocket opens is no
+  longer lost.** The bundled browser client moves to `@livetemplate/client`
+  0.25.9 (from 0.25.8), and the Go module to
+  `github.com/livetemplate/livetemplate` v0.25.9 (from v0.25.7). The built-in
+  `lvt-on:*` handlers now listen before the handshake and their sends wait for
+  it, as custom `lvt-x:*` handlers have since v0.4.2.
+
 ## [v0.4.2] - 2026-11-17
 
 ### Fixed
