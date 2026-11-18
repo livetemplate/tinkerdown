@@ -11,6 +11,8 @@ Earlier releases (v0.1.x) are documented in the
 
 ## [Unreleased]
 
+## [v0.4.3] - 2026-11-18
+
 ### Fixed
 
 - **An `lvt-on:*` click in an embedded app before its WebSocket opens is no
