@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"regexp"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -218,8 +220,47 @@ func normalizeLevel(s string) string {
 // detectLevel guesses the level of a plain-text line that has no structured
 // level field. It returns a raw level word (normalizeLevel cleans it up) or ""
 // when the line gives no clear signal.
+//
+// It reads only the start of the line, so prose such as "no errors found" or
+// "retrying after error" stays unlabelled. Recognised starts:
+//   - a syslog priority, "<3>disk full" (severity = priority % 8)
+//   - a glog prefix, "E1120 19:02:11.123 ..." (I, W, E or F and the date)
+//   - a Go crash, "panic: ..." or "fatal error: ..."
+//   - a level word, "ERROR ...", "[warn] ...", "WARN: ...", possibly after
+//     timestamp tokens such as "2026/11/20 19:02:11 ERROR ..."
 func detectLevel(line string) string {
-	// TODO(user): decide how plain-text lines map to levels. See the request in
-	// the session; until then plain lines carry no level.
+	line = strings.TrimSpace(line)
+	if len(line) > 2 && line[0] == '<' {
+		if end := strings.IndexByte(line, '>'); end > 1 && end < 5 {
+			if n, err := strconv.Atoi(line[1:end]); err == nil {
+				return syslogSeverity[n%8]
+			}
+		}
+	}
+	if strings.HasPrefix(line, "panic:") || strings.HasPrefix(line, "fatal error:") {
+		return "fatal"
+	}
+	fields := strings.Fields(line)
+	if len(fields) > 0 && glogPrefix.MatchString(fields[0]) {
+		return map[byte]string{'I': "info", 'W': "warn", 'E': "error", 'F': "fatal"}[fields[0][0]]
+	}
+	for i, tok := range fields {
+		if i == 3 {
+			break
+		}
+		if strings.ContainsAny(tok, "0123456789") {
+			continue // a timestamp or date before the level
+		}
+		if normalizeLevel(tok) != "" {
+			return tok
+		}
+		return "" // the first ordinary word ends the search
+	}
 	return ""
 }
+
+// syslogSeverity maps a syslog priority's severity (priority % 8) to a level.
+var syslogSeverity = [8]string{"fatal", "fatal", "fatal", "error", "warn", "info", "info", "debug"}
+
+// glogPrefix matches glog's level letter and date, as in "E1120".
+var glogPrefix = regexp.MustCompile(`^[IWEF]\d{4}$`)

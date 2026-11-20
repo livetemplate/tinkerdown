@@ -52,6 +52,15 @@ Each line becomes a row with these fields:
 
 With `format: auto`, a JSON line or a logfmt line (`level=warn msg="slow query"`) fills `level`, `msg` and `ts` from its fields, and anything else is plain text. A leading RFC 3339 timestamp, as `docker logs --timestamps` adds, sets `ts`.
 
+A plain-text line gets a level only from how it starts, so a line like "no errors found" stays unlabelled:
+
+| Line starts with | Level |
+|------------------|-------|
+| A level word, after any timestamps: `ERROR`, `[warn]`, `WARN:` | that level |
+| A syslog priority: `<3>` | from the priority |
+| A glog prefix: `E1120 19:02:11.123` | from the letter |
+| `panic:` or `fatal error:` | `fatal` |
+
 ## Showing a stream
 
 Bind an `lvt` block to the source and key each row by `seq`:

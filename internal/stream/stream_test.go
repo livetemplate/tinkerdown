@@ -325,3 +325,37 @@ func TestIdleInputStopsAndRestarts(t *testing.T) {
 		t.Fatal("input stopped although a subscriber came back within IdleStop")
 	}
 }
+
+func TestDetectLevel(t *testing.T) {
+	cases := map[string]string{
+		"ERROR disk full":                          "error",
+		"[warn] slow query":                        "warn",
+		"WARN: retrying":                           "warn",
+		"Info: started":                            "info",
+		"2026/11/20 19:02:11 ERROR db down":        "error",
+		"2026-11-20 19:02:11,123 DEBUG cache miss": "debug",
+		"<3>kernel: oops":                          "error",
+		"<12>user notice":                          "warn",
+		"E1120 19:02:11.123 server.go:42] failed":  "error",
+		"I1120 19:02:11.123 server.go:42] started": "info",
+		"panic: runtime error: index out of range": "fatal",
+		"fatal error: all goroutines are asleep":   "fatal",
+		"no errors found":                          "",
+		"retrying after error":                     "",
+		"GET /api/users 200":                       "",
+		"":                                         "",
+		"Error rate is 0.1%":                       "error",
+	}
+	for line, want := range cases {
+		if got := normalizeLevel(detectLevel(line)); got != want {
+			t.Errorf("detectLevel(%q) = %q, want %q", line, got, want)
+		}
+	}
+	// format: auto uses it for plain lines; other formats don't guess.
+	if r := newRow("ERROR boom", false, "auto", time.Now()); r["level"] != "error" {
+		t.Errorf("auto plain line level = %v", r["level"])
+	}
+	if r := newRow("ERROR boom", false, "lines", time.Now()); r["level"] != "" {
+		t.Errorf("lines format guessed level %v", r["level"])
+	}
+}
