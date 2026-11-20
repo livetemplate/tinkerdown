@@ -345,6 +345,9 @@ func TestDetectLevel(t *testing.T) {
 		"GET /api/users 200":                       "",
 		"":                                         "",
 		"Error rate is 0.1%":                       "error",
+		"<-1>crafted":                              "",
+		"<+3>crafted":                              "",
+		"<999>out of range":                        "",
 	}
 	for line, want := range cases {
 		if got := normalizeLevel(detectLevel(line)); got != want {

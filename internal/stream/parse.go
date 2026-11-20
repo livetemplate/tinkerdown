@@ -232,7 +232,9 @@ func detectLevel(line string) string {
 	line = strings.TrimSpace(line)
 	if len(line) > 2 && line[0] == '<' {
 		if end := strings.IndexByte(line, '>'); end > 1 && end < 5 {
-			if n, err := strconv.Atoi(line[1:end]); err == nil {
+			// Digits only, in syslog's 0-191 range: Atoi accepts "-1", and a
+			// negative n would index out of range and crash the reader.
+			if n, err := strconv.Atoi(line[1:end]); err == nil && line[1] != '-' && line[1] != '+' && n >= 0 && n <= 191 {
 				return syslogSeverity[n%8]
 			}
 		}
