@@ -11,17 +11,13 @@
 package tinkerdown
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"io"
-	"log"
 	"net"
 	"net/http"
 	"os/exec"
 	"runtime"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -249,34 +245,4 @@ func ConvertURLForDockerChrome(httptestURL string) string {
 	url = strings.Replace(url, "[::1]", "host.docker.internal", 1)
 	url = strings.Replace(url, "localhost", "host.docker.internal", 1)
 	return url
-}
-
-// serverLogs collects the server's log output during a test, so a failing
-// e2e test can print what the server did alongside the browser's view.
-type serverLogs struct {
-	mu  sync.Mutex
-	buf bytes.Buffer
-}
-
-func (l *serverLogs) Write(p []byte) (int, error) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return l.buf.Write(p)
-}
-
-// String returns everything logged so far.
-func (l *serverLogs) String() string {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return l.buf.String()
-}
-
-// captureServerLogs tees the standard logger into a buffer until the test ends.
-func captureServerLogs(t *testing.T) *serverLogs {
-	t.Helper()
-	logs := &serverLogs{}
-	prev := log.Writer()
-	log.SetOutput(io.MultiWriter(prev, logs))
-	t.Cleanup(func() { log.SetOutput(prev) })
-	return logs
 }

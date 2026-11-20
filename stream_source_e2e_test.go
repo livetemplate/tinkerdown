@@ -5,7 +5,6 @@ package tinkerdown_test
 import (
 	"context"
 	"fmt"
-	"log"
 	"net/http/httptest"
 	neturl "net/url"
 	"os"
@@ -78,14 +77,12 @@ func (l *streamBrowserLogs) frames() []string {
 }
 
 func TestStreamSource_E2E(t *testing.T) {
-	serverLog := captureServerLogs(t)
-	log.SetFlags(log.LstdFlags | log.Lmicroseconds)
-	defer log.SetFlags(log.LstdFlags)
+	serverLog := captureServerLog(t)
 	config.SetAllowExec(true)
 	defer config.SetAllowExec(false)
 
-	marker := fmt.Sprintf("tdstream%d", os.Getpid())
-	container := marker + "-box"
+	id := os.Getpid()
+	container := fmt.Sprintf("tdstream%d-box", id)
 	if out, err := exec.Command("docker", "run", "-d", "--rm", "--name", container, "alpine:3.21",
 		"sh", "-c", `i=0; while true; do echo "box line $i"; i=$((i+1)); sleep 0.3; done`).CombinedOutput(); err != nil {
 		t.Fatalf("start container: %v\n%s", err, out)
@@ -95,7 +92,7 @@ func TestStreamSource_E2E(t *testing.T) {
 	dir := t.TempDir()
 	appLog := filepath.Join(dir, "app.log")
 	os.WriteFile(appLog, []byte("app started\n"), 0o644)
-	genMarker := "genmark" + fmt.Sprint(os.Getpid())
+	genMarker := fmt.Sprintf("genmark%d", id)
 	gen := `: ` + genMarker + `; i=0; while true; i=$((i+1)); do echo "{\"level\":\"info\",\"msg\":\"tick $i\"}"; echo "warn spill $i" 1>&2; sleep 0.2; done`
 	yaml := fmt.Sprintf(`sources:
   gen: {type: stream, cmd: %q}
@@ -129,14 +126,10 @@ func TestStreamSource_E2E(t *testing.T) {
 		var html string
 		chromedp.Run(ctx, chromedp.OuterHTML("main", &html, chromedp.ByQuery))
 		logs.mu.Lock()
+		defer logs.mu.Unlock()
 		t.Logf("console:\n%s", strings.Join(logs.console, "\n"))
-		n := len(logs.wsRecv)
-		last := logs.wsRecv[max(0, n-5):]
-		logs.mu.Unlock()
-		t.Logf("ws frames received: %d, last: %s", n, strings.Join(last, "\n"))
-		logs.mu.Lock()
-		t.Logf("ws frames sent: %s", strings.Join(logs.wsSent, "\n"))
-		logs.mu.Unlock()
+		t.Logf("ws sent:\n%s", strings.Join(logs.wsSent, "\n"))
+		t.Logf("ws received: %d frames, last: %s", len(logs.wsRecv), strings.Join(logs.wsRecv[max(0, len(logs.wsRecv)-5):], "\n"))
 		t.Logf("rendered html: %s", html)
 		t.Logf("server log tail: %s", tail(serverLog.String(), 3000))
 	}
@@ -149,21 +142,18 @@ func TestStreamSource_E2E(t *testing.T) {
 	}
 	count := func(sel string) int {
 		var n int
-		chromedp.Run(ctx, chromedp.Evaluate(fmt.Sprintf(`document.querySelectorAll(%q).length`, sel), &n))
+		run(chromedp.Evaluate(fmt.Sprintf(`document.querySelectorAll(%q).length`, sel), &n))
 		return n
 	}
-	waitCount := func(what, sel string, ok func(int) bool) int {
+	// waitCount waits until the number of elements matching sel satisfies
+	// cond, a JS comparison such as ">= 3", checked in the page.
+	waitCount := func(what, sel, cond string) {
 		t.Helper()
-		deadline := time.Now().Add(15 * time.Second)
-		for time.Now().Before(deadline) {
-			if n := count(sel); ok(n) {
-				return n
-			}
-			time.Sleep(100 * time.Millisecond)
+		js := fmt.Sprintf(`document.querySelectorAll(%q).length %s`, sel, cond)
+		if err := chromedp.Run(ctx, waitForDOM(js, 15*time.Second)); err != nil {
+			dump()
+			t.Fatalf("waiting for %s: %v", what, err)
 		}
-		dump()
-		t.Fatalf("timed out waiting for %s (%s = %d)", what, sel, count(sel))
-		return 0
 	}
 
 	if err := chromedp.Run(ctx, network.Enable(), chromedp.Navigate(url), chromedp.WaitVisible(`[data-testid="log"]`, chromedp.ByQuery)); err != nil {
@@ -172,15 +162,16 @@ func TestStreamSource_E2E(t *testing.T) {
 	}
 
 	t.Run("rows arrive with no user action, from every input", func(t *testing.T) {
-		waitCount("gen stdout rows", "li.src-gen.stream-stdout", func(n int) bool { return n >= 3 })
-		waitCount("gen stderr rows", "li.src-gen.stream-stderr", func(n int) bool { return n >= 3 })
-		waitCount("container rows via docker logs -f", "li.src-box", func(n int) bool { return n >= 2 })
-		waitCount("tailed file backlog", "li.src-app", func(n int) bool { return n >= 1 })
+		waitCount("gen stdout rows", "li.src-gen.stream-stdout", ">= 3")
+		waitCount("gen stderr rows", "li.src-gen.stream-stderr", ">= 3")
+		waitCount("container rows via docker logs -f", "li.src-box", ">= 2")
+		waitCount("tailed file backlog", "li.src-app", ">= 1")
 	})
 
-	// Docker Chrome's network path can stall frame delivery for several
-	// seconds early on (a raw client on the host sees no gap), so let delivery
-	// settle before the timing-sensitive checks.
+	// Docker Chrome receives frames late for several seconds once, early in
+	// the page's life: the browser-side frame timestamps show the gap, while a
+	// raw client on the host sees none. The container's 0.5-CPU limit is the
+	// likely cause. Let delivery settle before the timing-sensitive checks.
 	waitSteady := func() {
 		t.Helper()
 		deadline := time.Now().Add(30 * time.Second)
@@ -217,30 +208,12 @@ func TestStreamSource_E2E(t *testing.T) {
 	t.Run("appending to the tailed file shows up within a second", func(t *testing.T) {
 		waitSteady()
 		f, _ := os.OpenFile(appLog, os.O_APPEND|os.O_WRONLY, 0)
-		log.Printf("e2e: appending to app.log")
 		fmt.Fprintln(f, "app wrote this")
 		f.Close()
 		start := time.Now()
-		waitCount("appended file line", "li.src-app", func(n int) bool { return n >= 2 })
+		waitCount("appended file line", "li.src-app", ">= 2")
 		if d := time.Since(start); d > time.Second {
-			logs.mu.Lock()
-			for i, f := range logs.wsRecv {
-				if strings.Contains(f, "app wrote this") {
-					t.Logf("frame with the line arrived %v after the write", logs.recvAt[i].Sub(start))
-				}
-			}
-			logs.mu.Unlock()
-			all := serverLog.String()
-			i := strings.Index(all, "e2e: appending to app.log")
-			seg := all[i:]
-			if j := strings.Index(seg, "app wrote this"); j > 0 {
-				seg = seg[:j+200]
-			}
-			var short []string
-			for _, ln := range strings.Split(seg, "\n") {
-				short = append(short, tail(ln, 160))
-			}
-			t.Logf("server log from the write to the line:\n%s", strings.Join(short, "\n"))
+			dump()
 			t.Fatalf("file line took %v to appear", d)
 		}
 	})
@@ -278,28 +251,21 @@ func TestStreamSource_E2E(t *testing.T) {
 		if err := run(chromedp.Click(`[data-testid="resume"]`, chromedp.ByQuery)); err != nil {
 			t.Fatal(err)
 		}
-		waitCount("rows after resume", "li.src-gen", func(n int) bool { return n > before })
+		waitCount("rows after resume", "li.src-gen", "> "+fmt.Sprint(before))
 	})
-
-	var tabs string
-	run(chromedp.OuterHTML(".tinkerdown-tabs-bar", &tabs, chromedp.ByQuery))
-	t.Logf("tab bar: %s", tabs)
 
 	t.Run("search filter narrows rows, tab filter combines with it", func(t *testing.T) {
 		if err := run(chromedp.SendKeys(`[data-testid="search"]`, "spill", chromedp.ByQuery)); err != nil {
 			t.Fatal(err)
 		}
-		waitCount("only matching rows", "li:not(.stream-stderr)", func(n int) bool { return n == 0 })
+		waitCount("only matching rows", "li:not(.stream-stderr)", "== 0")
 		if err := run(chromedp.Click(`button[role="tab"][data-filter="source = box"]`, chromedp.ByQuery)); err != nil {
 			t.Fatal(err)
 		}
 		// box rows never contain "spill", and gen rows are on another tab
-		waitCount("box tab with spill search", "li", func(n int) bool { return n == 0 })
+		waitCount("box tab with spill search", "li", "== 0")
 	})
 
-	if t.Failed() {
-		dump()
-	}
 }
 
 func tail(s string, n int) string {

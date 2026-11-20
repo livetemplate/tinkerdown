@@ -276,32 +276,37 @@ func WaitForServer(t *testing.T, serverURL string, timeout time.Duration) {
 	t.Fatalf("Server at %s failed to become ready within %v", serverURL, timeout)
 }
 
-// serverLogs collects the server's log output during a test, so a failing
-// e2e test can print what the server did alongside the browser's view.
-type serverLogs struct {
+// serverLog collects the in-process server's log output during a test, so a
+// failing e2e test can print what the server did alongside the browser's view.
+// Server goroutines write to it, so it is locked.
+type serverLog struct {
 	mu  sync.Mutex
 	buf bytes.Buffer
 }
 
-func (l *serverLogs) Write(p []byte) (int, error) {
+func (l *serverLog) Write(p []byte) (int, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	return l.buf.Write(p)
 }
 
 // String returns everything logged so far.
-func (l *serverLogs) String() string {
+func (l *serverLog) String() string {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	return l.buf.String()
 }
 
-// captureServerLogs tees the standard logger into a buffer until the test ends.
-func captureServerLogs(t *testing.T) *serverLogs {
+// captureServerLog tees the standard logger, which the in-process server
+// writes to, into a buffer until the test ends; stderr still shows it live.
+func captureServerLog(t *testing.T) *serverLog {
 	t.Helper()
-	logs := &serverLogs{}
-	prev := log.Writer()
-	log.SetOutput(io.MultiWriter(prev, logs))
-	t.Cleanup(func() { log.SetOutput(prev) })
+	logs := &serverLog{}
+	prevOut, prevFlags := log.Writer(), log.Flags()
+	log.SetOutput(io.MultiWriter(prevOut, logs))
+	t.Cleanup(func() {
+		log.SetOutput(prevOut)
+		log.SetFlags(prevFlags)
+	})
 	return logs
 }

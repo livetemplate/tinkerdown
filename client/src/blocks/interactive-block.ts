@@ -261,6 +261,11 @@ export class InteractiveBlock extends BaseBlock {
    * several fields can feed one action, and under "value" for older handlers.
    * lvt-mod:debounce="ms" waits for a pause in events; lvt-mod:throttle="ms"
    * sends at most once per interval, always ending with the latest value.
+   *
+   * @livetemplate/client routes these attributes for full apps, but its
+   * EventDelegator needs the client to own the socket, which blocks don't, and
+   * its rate-limit helpers drop the trailing value and can't be cancelled on
+   * destroy. Embedding the delegator is the deeper fix; see the stream plan.
    */
   private handleFieldEvent(e: Event, eventType: "change" | "input"): void {
     const target = e.target as HTMLInputElement;
@@ -302,12 +307,13 @@ export class InteractiveBlock extends BaseBlock {
       schedule(debounce);
       return;
     }
+    if (state.timer) return; // the trailing send will carry the latest value
     const wait = state.last + throttle - Date.now();
-    if (wait <= 0 && !state.timer) {
+    if (wait <= 0) {
       state.last = Date.now();
       send();
-    } else if (!state.timer) {
-      schedule(Math.max(wait, 0));
+    } else {
+      schedule(wait);
     }
   }
 
