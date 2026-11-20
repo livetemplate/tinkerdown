@@ -239,6 +239,11 @@ func ServeCommand(args []string) error {
 			fmt.Printf("Warning: Failed to stop schedules: %v\n", err)
 		}
 
+		// Stop stream inputs so no command they started outlives the server
+		if err := srv.StopStreams(); err != nil {
+			fmt.Printf("Warning: Failed to stop streams: %v\n", err)
+		}
+
 		// Stop rate limiter cleanup goroutine
 		srv.StopRateLimiter()
 	}()

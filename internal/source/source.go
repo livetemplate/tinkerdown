@@ -249,6 +249,9 @@ func createSource(name string, cfg config.SourceConfig, siteDir, currentFile str
 		return wasm.NewWasmSource(name, cfg.Path, siteDir, cfg.Options)
 	case "graphql":
 		return NewGraphQLSource(name, cfg, siteDir)
+	case "stream", "merge":
+		// Streams need the server's hub, so only served pages can show them.
+		return nil, fmt.Errorf("%s source %q is only available to pages served by tinkerdown serve", cfg.Type, name)
 	default:
 		return nil, &UnsupportedSourceError{Type: cfg.Type}
 	}

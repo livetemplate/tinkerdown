@@ -24,6 +24,7 @@ import (
 	"github.com/livetemplate/tinkerdown/internal/diagrams"
 	"github.com/livetemplate/tinkerdown/internal/schedule"
 	"github.com/livetemplate/tinkerdown/internal/site"
+	"github.com/livetemplate/tinkerdown/internal/stream"
 )
 
 // defaultStr returns s when non-empty, otherwise fallback. Local helper
@@ -64,6 +65,7 @@ type Server struct {
 	sourceWriteMu      sync.Mutex                            // Protects recentSourceWrites
 	proxyRoutes        []*proxyRoute                         // Custom routes that bypass markdown resolution and reverse-proxy to upstream
 	csp                string                                // Pre-computed Content-Security-Policy header value (immutable for the server's lifetime)
+	streams            *stream.Hub                           // Long-running stream inputs shared by every connection
 }
 
 // New creates a new server for the given root directory.
@@ -76,6 +78,7 @@ func New(rootDir string) *Server {
 		connections:        make(map[*websocket.Conn]*WebSocketHandler),
 		recentSourceWrites: make(map[string]time.Time),
 		csp:                buildCSP(cfg.Security.FrameSrc),
+		streams:            stream.NewHub(),
 	}
 	srv.playground = NewPlaygroundHandler(srv)
 	return srv
@@ -90,6 +93,7 @@ func NewWithConfig(rootDir string, cfg *config.Config) *Server {
 		connections:        make(map[*websocket.Conn]*WebSocketHandler),
 		recentSourceWrites: make(map[string]time.Time),
 		csp:                buildCSP(cfg.Security.FrameSrc),
+		streams:            stream.NewHub(),
 	}
 
 	// Initialize site manager if in site mode
@@ -3582,6 +3586,11 @@ func (s *Server) StartSchedules(ctx context.Context) error {
 }
 
 // StopSchedules stops the schedule runner.
+// StopStreams stops every stream input and kills the processes they run.
+func (s *Server) StopStreams() error {
+	return s.streams.Close()
+}
+
 func (s *Server) StopSchedules() error {
 	if s.scheduleRunner != nil {
 		return s.scheduleRunner.Stop()

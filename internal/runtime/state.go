@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 	"unicode"
 
 	"github.com/livetemplate/lvt/components/datatable"
@@ -16,6 +17,7 @@ import (
 	"github.com/livetemplate/tinkerdown/internal/cache"
 	"github.com/livetemplate/tinkerdown/internal/config"
 	"github.com/livetemplate/tinkerdown/internal/source"
+	"github.com/livetemplate/tinkerdown/internal/stream"
 	"github.com/livetemplate/tinkerdown/internal/wasm"
 )
 
@@ -53,15 +55,21 @@ type GenericState struct {
 	Args       []Arg  `json:"args,omitempty"`
 	Executable string `json:"executable,omitempty"`
 
+	// Stream-specific: Pause/Resume set it; pushes skip a paused page.
+	Paused bool `json:"paused"`
+
 	// Private runtime fields (not serialized)
 	source       source.Source
 	sourceCfg    config.SourceConfig
 	sourceType   string
 	sourceName   string
 	siteDir      string
-	elementType  string   // "table", "select", or "div"
-	tableColumns []string // columns for datatable rendering
-	activeFilter string   // current filter expression (empty = show all)
+	elementType  string            // "table", "select", or "div"
+	tableColumns []string          // columns for datatable rendering
+	activeFilter string            // current filter expression (empty = show all)
+	fieldFilters map[string]string // field -> substring, from Filter's f.<field> keys
+	clearedSeq   int64             // Clear hides stream rows with seq <= clearedSeq
+	flush        time.Duration     // stream/merge: minimum time between pushes
 	mu           sync.RWMutex
 
 	// Page-level configuration for custom actions.
@@ -145,16 +153,40 @@ func NewGenericStateForComputed(name string, cfg config.SourceConfig, siteDir, c
 	return s, nil
 }
 
+// Option configures a GenericState.
+type Option func(*stateOptions)
+
+type stateOptions struct {
+	hub    *stream.Hub
+	lookup func(string) (config.SourceConfig, bool)
+}
+
+// WithStreams lets the state build stream and merge sources on hub. lookup
+// resolves the stream sources a merge lists in inputs.
+func WithStreams(hub *stream.Hub, lookup func(string) (config.SourceConfig, bool)) Option {
+	return func(o *stateOptions) { o.hub, o.lookup = hub, lookup }
+}
+
 // NewGenericStateWithMetadata creates a new state with block metadata for datatable support.
 // Metadata should include "lvt-element" ("table", "select", or "div") and "lvt-columns" for tables.
-func NewGenericStateWithMetadata(name string, cfg config.SourceConfig, siteDir, currentFile string, metadata map[string]string) (*GenericState, error) {
+func NewGenericStateWithMetadata(name string, cfg config.SourceConfig, siteDir, currentFile string, metadata map[string]string, opts ...Option) (*GenericState, error) {
 	// For computed sources, use the specialized constructor
 	if cfg.Type == "computed" {
 		return NewGenericStateForComputed(name, cfg, siteDir, currentFile, metadata, nil)
 	}
+	var o stateOptions
+	for _, opt := range opts {
+		opt(&o)
+	}
 
 	// Create the underlying source using the existing factory
-	src, err := createSource(name, cfg, siteDir, currentFile)
+	var src source.Source
+	var err error
+	if isStreamType(cfg.Type) {
+		src, err = source.NewStreamSource(o.hub, name, cfg, siteDir, o.lookup)
+	} else {
+		src, err = createSource(name, cfg, siteDir, currentFile)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to create source %q: %w", name, err)
 	}
@@ -180,6 +212,10 @@ func NewGenericStateWithMetadata(name string, cfg config.SourceConfig, siteDir, 
 				}
 			}
 		}
+	}
+
+	if isStreamType(cfg.Type) {
+		s.flush, _ = cfg.FlushInterval() // validated by NewStreamSource
 	}
 
 	// Set exec-specific fields if applicable
@@ -241,6 +277,8 @@ func createSource(name string, cfg config.SourceConfig, siteDir, currentFile str
 		return wasm.NewWasmSource(name, cfg.Path, siteDir, cfg.Options)
 	case "graphql":
 		return source.NewGraphQLSource(name, cfg, siteDir)
+	case "stream", "merge":
+		return nil, fmt.Errorf("%s source %q: needs a running server", cfg.Type, name)
 	case "computed":
 		// Computed sources are handled specially — they need a parent source.
 		// The parent is created by the caller and passed via sourceLookup.
@@ -261,6 +299,7 @@ func createSource(name string, cfg config.SourceConfig, siteDir, currentFile str
 var builtinActions = map[string]bool{
 	"refresh": true, "run": true, "filter": true, "edit": true, "canceledit": true,
 	"add": true, "toggle": true, "delete": true, "update": true,
+	"pause": true, "resume": true, "clear": true,
 }
 
 // builtinActionPrefixes are the datatable action families (Sort_X, NextPage_X,
@@ -299,6 +338,8 @@ func (s *GenericState) HandleAction(action string, data map[string]interface{}) 
 		return s.runExec(data)
 	case "filter":
 		return s.handleFilter(data)
+	case "pause", "resume", "clear":
+		return s.handleStreamControl(actionLower)
 	case "edit":
 		return s.handleEdit(data)
 	case "canceledit":
@@ -368,8 +409,8 @@ func (s *GenericState) GetStateAsInterface() (interface{}, error) {
 		return nil, err
 	}
 
-	// Apply active filter to data if present
-	if s.activeFilter != "" {
+	// Apply active filters to data if present
+	if s.hasFilters() {
 		filteredData := s.GetFilteredData()
 		rawMap["data"] = filteredData
 	}
@@ -561,89 +602,171 @@ func (s *GenericState) handleEdit(data map[string]interface{}) error {
 //   - "assigned_to = operator" - filter by operator identity (variable substitution)
 //   - "" (empty) - show all data (no filter)
 func (s *GenericState) handleFilter(data map[string]interface{}) error {
-	// Extract filter expression from data
-	filter := ""
-	if f, ok := data["filter"].(string); ok {
-		filter = f
+	// A message updates only the parts it carries: a tab sends "filter", a
+	// toolbar field sends "f.<field>", and neither undoes the other.
+	_, hasExpr := data["filter"]
+	hasFields := false
+	for k, v := range data {
+		field, ok := strings.CutPrefix(k, "f.")
+		if !ok || field == "" {
+			continue
+		}
+		hasFields = true
+		val := ""
+		if v != nil {
+			val = strings.TrimSpace(fmt.Sprint(v))
+		}
+		if val == "" {
+			delete(s.fieldFilters, field)
+			continue
+		}
+		if s.fieldFilters == nil {
+			s.fieldFilters = make(map[string]string)
+		}
+		s.fieldFilters[field] = val
+	}
+	if hasFields && !hasExpr {
+		return nil
 	}
 
+	filter, _ := data["filter"].(string)
 	// Substitute "operator" variable with actual operator value
 	// This enables filters like "assigned_to = operator" to work with the --operator flag
 	if strings.Contains(filter, "operator") {
-		operator := s.getOperator()
-		filter = strings.ReplaceAll(filter, "operator", operator)
+		filter = strings.ReplaceAll(filter, "operator", s.getOperator())
 	}
-
-	// Store the active filter
 	s.activeFilter = filter
-
-	// Re-render with filtered data
-	// Note: The actual filtering happens in GetFilteredData which is called during render
 	return nil
 }
 
-// GetFilteredData returns the data with the active filter applied.
+// handleStreamControl runs Pause, Resume and Clear, which only stream and
+// merge sources support. They change this page's view, never the shared buffer.
+func (s *GenericState) handleStreamControl(action string) error {
+	if !isStreamType(s.sourceType) {
+		err := fmt.Errorf("%s is only available for stream and merge sources", action)
+		s.Error = err.Error()
+		return err
+	}
+	switch action {
+	case "pause":
+		s.Paused = true
+	case "resume":
+		s.Paused = false
+		return s.refresh()
+	case "clear":
+		for _, row := range s.Data {
+			if seq, ok := row["seq"].(int64); ok && seq > s.clearedSeq {
+				s.clearedSeq = seq
+			}
+		}
+	}
+	return nil
+}
+
+// Subscribe returns a subscription that wakes on new rows of the state's
+// stream or merge source, or nil for any other source.
+func (s *GenericState) Subscribe() *stream.Subscription {
+	if ss, ok := s.source.(*source.StreamSource); ok {
+		return ss.Subscribe()
+	}
+	return nil
+}
+
+// FlushInterval is the minimum time between pushes of a stream state.
+func (s *GenericState) FlushInterval() time.Duration { return s.flush }
+
+// IsPaused reports whether Pause stopped pushes to this state's page.
+func (s *GenericState) IsPaused() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.Paused
+}
+
+func isStreamType(t string) bool { return t == "stream" || t == "merge" }
+
+func (s *GenericState) hasFilters() bool {
+	return s.activeFilter != "" || len(s.fieldFilters) > 0 || s.clearedSeq > 0
+}
+
+// GetFilteredData returns the data with the active filters applied: the
+// filter expression, every f.<field> substring filter, and Clear.
 // This is used by the template renderer to show filtered results.
 // Note: This method must be called while holding at least a read lock,
 // or from within a method that already holds the lock.
 func (s *GenericState) GetFilteredData() []map[string]interface{} {
-	if s.activeFilter == "" {
+	if !s.hasFilters() {
 		return s.Data
 	}
 
-	// Parse the filter expression
-	where, err := parseFilterExpression(s.activeFilter)
+	clauses, err := parseFilterExpression(s.activeFilter)
 	if err != nil {
-		// Log parse error for debugging, return all data as fallback
+		// Log parse error for debugging and ignore the expression
 		fmt.Fprintf(os.Stderr, "Warning: failed to parse filter expression %q: %v\n", s.activeFilter, err)
-		return s.Data
+	}
+	for field, val := range s.fieldFilters {
+		clauses = append(clauses, &WhereClause{Field: field, Operator: "~", Value: val})
 	}
 
-	// Apply filter
-	return filterDataByWhere(s.Data, where)
-}
-
-// parseFilterExpression parses a simple filter expression.
-// Supports:
-//   - "field" -> field is truthy
-//   - "not field" -> field is falsy
-//   - "field = value" -> field equals value
-//   - "field != value" -> field not equals value
-func parseFilterExpression(input string) (*WhereClause, error) {
-	input = strings.TrimSpace(input)
-	if input == "" {
-		return nil, nil
-	}
-
-	// Check for "not field" pattern (negated truthy check)
-	if strings.HasPrefix(strings.ToLower(input), "not ") {
-		field := strings.TrimSpace(input[4:])
-		return &WhereClause{
-			Field:    field,
-			Operator: "=",
-			Value:    false,
-		}, nil
-	}
-
-	// Use the existing parseWhereClause from expr.go
-	return parseWhereClause(input)
-}
-
-// filterDataByWhere filters data rows based on a where clause.
-// Uses getFieldValue from expr.go for consistent field lookup behavior.
-func filterDataByWhere(data []map[string]interface{}, where *WhereClause) []map[string]interface{} {
-	if where == nil {
-		return data
-	}
-
-	var result []map[string]interface{}
-	for _, row := range data {
-		val := getFieldValue(row, where.Field)
-		if matchesCondition(val, where.Operator, where.Value) {
+	result := make([]map[string]interface{}, 0, len(s.Data))
+	for _, row := range s.Data {
+		if s.clearedSeq > 0 {
+			if seq, ok := row["seq"].(int64); ok && seq <= s.clearedSeq {
+				continue
+			}
+		}
+		if matchesAll(row, clauses) {
 			result = append(result, row)
 		}
 	}
 	return result
+}
+
+// parseFilterExpression parses a filter expression into clauses that must all
+// match. Clauses are joined with "and"; each is one of:
+//   - "field" -> field is truthy
+//   - "not field" -> field is falsy
+//   - "field <op> value" for =, !=, >, <, >=, <= and ~ (case-insensitive substring)
+func parseFilterExpression(input string) ([]*WhereClause, error) {
+	var clauses []*WhereClause
+	for _, part := range splitAnd(input) {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		if strings.HasPrefix(strings.ToLower(part), "not ") {
+			clauses = append(clauses, &WhereClause{Field: strings.TrimSpace(part[4:]), Operator: "=", Value: false})
+			continue
+		}
+		where, err := parseWhereClause(part)
+		if err != nil {
+			return nil, err
+		}
+		clauses = append(clauses, where)
+	}
+	return clauses, nil
+}
+
+// splitAnd splits on the word "and" (any case) surrounded by spaces.
+func splitAnd(input string) []string {
+	var parts []string
+	lower := strings.ToLower(input)
+	for {
+		i := strings.Index(lower, " and ")
+		if i < 0 {
+			return append(parts, input)
+		}
+		parts = append(parts, input[:i])
+		input, lower = input[i+5:], lower[i+5:]
+	}
+}
+
+func matchesAll(row map[string]interface{}, clauses []*WhereClause) bool {
+	for _, where := range clauses {
+		if !matchesCondition(getFieldValue(row, where.Field), where.Operator, where.Value) {
+			return false
+		}
+	}
+	return true
 }
 
 // buildDataTable creates a datatable.DataTable from the current Data
