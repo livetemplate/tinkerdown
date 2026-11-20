@@ -115,16 +115,9 @@ title: Logs
   </ol>
 </main>
 ```
-
-<style>
-.log .lvl-error, .log .lvl-fatal { color: var(--danger); }
-.log .lvl-warn { color: var(--warning); }
-.log .stream-system { opacity: .6; font-style: italic; }
-@media (max-width: 600px) { .log .src { display: none; } .log time { display: block; } }
-</style>
 ~~~
 
-The `{{if}}`s sit outside the range, so every row still uses the same template and the range stays in stream mode. The phone layout is a CSS media query for the same reason. A per-row `{{if}}` would break stream mode.
+The `{{if}}`s sit outside the range and the phone layout is a CSS media query, following the stream-mode template rules in § Decisions.
 
 ## Decisions
 
@@ -235,7 +228,7 @@ logviewer:
 
 ## Tracker: assumptions, risks and known gaps
 
-This one table replaces the template's separate Assumptions, Known gaps and Risks sections. Assumptions (A) must be checked before building, risks (R) are what we'd act on, and gaps (G) are requirements no phase owns.
+Assumptions (A) are checked before building, risks (R) are what we'd act on, and gaps (G) are requirements no phase owns.
 
 | # | Type | Item | Severity | Status |
 |---|---|---|---|---|
@@ -283,7 +276,7 @@ This one table replaces the template's separate Assumptions, Known gaps and Risk
 - Existing sources keep their behavior: `exec` stays one-shot with `strings.Fields`, and the `RefreshSourcesForFile` markdown path is unchanged.
 - No log-specific code outside `internal/stream/parse.go`, and level detection stays opt-in through `format`.
 - Pushes never block the hub, so a stuck WebSocket write can't stall other tabs.
-- Docs match the code (`cmd`, not `command`) and are checked against the code before commit. Today's `exec.md` drift isn't repeated, and isn't fixed here either beyond the `stream` page.
+- Docs match the code (`cmd`, not `command`) and are checked against it before commit. Fixing the existing `exec.md` drift is out of scope.
 - e2e tests use real Docker Chrome and a real docker container. They are never skipped.
 
 ## Contract: config and row shape
@@ -325,7 +318,6 @@ Row fields: `seq` (int, global) · `ts` (RFC3339; parsed when present, otherwise
 
 ## Delivery
 
-1. Copy this plan to `tinkerdown/docs/plans/2026-11-20-stream-sources.md`.
-2. Run `/simplifyplan`, open the plan PR, run `/planprcommentsfix`, get signoff, merge. Never merge without signoff.
-3. Create the `.worktrees/stream-sources` branch only after the plan is merged. Open one PR per phase, or Phases 1–3 together.
-4. Release only through `release.sh`.
+1. Open the plan PR, run `/planprcommentsfix`, get signoff, merge. Never merge without signoff.
+2. Create the `.worktrees/stream-sources` branch only after the plan is merged. Open one PR per phase, or Phases 1–3 together.
+3. Release only through `release.sh`.
