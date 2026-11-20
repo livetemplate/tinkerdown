@@ -250,7 +250,16 @@ func (b *Buffer) retainLocked() {
 		ctx, cancel := context.WithCancel(b.hub.ctx)
 		b.stopRun = cancel
 		run := b.run
-		b.hub.wg.Go(func() { run(ctx) })
+		b.hub.wg.Go(func() {
+			// A bug in one input must not take down the server: report it on
+			// the input and stop. The next subscriber after IdleStop restarts it.
+			defer func() {
+				if r := recover(); r != nil {
+					b.system("error", fmt.Sprintf("input stopped after an internal error: %v", r))
+				}
+			}()
+			run(ctx)
+		})
 	}
 }
 

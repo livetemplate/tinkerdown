@@ -1,6 +1,7 @@
 package stream
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -361,4 +362,20 @@ func TestDetectLevel(t *testing.T) {
 	if r := newRow("ERROR boom", false, "lines", time.Now()); r["level"] != "" {
 		t.Errorf("lines format guessed level %v", r["level"])
 	}
+}
+
+func TestPanickingInputDoesNotCrash(t *testing.T) {
+	h := NewHub()
+	defer h.Close()
+	b := newBuffer(h, "k", "boom", 10)
+	b.run = func(ctx context.Context) { panic("parser bug") }
+	b.Subscribe()
+	waitFor(t, "a system row reporting the panic", func() bool {
+		for _, r := range b.Snapshot() {
+			if r["stream"] == "system" && strings.Contains(r["msg"].(string), "parser bug") {
+				return true
+			}
+		}
+		return false
+	})
 }
