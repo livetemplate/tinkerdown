@@ -1,6 +1,6 @@
 # Plan: streaming sources in tinkerdown, and a log viewer built on them
 
-State — Done: plan approved 2026-11-20; Phase 0 spike (A1, A2 verified). Next: Phase 1 (`internal/stream`).
+State — Done: Phases 0–4 (implementation PR open; plan PR awaiting signoff). Next: review, then `detectLevel` (user contribution).
 
 ## Context
 
@@ -140,9 +140,9 @@ The `{{if}}`s sit outside the range, so every row still uses the same template a
 - The hub is passed into the runtime through a new option on `runtime.NewGenericStateWithMetadata`, not a package global.
   alternative: a package-level default hub
   because: e2e tests run several servers in one process, and one server's shutdown would kill the others' buffers
-- An input starts the first time any connection subscribes to it, and runs until the server shuts down.
-  alternative: stop it when the last viewer leaves
-  because: logs written while no tab is open should still be in the buffer when someone opens one
+- An input starts the first time any connection subscribes to it, and stops 5 minutes (`Hub.IdleStop`) after its last subscriber leaves, dropping its rows. A merge's subscribers hold its inputs.
+  alternative: run until the server shuts down (the original decision)
+  because: Phase 2's security review showed that an abandoned input, or a `cmd` edited under `--watch`, would run forever. A short idle period still keeps history across a quick tab reload.
 - When a `cmd` exits: restart with backoff (1s doubling to 30s), and insert a `stream: system` row that says why. `restart: never` turns this off.
   alternative: none considered
 - On shutdown, kill the whole process group (`Setpgid`, then signal `-pgid`).
@@ -203,7 +203,7 @@ The `{{if}}`s sit outside the range, so every row still uses the same template a
   alternative: none considered
 - Follow mode uses the client's existing `lvt-fx:scroll="bottom-sticky"` (`client/dom/directives.ts:285`). The docs wrongly list this value as `sticky`, and this work fixes them.
   alternative: none considered
-- `logviewer/` is a new git repo with its own Go module, added to `livetemplate/go.work`, so its e2e test can import tinkerdown.
+- `logviewer/` is a new git repo with its own Go module. Its e2e test builds `tinkerdown` from `TINKERDOWN_SRC` and runs `tinkerdown serve`, because Go forbids importing tinkerdown's `internal/` packages from another module.
   alternative: put the app in `tinkerdown/examples/`
   because: the user asked for a separate app; a smaller copy still goes in `tinkerdown/examples/stream-logs` as a test fixture
 
@@ -232,7 +232,6 @@ logviewer:
 - `logviewer/tinkerdown.yaml` new? and `logviewer/index.md` new?: as shown in § The tinkerdown files, with demo sources standing in for the docker ones in the shipped default.
 - `logviewer/scripts/demo-logs.sh` new?: emits mixed JSON, logfmt and plain lines on stdout and stderr.
 - `logviewer/go.mod` new?, `logviewer/e2e_test.go` new?, `logviewer/README.md` new?.
-- `livetemplate/go.work`: add `./logviewer`.
 
 ## Tracker: assumptions, risks and known gaps
 
@@ -242,40 +241,42 @@ This one table replaces the template's separate Assumptions, Known gaps and Risk
 |---|---|---|---|---|
 | A1 | assumption | A keyed `{{range .Data}}` inside a GenericState lvt block runs in stream mode. When `Refresh` appends rows, the WebSocket sends `a`/`r` ops, not a full tree. | high | verified in Phase 0: append 2 + evict 1 sent `[["r","1"],["a",[…2 rows]]]`, 141 bytes against 962 for the full list |
 | A2 | assumption | After `Filter` then clear-filter, later appends go back to granular ops. | high | verified in Phase 0: clearing the filter sent one full range (897 bytes), and the next append was granular again, so the fallback lasts one render, not the connection |
-| A3 | assumption | The WebSocket handler has a close hook where subscriptions can be removed. | medium | open (Phase 2) |
+| A3 | assumption | The WebSocket handler has a close hook where subscriptions can be removed. | medium | verified in Phase 2: `ServeHTTP` returns on disconnect, but `Handler.Close` was never called; it now runs there and stops followers first |
 | A4 | assumption | A tabs heading sends `Filter {filter}` to the lvt block directly below it (`parser.go:761`, `client/src/core/tabs.ts`, test at `tabs.test.ts:126`). | medium | verified 2026-11-20 by reading the code |
-| A5 | assumption | `lvt-on:change` / `lvt-on:input` on a field inside `<form name="Filter">` sends every named field of that form, and `lvt-mod:debounce` applies. | medium | open (Phase 2) |
+| A5 | assumption | A field event inside `<form name="Filter">` sends the form's named fields. | medium | false, found in Phase 3: tinkerdown's block client sent only `{value}` on change and ignored `lvt-on:input` and `lvt-mod:*`. Fixed in `client/src/blocks/interactive-block.ts`; each field sends its own name, which partial-update `Filter` needs |
 | A6 | assumption | The docker daemon is reachable from tests. | low | verified 2026-11-20 |
 | R1 | risk | Filtering makes each push a full replace of up to 2000 rows per tab. | high | retired: A1 and A2 hold; only the render that clears a filter sends the full list |
 | R2 | risk | `sh -c` gives the config author a shell. Mitigation: gated by `--allow-exec`, exactly as `exec` is, and `docs/sources/stream.md` says so up front. | medium | accepted |
 | G1 | gap | Because stdout and stderr are read on separate pipes, their relative order is lost; within one input, rows keep arrival order, which can differ from write order. Users who need exact order can pass `2>&1` and give up the tags. | medium | unowned |
 | G2 | gap | Buffers live in one server process. History is not saved across restarts, and several tinkerdown instances don't share it. | low | unowned |
+| G3 | gap | Tinkerdown's block client re-implements part of `@livetemplate/client`'s `EventDelegator` (this work added `lvt-on:input` and `lvt-mod:*`; `lvt-key` is still missing). The deeper fix is an upstream hook that lets a block embed the delegator without owning the socket, plus a trailing-edge throttle and cancel in its rate limiters. | medium | unowned: cross-repo follow-up |
+| G4 | gap | Tinkerdown has no importable e2e helper package, so the logviewer copies the Docker Chrome and capture harness, and five tests in tinkerdown repeat the console and WebSocket capture. | low | unowned |
 
 ## Acceptance criteria
 
-- [ ] `/simplify` has run on each phase's diff.
-- [ ] `go test ./internal/stream/...` passes, with tests for:
+- [x] `/simplify` has run on each phase's diff ✅ (Phases 1, 2, and 3–4 together; findings applied in 48a4cd8, 5dea14a and logviewer 768aacb)
+- [x] `go test ./internal/stream/...` passes ✅ (`-race`; plus `TestIdleInputStopsAndRestarts`), with tests for:
   - ring eviction
   - global `seq` order across inputs
   - a 1 MiB line truncated without killing the reader
   - tail rotation and truncation
   - `cmd` restart with backoff and a `system` row
   - process group killed on `Hub.Close` (no orphan `sleep` left in `pgrep`)
-- [ ] `go test ./internal/runtime/...` covers `~`, `and`, `f.*` composition, a `filter`-only message keeping the `f.*` filters (and the reverse), `Pause`/`Resume`/`Clear` with `Paused`, and `IsBuiltinAction("pause")`.
-- [ ] Config validation rejects `stream` with both `cmd` and `file`, `stream` with `cmd` but without `--allow-exec`, and `merge` naming an unknown or non-stream input.
-- [ ] `TestStreamSource_E2E` (chromedp, Docker Chrome):
+- [x] `go test ./internal/runtime/...` ✅ covers `~`, `and`, `f.*` composition, a `filter`-only message keeping the `f.*` filters (and the reverse), `Pause`/`Resume`/`Clear` with `Paused`, and `IsBuiltinAction("pause")`.
+- [x] Config validation rejects `stream` with both `cmd` and `file`, and `merge` naming an unknown or non-stream input ✅ (`TestValidateStreamSources`). `--allow-exec` is a runtime flag, so a `cmd` stream without it is rejected when the source is built ✅ (`TestStreamSourceNeedsHubAndExecFlag`).
+- [x] `TestStreamSource_E2E` (chromedp, Docker Chrome) ✅:
   - rows appear with no user action
   - captured WebSocket frames contain range append ops (A1 holds)
-  - two tabs share one process (`pgrep -c` == 1)
+  - two pages share one process (`pgrep -c` == 1); the second page is a WebSocket connection, because a second Docker Chrome tab takes ~40s
   - `Pause` stops new rows and `Resume` catches up
   - an `f.line` filter narrows rows
-  - a busybox container's logs stream through `docker logs -f`
+  - an `alpine:3.21` container's logs stream through `docker logs -f` (busybox isn't pulled locally)
   - appending to a tailed file shows up within 1s
 
   The test captures console logs, server logs, WebSocket frames and rendered HTML.
-- [ ] `cd logviewer && go test ./...` e2e: the All tab interleaves both demo inputs, stderr rows carry `stream-stderr`, the level select still applies after switching to a source tab, and `bottom-sticky` stays at the bottom while rows arrive.
-- [ ] `make test` (or the repo's full suite) is green in tinkerdown, and pre-commit passes without `--no-verify`.
-- [ ] `prereview check` is clean on the changed docs.
+- [x] `cd logviewer && go test ./...` e2e ✅ (`TestLogViewer`, 8 subtests; screenshots in `logviewer/docs/`). The All tab interleaves both demo inputs, and stderr rows carry `stream-stderr`. The level select still applies after switching to a source tab, and `bottom-sticky` stays at the bottom while rows arrive.
+- [x] The full suite is green in tinkerdown ✅ (`go test -timeout 40m ./...`; three tests need the `./tinkerdown` binary that `make build` creates). `make test` now sets `-timeout 30m`, because the root package takes ~15 minutes. The repo has no pre-commit hook.
+- [x] `prereview check` is clean on the changed docs ✅ (remaining findings in `CHANGELOG.md` and `lvt-attributes.md` predate this work)
 
 ## Constraints
 
@@ -308,15 +309,18 @@ Row fields: `seq` (int, global) · `ts` (RFC3339; parsed when present, otherwise
 - Audit: A3, A5; trace `initializeInstances` and connection close; confirm both `createSource` switches and `getEffectiveSource`.
 - Implementation: per the Files list.
 - Acceptance: `/simplify`, then the runtime and validation criteria above.
+- Learn: every render JSON-round-trips the whole state (`GetStateAsInterface`), so each push costs O(buffer) per page; fine at 2000 rows and 10 pushes a second, the first thing to optimize at larger buffers. An approved merge must resolve its inputs from the manifest, or a page can redefine them.
 
 ### Phase 3: tinkerdown e2e, example, docs
 - Audit: A6. Check what `e2e_helpers` already captures.
 - Implementation: the server-log capture helper, `TestStreamSource_E2E`, `examples/stream-logs`, docs, CHANGELOG.
 - Acceptance: `/simplify`, the e2e criterion, the full suite, `prereview check` on the docs.
+- Learn: Docker Chrome's network path stalls frame delivery for ~7s once early on (a raw host client sees no gap), so the e2e waits for steady delivery before timing checks. Docker Chrome runs with `--cpus 0.5`, so a second browser tab takes ~40s; the two-pages check uses a second WebSocket instead.
 
 ### Phase 4: log viewer app
 - Audit: re-read the contract above against what shipped. Any drift is written into this plan in the same commit.
-- Implementation: the `logviewer/` files and `go.work`.
+- Implementation: the `logviewer/` files.
+- Learn: chromedp ties a tab to the context of its first `Run`; a first `Run` on a timeout context closes the tab when it returns.
 - Acceptance: `/simplify`, then the logviewer e2e criterion. Verified by hand in a real browser through chromedp screenshots, never with `curl`.
 
 ## Delivery
