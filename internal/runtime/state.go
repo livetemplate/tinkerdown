@@ -6,7 +6,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -27,6 +26,16 @@ type Store interface {
 	HandleAction(action string, data map[string]interface{}) error
 	// Close releases resources. Optional - returns nil if not implemented.
 	Close() error
+}
+
+// Follower is a Store whose source grows on its own. The server subscribes
+// and pushes a refresh at most every FlushInterval, unless the page paused.
+// Subscribe returns nil when the store's source is not followable.
+type Follower interface {
+	Store
+	Subscribe() *stream.Subscription
+	FlushInterval() time.Duration
+	IsPaused() bool
 }
 
 // GenericState holds runtime state for any source type.
@@ -69,7 +78,7 @@ type GenericState struct {
 	activeFilter string            // current filter expression (empty = show all)
 	fieldFilters map[string]string // field -> substring, from Filter's f.<field> keys
 	clearedSeq   int64             // Clear hides stream rows with seq <= clearedSeq
-	flush        time.Duration     // stream/merge: minimum time between pushes
+	clauses      []*WhereClause    // all of the above, parsed; rows must match every one
 	mu           sync.RWMutex
 
 	// Page-level configuration for custom actions.
@@ -180,13 +189,7 @@ func NewGenericStateWithMetadata(name string, cfg config.SourceConfig, siteDir, 
 	}
 
 	// Create the underlying source using the existing factory
-	var src source.Source
-	var err error
-	if isStreamType(cfg.Type) {
-		src, err = source.NewStreamSource(o.hub, name, cfg, siteDir, o.lookup)
-	} else {
-		src, err = createSource(name, cfg, siteDir, currentFile)
-	}
+	src, err := createSource(name, cfg, siteDir, currentFile, o)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create source %q: %w", name, err)
 	}
@@ -212,10 +215,6 @@ func NewGenericStateWithMetadata(name string, cfg config.SourceConfig, siteDir, 
 				}
 			}
 		}
-	}
-
-	if isStreamType(cfg.Type) {
-		s.flush, _ = cfg.FlushInterval() // validated by NewStreamSource
 	}
 
 	// Set exec-specific fields if applicable
@@ -250,7 +249,7 @@ func (s *GenericState) SetPageConfig(cfg *config.Config, actions map[string]*con
 }
 
 // createSource creates a source from config (mirrors source.createSource)
-func createSource(name string, cfg config.SourceConfig, siteDir, currentFile string) (source.Source, error) {
+func createSource(name string, cfg config.SourceConfig, siteDir, currentFile string, o stateOptions) (source.Source, error) {
 	switch cfg.Type {
 	case "exec":
 		if !config.IsExecAllowed() {
@@ -278,7 +277,7 @@ func createSource(name string, cfg config.SourceConfig, siteDir, currentFile str
 	case "graphql":
 		return source.NewGraphQLSource(name, cfg, siteDir)
 	case "stream", "merge":
-		return nil, fmt.Errorf("%s source %q: needs a running server", cfg.Type, name)
+		return source.NewStreamSource(o.hub, name, cfg, siteDir, o.lookup)
 	case "computed":
 		// Computed sources are handled specially — they need a parent source.
 		// The parent is created by the caller and passed via sourceLookup.
@@ -625,24 +624,41 @@ func (s *GenericState) handleFilter(data map[string]interface{}) error {
 		}
 		s.fieldFilters[field] = val
 	}
-	if hasFields && !hasExpr {
-		return nil
+	if hasExpr || !hasFields {
+		filter, _ := data["filter"].(string)
+		// Substitute "operator" variable with actual operator value
+		// This enables filters like "assigned_to = operator" to work with the --operator flag
+		if strings.Contains(filter, "operator") {
+			filter = strings.ReplaceAll(filter, "operator", s.getOperator())
+		}
+		s.activeFilter = filter
 	}
-
-	filter, _ := data["filter"].(string)
-	// Substitute "operator" variable with actual operator value
-	// This enables filters like "assigned_to = operator" to work with the --operator flag
-	if strings.Contains(filter, "operator") {
-		filter = strings.ReplaceAll(filter, "operator", s.getOperator())
-	}
-	s.activeFilter = filter
-	return nil
+	return s.rebuildClauses()
 }
 
-// handleStreamControl runs Pause, Resume and Clear, which only stream and
-// merge sources support. They change this page's view, never the shared buffer.
+// rebuildClauses parses the filter expression, the field filters and Clear
+// into the clauses GetFilteredData applies, once per change rather than per
+// render. A bad expression is reported on the state and filters nothing.
+func (s *GenericState) rebuildClauses() error {
+	clauses, err := parseFilterExpression(s.activeFilter)
+	if err != nil {
+		s.Error = fmt.Sprintf("filter %q: %v", s.activeFilter, err)
+		clauses = nil
+	}
+	for field, val := range s.fieldFilters {
+		clauses = append(clauses, &WhereClause{Field: field, Operator: "~", Value: val})
+	}
+	if s.clearedSeq > 0 {
+		clauses = append(clauses, &WhereClause{Field: "seq", Operator: ">", Value: s.clearedSeq})
+	}
+	s.clauses = clauses
+	return err
+}
+
+// handleStreamControl runs Pause, Resume and Clear, which only sources that
+// grow on their own support. They change this page's view, never the source.
 func (s *GenericState) handleStreamControl(action string) error {
-	if !isStreamType(s.sourceType) {
+	if _, ok := s.source.(source.Followable); !ok {
 		err := fmt.Errorf("%s is only available for stream and merge sources", action)
 		s.Error = err.Error()
 		return err
@@ -659,21 +675,27 @@ func (s *GenericState) handleStreamControl(action string) error {
 				s.clearedSeq = seq
 			}
 		}
+		return s.rebuildClauses()
 	}
 	return nil
 }
 
-// Subscribe returns a subscription that wakes on new rows of the state's
-// stream or merge source, or nil for any other source.
+// Subscribe returns a subscription that wakes on new rows when the state's
+// source grows on its own, or nil for any other source.
 func (s *GenericState) Subscribe() *stream.Subscription {
-	if ss, ok := s.source.(*source.StreamSource); ok {
-		return ss.Subscribe()
+	if f, ok := s.source.(source.Followable); ok {
+		return f.Subscribe()
 	}
 	return nil
 }
 
-// FlushInterval is the minimum time between pushes of a stream state.
-func (s *GenericState) FlushInterval() time.Duration { return s.flush }
+// FlushInterval is the minimum time between pushes of a followable source.
+func (s *GenericState) FlushInterval() time.Duration {
+	if f, ok := s.source.(source.Followable); ok {
+		return f.FlushInterval()
+	}
+	return 0
+}
 
 // IsPaused reports whether Pause stopped pushes to this state's page.
 func (s *GenericState) IsPaused() bool {
@@ -682,11 +704,7 @@ func (s *GenericState) IsPaused() bool {
 	return s.Paused
 }
 
-func isStreamType(t string) bool { return t == "stream" || t == "merge" }
-
-func (s *GenericState) hasFilters() bool {
-	return s.activeFilter != "" || len(s.fieldFilters) > 0 || s.clearedSeq > 0
-}
+func (s *GenericState) hasFilters() bool { return len(s.clauses) > 0 }
 
 // GetFilteredData returns the data with the active filters applied: the
 // filter expression, every f.<field> substring filter, and Clear.
@@ -697,24 +715,9 @@ func (s *GenericState) GetFilteredData() []map[string]interface{} {
 	if !s.hasFilters() {
 		return s.Data
 	}
-
-	clauses, err := parseFilterExpression(s.activeFilter)
-	if err != nil {
-		// Log parse error for debugging and ignore the expression
-		fmt.Fprintf(os.Stderr, "Warning: failed to parse filter expression %q: %v\n", s.activeFilter, err)
-	}
-	for field, val := range s.fieldFilters {
-		clauses = append(clauses, &WhereClause{Field: field, Operator: "~", Value: val})
-	}
-
 	result := make([]map[string]interface{}, 0, len(s.Data))
 	for _, row := range s.Data {
-		if s.clearedSeq > 0 {
-			if seq, ok := row["seq"].(int64); ok && seq <= s.clearedSeq {
-				continue
-			}
-		}
-		if matchesAll(row, clauses) {
+		if matchesAll(row, s.clauses) {
 			result = append(result, row)
 		}
 	}

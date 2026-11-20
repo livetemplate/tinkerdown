@@ -224,12 +224,8 @@ func (r *Registry) InvalidateAllCaches() {
 func createSource(name string, cfg config.SourceConfig, siteDir, currentFile string) (Source, error) {
 	switch cfg.Type {
 	case "exec":
-		if !config.IsExecAllowed() {
-			return nil, &ValidationError{
-				Source: name,
-				Field:  "type",
-				Reason: "exec sources are disabled by default for security. Use --allow-exec flag to enable.",
-			}
+		if err := requireExec(name, "type", "exec sources"); err != nil {
+			return nil, err
 		}
 		return NewExecSourceWithConfig(name, cfg, siteDir)
 	case "pg":

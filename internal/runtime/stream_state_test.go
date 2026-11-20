@@ -33,7 +33,7 @@ func TestFilterSubstringAndConjunction(t *testing.T) {
 		{"source": "web", "line": "POST /login 500"},
 		{"source": "db", "line": "slow query on users"},
 	}}
-	s.activeFilter = "source = web and line ~ users"
+	s.handleFilter(map[string]interface{}{"filter": "source = web and line ~ users"})
 	got := s.GetFilteredData()
 	if len(got) != 1 || got[0]["line"] != "GET /api/Users 200" {
 		t.Fatalf("got %v, want the one web row mentioning users (case-insensitive)", got)

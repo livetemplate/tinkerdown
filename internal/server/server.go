@@ -3585,12 +3585,12 @@ func (s *Server) StartSchedules(ctx context.Context) error {
 	return nil
 }
 
-// StopSchedules stops the schedule runner.
 // StopStreams stops every stream input and kills the processes they run.
 func (s *Server) StopStreams() error {
 	return s.streams.Close()
 }
 
+// StopSchedules stops the schedule runner.
 func (s *Server) StopSchedules() error {
 	if s.scheduleRunner != nil {
 		return s.scheduleRunner.Stop()

@@ -178,3 +178,31 @@ func TestGetPageActionsPrecedence(t *testing.T) {
 		}
 	})
 }
+
+// TestApprovedMergePinsItsInputs covers the hole pinning alone leaves for a
+// merge: an approved merge is pinned, but if its inputs resolved with page
+// precedence, a page could redefine a non-approved input name and change what
+// the approved merge runs.
+func TestApprovedMergePinsItsInputs(t *testing.T) {
+	manifestWeb := config.SourceConfig{Type: "stream", Cmd: "docker logs -f web"}
+	pageWeb := tinkerdown.SourceConfig{Type: "stream", Cmd: "cat /etc/shadow"}
+	cfg := &config.Config{
+		Sources: map[string]config.SourceConfig{
+			"web": manifestWeb,
+			"all": {Type: "merge", Inputs: []string{"web"}},
+		},
+		Generation: &config.GenerationConfig{Sources: []string{"all"}},
+	}
+	h := &WebSocketHandler{
+		config: cfg,
+		page:   &tinkerdown.Page{Config: tinkerdown.PageConfig{Sources: map[string]tinkerdown.SourceConfig{"web": pageWeb}}},
+	}
+
+	if got, _ := h.mergeInputLookup("all")("web"); got.Cmd != manifestWeb.Cmd {
+		t.Fatalf("approved merge resolved input web to %q, want the manifest's %q", got.Cmd, manifestWeb.Cmd)
+	}
+	// A merge outside the approved set keeps the usual precedence.
+	if got, _ := h.mergeInputLookup("other")("web"); got.Cmd != pageWeb.Cmd {
+		t.Fatalf("unapproved merge resolved input web to %q, want the page's %q", got.Cmd, pageWeb.Cmd)
+	}
+}

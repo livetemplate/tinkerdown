@@ -115,7 +115,8 @@ type WebSocketHandler struct {
 	conn           *websocket.Conn                 // Current connection for this handler
 	actionSources  map[string]source.Source        // Cached sources for custom actions
 	done           chan struct{}                   // closed when the connection ends; stops stream followers
-	followers      sync.WaitGroup                  // stream followers of this connection
+	closeOnce      sync.Once
+	followers      sync.WaitGroup // stream followers of this connection
 }
 
 // BlockInstance represents a running LiveTemplate instance for an interactive block.
@@ -154,8 +155,12 @@ func NewWebSocketHandler(page *tinkerdown.Page, server *Server, debug bool, root
 	return h
 }
 
-// Close cleans up all resources
+// Close cleans up all resources. Stream followers stop first, before h.mu is
+// taken (a follower's push takes it), so no push renders a closed state.
 func (h *WebSocketHandler) Close() {
+	h.closeOnce.Do(func() { close(h.done) })
+	h.followers.Wait()
+
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -247,7 +252,7 @@ func (h *WebSocketHandler) initializeSourceBlocks() {
 				state, err = runtime.NewGenericStateForComputed(srcName, srcCfg, rootDir, curFile, blockMeta, h.lookupSource)
 			} else {
 				state, err = runtime.NewGenericStateWithMetadata(srcName, srcCfg, rootDir, curFile, blockMeta,
-					runtime.WithStreams(h.streamHub(), h.getEffectiveSource))
+					runtime.WithStreams(h.streamHub(), h.mergeInputLookup(srcName)))
 			}
 			if err != nil {
 				log.Printf("[WS] Failed to create runtime state for %s: %v", srcName, err)
@@ -415,9 +420,6 @@ func (h *WebSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			h.server.UnregisterConnection(conn)
 		}
 		conn.Close()
-		// Stop stream followers before closing the states they render.
-		close(h.done)
-		h.followers.Wait()
 		h.Close()
 	}()
 
@@ -1424,11 +1426,18 @@ func createSourceForAction(name string, cfg config.SourceConfig, siteDir, curren
 	}
 }
 
-// streamFollower is a state backed by a stream or merge source.
-type streamFollower interface {
-	Subscribe() *stream.Subscription
-	FlushInterval() time.Duration
-	IsPaused() bool
+// mergeInputLookup resolves the inputs of the merge named merge. An approved
+// merge is pinned to its manifest definition, so its inputs come from the
+// manifest too; otherwise a page could redefine an input and change what the
+// approved source runs. Other merges use the page's usual source precedence.
+func (h *WebSocketHandler) mergeInputLookup(merge string) func(string) (config.SourceConfig, bool) {
+	if h.config == nil || !h.config.ApprovedSource(merge) {
+		return h.getEffectiveSource
+	}
+	return func(name string) (config.SourceConfig, bool) {
+		src, ok := h.config.Sources[name]
+		return src, ok
+	}
 }
 
 func (h *WebSocketHandler) streamHub() *stream.Hub {
@@ -1442,7 +1451,7 @@ func (h *WebSocketHandler) streamHub() *stream.Hub {
 // closes. Wake-ups coalesce, and pushes are at least FlushInterval apart, so a
 // burst of lines becomes one refresh. A paused page is skipped; Resume refreshes.
 func (h *WebSocketHandler) followStream(instance *BlockInstance) {
-	f, ok := instance.state.(streamFollower)
+	f, ok := instance.state.(runtime.Follower)
 	if !ok {
 		return
 	}
@@ -1459,6 +1468,7 @@ func (h *WebSocketHandler) followStream(instance *BlockInstance) {
 			return
 		}
 		h.sendUpdate(instance)
+		h.refreshDependentComputedSources(instance, instance.conn)
 	}
 	h.followers.Go(func() {
 		defer sub.Close()

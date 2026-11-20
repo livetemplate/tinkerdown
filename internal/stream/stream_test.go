@@ -73,7 +73,6 @@ func TestSubscriptionCoalescesWakeups(t *testing.T) {
 	h := NewHub()
 	defer h.Close()
 	b := newBuffer(h, "k", "s", 10)
-	b.start = func() {}
 	s := b.Subscribe()
 	for i := 0; i < 100; i++ {
 		h.publish(b, "stdout", Row{}) // must never block
@@ -291,5 +290,38 @@ func TestInputKeyFollowsSpec(t *testing.T) {
 	}
 	if m2, _ := h.Merge("all", []*Buffer{a, c}, 0); m2 != m {
 		t.Fatal("same merge got a new buffer")
+	}
+}
+
+func TestIdleInputStopsAndRestarts(t *testing.T) {
+	marker := fmt.Sprintf("idlemark%d", os.Getpid())
+	h := NewHub()
+	defer h.Close()
+	h.IdleStop = 200 * time.Millisecond
+	running := func() bool { return exec.Command("pgrep", "-f", marker).Run() == nil }
+
+	in, _ := h.Input(InputSpec{Name: "w", Cmd: ": " + marker + "; while true; do echo hi; sleep 0.1; done"})
+	m, _ := h.Merge("all", []*Buffer{in}, 0)
+	sub := m.Subscribe() // a merge subscriber holds its input
+	waitFor(t, "input to start through the merge", running)
+
+	sub.Close()
+	sub.Close() // idempotent: must not release twice
+	waitFor(t, "idle input to stop", func() bool { return !running() })
+	if n := len(in.Snapshot()); n != 0 {
+		t.Fatalf("stopped input kept %d rows", n)
+	}
+
+	again := in.Subscribe()
+	defer again.Close()
+	waitFor(t, "input to restart on a new subscriber", running)
+
+	// A subscriber that returns within IdleStop keeps the same process.
+	again.Close()
+	keep := in.Subscribe()
+	defer keep.Close()
+	time.Sleep(400 * time.Millisecond)
+	if !running() {
+		t.Fatal("input stopped although a subscriber came back within IdleStop")
 	}
 }

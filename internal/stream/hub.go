@@ -29,6 +29,11 @@ const (
 	DefaultBufferSize = 2000
 	DefaultBacklog    = 200
 	MaxLineBytes      = 16 * 1024
+
+	// DefaultIdleStop is how long an input keeps running with no page
+	// subscribed. Short tab closes keep history; an abandoned input (a page
+	// closed for good, or a cmd edited under --watch) stops and frees its rows.
+	DefaultIdleStop = 5 * time.Minute
 )
 
 // Hub owns every Buffer of one server.
@@ -41,12 +46,15 @@ type Hub struct {
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 	now    func() time.Time // replaced in tests
+
+	// IdleStop is how long an input runs after its last subscriber leaves.
+	IdleStop time.Duration
 }
 
 // NewHub returns an empty hub. Inputs start lazily on their first Subscribe.
 func NewHub() *Hub {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &Hub{buffers: map[string]*Buffer{}, ctx: ctx, cancel: cancel, now: time.Now}
+	return &Hub{buffers: map[string]*Buffer{}, ctx: ctx, cancel: cancel, now: time.Now, IdleStop: DefaultIdleStop}
 }
 
 // InputSpec describes one stream input. Exactly one of Cmd or File is set.
@@ -109,14 +117,12 @@ func (h *Hub) Input(spec InputSpec) (*Buffer, error) {
 		return b, nil
 	}
 	b := newBuffer(h, key, spec.Name, spec.Buffer)
-	b.start = func() {
-		h.wg.Go(func() {
-			if spec.Cmd != "" {
-				runCmd(h.ctx, spec, b)
-			} else {
-				tailFile(h.ctx, spec, b)
-			}
-		})
+	b.run = func(ctx context.Context) {
+		if spec.Cmd != "" {
+			runCmd(ctx, spec, b)
+		} else {
+			tailFile(ctx, spec, b)
+		}
 	}
 	h.buffers[key] = b
 	return b, nil
@@ -145,6 +151,7 @@ func (h *Hub) Merge(name string, inputs []*Buffer, size int) (*Buffer, error) {
 	}
 	b := newBuffer(h, key, name, size)
 	b.merge = true
+	b.inputs = inputs
 	var seed []Row
 	for _, in := range inputs {
 		in.merges = append(in.merges, b)
@@ -153,11 +160,6 @@ func (h *Hub) Merge(name string, inputs []*Buffer, size int) (*Buffer, error) {
 	slices.SortFunc(seed, func(x, y Row) int { return cmp.Compare(x["seq"].(int64), y["seq"].(int64)) })
 	for _, r := range seed[max(0, len(seed)-size):] {
 		b.appendLocked(r)
-	}
-	b.start = func() {
-		for _, in := range inputs {
-			in.startOnce()
-		}
 	}
 	h.buffers[key] = b
 	return b, nil
@@ -212,21 +214,72 @@ type Buffer struct {
 	head   int // index of the oldest row once the ring is full
 	size   int
 	subs   map[*Subscription]chan struct{}
-	merges []*Buffer
+	merges []*Buffer // merges this input feeds
+	inputs []*Buffer // for a merge: the inputs it holds while subscribed
 
 	// snap caches the oldest-first view until the next append, so every
 	// connection refreshing after one publish shares a single copy.
 	snap atomic.Pointer[[]Row]
 
-	start   func()
-	started sync.Once
+	// Lifecycle, guarded by hub.mu. refs counts subscribers plus the merges
+	// holding this input; the input runs while refs > 0 and for IdleStop after.
+	run      func(ctx context.Context) // nil for a merge
+	refs     int
+	stopRun  context.CancelFunc // non-nil while the input runs
+	idle     *time.Timer
+	idleSeen int // refs epoch, so a stale idle timer doesn't stop a re-used input
 }
 
 func newBuffer(h *Hub, key, name string, size int) *Buffer {
 	return &Buffer{hub: h, key: key, name: name, size: size, subs: map[*Subscription]chan struct{}{}}
 }
 
-func (b *Buffer) startOnce() { b.started.Do(b.start) }
+// retainLocked counts one more holder and starts the input if it is stopped.
+// A merge passes the hold on to its inputs.
+func (b *Buffer) retainLocked() {
+	b.refs++
+	b.idleSeen++
+	if b.idle != nil {
+		b.idle.Stop()
+		b.idle = nil
+	}
+	for _, in := range b.inputs {
+		in.retainLocked()
+	}
+	if b.run != nil && b.stopRun == nil && b.hub.ctx.Err() == nil {
+		ctx, cancel := context.WithCancel(b.hub.ctx)
+		b.stopRun = cancel
+		run := b.run
+		b.hub.wg.Go(func() { run(ctx) })
+	}
+}
+
+// releaseLocked drops one holder. After IdleStop with no holder, the input
+// stops and its rows are dropped; a merge just drops its rows.
+func (b *Buffer) releaseLocked() {
+	b.refs--
+	for _, in := range b.inputs {
+		in.releaseLocked()
+	}
+	if b.refs > 0 {
+		return
+	}
+	epoch := b.idleSeen
+	b.idle = time.AfterFunc(b.hub.IdleStop, func() {
+		b.hub.mu.Lock()
+		defer b.hub.mu.Unlock()
+		if b.refs > 0 || b.idleSeen != epoch {
+			return
+		}
+		b.idle = nil
+		if b.stopRun != nil {
+			b.stopRun()
+			b.stopRun = nil
+		}
+		b.ring, b.head = nil, 0
+		b.snap.Store(nil)
+	})
+}
 
 func (b *Buffer) appendLocked(r Row) {
 	b.snap.Store(nil)
@@ -277,21 +330,26 @@ type Subscription struct {
 	b *Buffer
 }
 
-// Subscribe starts the input on first use and returns a subscription whose
-// channel holds at most one pending wake-up.
+// Subscribe starts the input if it isn't running and returns a subscription
+// whose channel holds at most one pending wake-up.
 func (b *Buffer) Subscribe() *Subscription {
 	c := make(chan struct{}, 1)
 	s := &Subscription{C: c, b: b}
 	b.hub.mu.Lock()
+	defer b.hub.mu.Unlock()
 	b.subs[s] = c
-	b.hub.mu.Unlock()
-	b.startOnce()
+	b.retainLocked()
 	return s
 }
 
-// Close stops wake-ups. The input keeps running for other subscribers.
+// Close stops wake-ups. The input keeps running for other subscribers, and
+// for the hub's IdleStop after the last one leaves. Close is idempotent.
 func (s *Subscription) Close() {
 	s.b.hub.mu.Lock()
+	defer s.b.hub.mu.Unlock()
+	if _, ok := s.b.subs[s]; !ok {
+		return
+	}
 	delete(s.b.subs, s)
-	s.b.hub.mu.Unlock()
+	s.b.releaseLocked()
 }

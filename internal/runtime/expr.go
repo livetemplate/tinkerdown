@@ -319,9 +319,17 @@ func matchesCondition(val interface{}, operator string, target interface{}) bool
 		if val == nil {
 			return false
 		}
-		return strings.Contains(strings.ToLower(fmt.Sprint(val)), strings.ToLower(fmt.Sprint(target)))
+		return strings.Contains(strings.ToLower(asString(val)), strings.ToLower(asString(target)))
 	}
 	return false
+}
+
+// asString formats v for text matching, without fmt for the common string case.
+func asString(v interface{}) string {
+	if s, ok := v.(string); ok {
+		return s
+	}
+	return fmt.Sprint(v)
 }
 
 // valuesEqual checks if two values are equal.

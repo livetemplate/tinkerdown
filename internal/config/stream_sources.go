@@ -26,8 +26,7 @@ func (c *Config) ValidateStreamSources() error {
 func ValidateStreamSource(name string, src SourceConfig, lookup func(string) (SourceConfig, bool)) error {
 	switch src.Type {
 	case "stream":
-		spec := stream.InputSpec{Name: name, Cmd: src.Cmd, File: src.File, Format: src.Format, Restart: src.Restart}
-		if _, err := spec.Normalize(); err != nil {
+		if _, err := src.StreamSpec(name).Normalize(); err != nil {
 			return err
 		}
 	case "merge":
@@ -50,6 +49,21 @@ func ValidateStreamSource(name string, src SourceConfig, lookup func(string) (So
 		return fmt.Errorf("%s source %q: %w", src.Type, name, err)
 	}
 	return nil
+}
+
+// StreamSpec maps a stream source's config onto the hub's input spec. Paths and
+// environment are left as configured; the source package resolves them.
+func (s SourceConfig) StreamSpec(name string) stream.InputSpec {
+	return stream.InputSpec{
+		Name:    name,
+		Cmd:     s.Cmd,
+		File:    s.File,
+		Env:     s.Env,
+		Format:  s.Format,
+		Buffer:  s.Buffer,
+		Backlog: s.Backlog,
+		Restart: s.Restart,
+	}
 }
 
 // DefaultStreamFlush is the minimum time between pushes of a stream or merge
