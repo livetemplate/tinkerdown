@@ -1,6 +1,6 @@
 # Plan: streaming sources in tinkerdown, and a log viewer built on them
 
-State — Done: plan approved 2026-11-20. Next: plan PR signoff; Phase 0 (spike).
+State — Done: plan approved 2026-11-20; Phase 0 spike (A1, A2 verified). Next: Phase 1 (`internal/stream`).
 
 ## Context
 
@@ -240,13 +240,13 @@ This one table replaces the template's separate Assumptions, Known gaps and Risk
 
 | # | Type | Item | Severity | Status |
 |---|---|---|---|---|
-| A1 | assumption | A keyed `{{range .Data}}` inside a GenericState lvt block runs in stream mode. When `Refresh` appends rows, the WebSocket sends `a`/`r` ops, not a full tree. | high | open (Phase 0) |
-| A2 | assumption | After `Filter` then clear-filter, later appends go back to granular ops. The proposal says the het-range fallback is one-way per connection. | high | open (Phase 0) |
+| A1 | assumption | A keyed `{{range .Data}}` inside a GenericState lvt block runs in stream mode. When `Refresh` appends rows, the WebSocket sends `a`/`r` ops, not a full tree. | high | verified in Phase 0: append 2 + evict 1 sent `[["r","1"],["a",[…2 rows]]]`, 141 bytes against 962 for the full list |
+| A2 | assumption | After `Filter` then clear-filter, later appends go back to granular ops. | high | verified in Phase 0: clearing the filter sent one full range (897 bytes), and the next append was granular again, so the fallback lasts one render, not the connection |
 | A3 | assumption | The WebSocket handler has a close hook where subscriptions can be removed. | medium | open (Phase 2) |
 | A4 | assumption | A tabs heading sends `Filter {filter}` to the lvt block directly below it (`parser.go:761`, `client/src/core/tabs.ts`, test at `tabs.test.ts:126`). | medium | verified 2026-11-20 by reading the code |
 | A5 | assumption | `lvt-on:change` / `lvt-on:input` on a field inside `<form name="Filter">` sends every named field of that form, and `lvt-mod:debounce` applies. | medium | open (Phase 2) |
 | A6 | assumption | The docker daemon is reachable from tests. | low | verified 2026-11-20 |
-| R1 | risk | If A1 or A2 fails, filtering makes the range heterogeneous for good, and each push becomes a full replace of up to 2000 rows per tab. Mitigation: render the full buffer and hide filtered rows with a per-row class, which keeps the range homogeneous. | high | open (Phase 0 decides) |
+| R1 | risk | Filtering makes each push a full replace of up to 2000 rows per tab. | high | retired: A1 and A2 hold; only the render that clears a filter sends the full list |
 | R2 | risk | `sh -c` gives the config author a shell. Mitigation: gated by `--allow-exec`, exactly as `exec` is, and `docs/sources/stream.md` says so up front. | medium | accepted |
 | G1 | gap | Because stdout and stderr are read on separate pipes, their relative order is lost; within one input, rows keep arrival order, which can differ from write order. Users who need exact order can pass `2>&1` and give up the tags. | medium | unowned |
 | G2 | gap | Buffers live in one server process. History is not saved across restarts, and several tinkerdown instances don't share it. | low | unowned |
@@ -297,7 +297,7 @@ Row fields: `seq` (int, global) · `ts` (RFC3339; parsed when present, otherwise
 - Audit: read `livetemplate/internal/diff/range_ops.go` (`handleStreamModeRange`) and the het-range fallback in the proposal §5d.
 - Implementation: a throwaway e2e test in the worktree renders a keyed range from an `exec` source, appends rows, refreshes, and dumps the WebSocket frames. It then applies a filter, clears it, and dumps again.
 - Acceptance: A1/A2 recorded in the tracker with the frame dumps. The Filter design is confirmed or switched to R1's mitigation. The spike file is deleted.
-- Learn: recorded in this plan.
+- Learn: the het-range fallback is per render, not one-way as the proposal implied. A gorilla `ReadMessage` deadline error breaks the connection for good, so test readers use a goroutine and a channel.
 
 ### Phase 1: `internal/stream`
 - Audit: confirm the `SourceConfig` field names don't collide, and check `exec.go`'s env handling to reuse it.
