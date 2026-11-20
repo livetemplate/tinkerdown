@@ -19,7 +19,12 @@ export class InteractiveBlock extends BaseBlock {
   // Bound event handlers (stored for removal in destroy)
   private readonly _handleClick = (e: Event) => this.handleClick(e);
   private readonly _handleSubmit = (e: Event) => this.handleSubmit(e);
-  private readonly _handleChange = (e: Event) => this.handleChange(e);
+  private readonly _handleChange = (e: Event) => this.handleFieldEvent(e, "change");
+  private readonly _handleInput = (e: Event) => this.handleFieldEvent(e, "input");
+
+  // lvt-mod:debounce / lvt-mod:throttle state, per field element
+  private rateLimits = new WeakMap<Element, { timer?: ReturnType<typeof setTimeout>; last: number }>();
+  private timers = new Set<ReturnType<typeof setTimeout>>();
 
   // Exec toolbar state
   private execToolbar: HTMLElement | null = null;
@@ -80,6 +85,9 @@ export class InteractiveBlock extends BaseBlock {
     this.element.removeEventListener("click", this._handleClick, true);
     this.element.removeEventListener("submit", this._handleSubmit, true);
     this.element.removeEventListener("change", this._handleChange, true);
+    this.element.removeEventListener("input", this._handleInput, true);
+    this.timers.forEach((t) => clearTimeout(t));
+    this.timers.clear();
     this.client = null;
     this.pendingForm = null;
     this.pendingAction = null;
@@ -158,6 +166,7 @@ export class InteractiveBlock extends BaseBlock {
     this.element.addEventListener("click", this._handleClick, true);
     this.element.addEventListener("submit", this._handleSubmit, true);
     this.element.addEventListener("change", this._handleChange, true);
+    this.element.addEventListener("input", this._handleInput, true);
   }
 
   /**
@@ -247,16 +256,64 @@ export class InteractiveBlock extends BaseBlock {
   }
 
   /**
-   * Handle change events (lvt-on:change).
+   * Handle field events (lvt-on:change, lvt-on:input) on inputs, selects and
+   * textareas. The payload carries the value under the field's name, so
+   * several fields can feed one action, and under "value" for older handlers.
+   * lvt-mod:debounce="ms" waits for a pause in events; lvt-mod:throttle="ms"
+   * sends at most once per interval, always ending with the latest value.
+   *
+   * @livetemplate/client routes these attributes for full apps, but its
+   * EventDelegator needs the client to own the socket, which blocks don't, and
+   * its rate-limit helpers drop the trailing value and can't be cancelled on
+   * destroy. Embedding the delegator is the deeper fix; see the stream plan.
    */
-  private handleChange(e: Event): void {
+  private handleFieldEvent(e: Event, eventType: "change" | "input"): void {
     const target = e.target as HTMLInputElement;
-    const action = target.getAttribute("lvt-on:change");
+    const action = target.getAttribute?.(`lvt-on:${eventType}`);
+    if (!action) return;
 
-    if (action) {
-      const data = { value: target.value };
+    const send = () => {
+      const data: Record<string, any> = { value: target.value };
+      if (target.name) data[target.name] = target.value;
       this.sendAction(action, data);
-      this.log("Change action:", action, data);
+      this.log(`Field action (lvt-on:${eventType}):`, action, data);
+    };
+
+    const debounce = parseInt(target.getAttribute("lvt-mod:debounce") || "", 10);
+    const throttle = parseInt(target.getAttribute("lvt-mod:throttle") || "", 10);
+    if (!(debounce > 0) && !(throttle > 0)) {
+      send();
+      return;
+    }
+
+    const state = this.rateLimits.get(target) || { last: 0 };
+    this.rateLimits.set(target, state);
+    const schedule = (delay: number) => {
+      if (state.timer) {
+        clearTimeout(state.timer);
+        this.timers.delete(state.timer);
+      }
+      const timer = setTimeout(() => {
+        this.timers.delete(timer);
+        state.timer = undefined;
+        state.last = Date.now();
+        send();
+      }, delay);
+      state.timer = timer;
+      this.timers.add(timer);
+    };
+
+    if (debounce > 0) {
+      schedule(debounce);
+      return;
+    }
+    if (state.timer) return; // the trailing send will carry the latest value
+    const wait = state.last + throttle - Date.now();
+    if (wait <= 0) {
+      state.last = Date.now();
+      send();
+    } else {
+      schedule(wait);
     }
   }
 

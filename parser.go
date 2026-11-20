@@ -52,6 +52,13 @@ type SourceConfig struct {
 	GroupBy   string            `yaml:"group_by,omitempty"`  // Field to group by
 	Aggregate map[string]string `yaml:"aggregate,omitempty"` // Field → aggregation expression
 	Filter    string            `yaml:"filter,omitempty"`    // Optional filter expression
+
+	// For stream and merge sources
+	Inputs  []string `yaml:"inputs,omitempty"`  // For merge: stream sources to interleave
+	Buffer  int      `yaml:"buffer,omitempty"`  // Rows kept (default 2000)
+	Backlog int      `yaml:"backlog,omitempty"` // For file streams: lines read from the end on start
+	Restart string   `yaml:"restart,omitempty"` // For cmd streams: on-exit (default) or never
+	Flush   string   `yaml:"flush,omitempty"`   // Minimum time between pushes to one page (default 100ms)
 }
 
 // StylingConfig represents styling/theme configuration.

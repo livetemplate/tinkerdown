@@ -11,6 +11,29 @@ Earlier releases (v0.1.x) are documented in the
 
 ## [Unreleased]
 
+### Added
+
+- **`stream` and `merge` sources follow logs and other live output.** A
+  `stream` source runs a long-lived command (`cmd:`, with `--allow-exec`) or
+  follows a file (`file:`), and the page shows each new line as it arrives.
+  A `merge` source combines streams into one timeline. Every page showing an
+  input shares one process. Lines are parsed as JSON, logfmt or plain text.
+  See [docs/sources/stream.md](docs/sources/stream.md).
+- **`Pause`, `Resume` and `Clear` buttons** for stream and merge blocks. They
+  change one page's view only.
+- **Filters gain `~` and `and`, and `Filter` forms gain field filters.**
+  `msg ~ timeout` keeps rows containing the text, ignoring case, and clauses
+  join with `and`. A field named `f.<field>` adds a substring filter that
+  combines with the selected tab.
+
+### Fixed
+
+- **`lvt-on:input`, `lvt-mod:debounce` and `lvt-mod:throttle` now work in
+  blocks,** as `lvt-attributes.md` documents. `lvt-on:change` now also sends
+  the value under the field's `name`, so several fields can feed one action.
+- **Closing a page now closes its sources.** Each connection's sources, such
+  as a sqlite database handle, were left open after the page closed.
+
 ## [v0.4.3] - 2026-11-18
 
 ### Fixed

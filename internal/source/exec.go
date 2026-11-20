@@ -68,11 +68,7 @@ func NewExecSourceWithConfig(name string, cfg config.SourceConfig, siteDir strin
 		}
 	}
 
-	// Expand environment variables in env map
-	env := make(map[string]string)
-	for k, v := range cfg.Env {
-		env[k] = os.ExpandEnv(v)
-	}
+	env := expandEnv(cfg.Env)
 
 	return &ExecSource{
 		name:      name,

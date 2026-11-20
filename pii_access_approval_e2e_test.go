@@ -3,12 +3,9 @@
 package tinkerdown_test
 
 import (
-	"bytes"
 	"context"
 	"database/sql"
 	"fmt"
-	"io"
-	"log"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -37,7 +34,7 @@ type channels struct {
 	console   []string
 	wsRecv    []string
 	wsSent    []string
-	serverLog *bytes.Buffer
+	serverLog *serverLog
 }
 
 func (c *channels) dump(t *testing.T) {
@@ -58,21 +55,6 @@ func truncate(s string, n int) string {
 		return s[:n] + "…"
 	}
 	return s
-}
-
-// captureServerLog redirects the standard logger (which the in-process server
-// writes to) into a buffer, teed to stderr so -v still shows it live.
-func captureServerLog(t *testing.T) *bytes.Buffer {
-	t.Helper()
-	buf := &bytes.Buffer{}
-	prevOut := log.Writer()
-	prevFlags := log.Flags()
-	log.SetOutput(io.MultiWriter(os.Stderr, buf))
-	t.Cleanup(func() {
-		log.SetOutput(prevOut)
-		log.SetFlags(prevFlags)
-	})
-	return buf
 }
 
 func mustReadFile(t *testing.T, path string) string {

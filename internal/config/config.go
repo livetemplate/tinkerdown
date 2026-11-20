@@ -296,7 +296,7 @@ type SourceConfig struct {
 	// requests queue" rather than a table name. See Config.Generation.
 	Describes string `yaml:"describes,omitempty"`
 
-	Type        string                 `yaml:"type"`                   // "exec", "pg", "rest", "csv", "json", "markdown", "sqlite", "wasm", "graphql"
+	Type        string                 `yaml:"type"`                   // "exec", "pg", "rest", "csv", "json", "markdown", "sqlite", "wasm", "graphql", "computed", "stream", "merge"
 	Cmd         string                 `yaml:"cmd,omitempty"`          // For exec: command to run
 	Query       string                 `yaml:"query,omitempty"`        // For pg: SQL query
 	From        string                 `yaml:"from,omitempty"`         // For rest/graphql: API endpoint URL
@@ -325,6 +325,13 @@ type SourceConfig struct {
 	GroupBy   string            `yaml:"group_by,omitempty"`   // Field to group by (e.g., "category")
 	Aggregate map[string]string `yaml:"aggregate,omitempty"`  // Field → aggregation expression (e.g., "total": "sum(amount)")
 	Filter    string            `yaml:"filter,omitempty"`     // Optional filter expression (e.g., "status = active")
+
+	// For stream and merge sources (cmd or file is the input; format applies too)
+	Inputs  []string `yaml:"inputs,omitempty"`  // For merge: the stream sources to interleave
+	Buffer  int      `yaml:"buffer,omitempty"`  // For stream/merge: rows kept (default 2000)
+	Backlog int      `yaml:"backlog,omitempty"` // For stream with file: lines read from the end on start (default 200)
+	Restart string   `yaml:"restart,omitempty"` // For stream with cmd: on-exit (default) or never
+	Flush   string   `yaml:"flush,omitempty"`   // For stream/merge: minimum time between pushes to one page (default 100ms)
 }
 
 // RetryConfig configures retry behavior for a source
@@ -1008,6 +1015,11 @@ func Load(configPath string) (*Config, error) {
 		return nil, err
 	}
 	if err := config.ValidateStyleTokens(); err != nil {
+		return nil, err
+	}
+	// A bad stream or merge definition would otherwise surface only when a page
+	// using it is opened.
+	if err := config.ValidateStreamSources(); err != nil {
 		return nil, err
 	}
 

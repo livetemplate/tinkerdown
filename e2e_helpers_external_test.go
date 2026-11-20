@@ -11,13 +11,17 @@
 package tinkerdown_test
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
+	"log"
 	"net"
 	"net/http"
 	"os/exec"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -270,4 +274,39 @@ func WaitForServer(t *testing.T, serverURL string, timeout time.Duration) {
 		time.Sleep(100 * time.Millisecond)
 	}
 	t.Fatalf("Server at %s failed to become ready within %v", serverURL, timeout)
+}
+
+// serverLog collects the in-process server's log output during a test, so a
+// failing e2e test can print what the server did alongside the browser's view.
+// Server goroutines write to it, so it is locked.
+type serverLog struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (l *serverLog) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.buf.Write(p)
+}
+
+// String returns everything logged so far.
+func (l *serverLog) String() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.buf.String()
+}
+
+// captureServerLog tees the standard logger, which the in-process server
+// writes to, into a buffer until the test ends; stderr still shows it live.
+func captureServerLog(t *testing.T) *serverLog {
+	t.Helper()
+	logs := &serverLog{}
+	prevOut, prevFlags := log.Writer(), log.Flags()
+	log.SetOutput(io.MultiWriter(prevOut, logs))
+	t.Cleanup(func() {
+		log.SetOutput(prevOut)
+		log.SetFlags(prevFlags)
+	})
+	return logs
 }

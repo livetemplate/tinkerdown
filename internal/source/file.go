@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 )
 
@@ -109,10 +108,7 @@ func (s *JSONFileSource) Close() error {
 
 // resolvePath makes a path absolute relative to siteDir
 func (s *JSONFileSource) resolvePath(path string) string {
-	if filepath.IsAbs(path) {
-		return path
-	}
-	return filepath.Join(s.siteDir, path)
+	return resolveSitePath(s.siteDir, path)
 }
 
 // CSVFileSource reads data from a CSV file
@@ -205,8 +201,5 @@ func (s *CSVFileSource) Close() error {
 
 // resolvePath makes a path absolute relative to siteDir
 func (s *CSVFileSource) resolvePath(path string) string {
-	if filepath.IsAbs(path) {
-		return path
-	}
-	return filepath.Join(s.siteDir, path)
+	return resolveSitePath(s.siteDir, path)
 }

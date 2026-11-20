@@ -58,7 +58,8 @@ clean: ## Remove build artifacts
 .PHONY: test
 test: ## Run all tests
 	@echo "Running tests..."
-	$(GO) test -v ./...
+	@# The root package's browser e2e tests take ~15 minutes, past go test's 10m default.
+	$(GO) test -v -timeout 30m ./...
 
 .PHONY: test-coverage
 test-coverage: ## Run tests with coverage report

@@ -181,19 +181,21 @@ func parseFuncExpr(input string) (*FuncExpr, error) {
 func parseWhereClause(input string) (*WhereClause, error) {
 	input = strings.TrimSpace(input)
 
-	// Try to match comparison operators (check multi-char first)
-	operators := []string{"!=", ">=", "<=", "=", ">", "<"}
+	// The operator is the earliest one in the input, longest first at the same
+	// position, so "a = x>y" compares a with "x>y" and "msg ~ k=v" searches for "k=v".
+	operators := []string{"!=", ">=", "<=", "=", ">", "<", "~"}
+	best, bestOp := -1, ""
 	for _, op := range operators {
-		if idx := strings.Index(input, op); idx > 0 {
-			field := strings.TrimSpace(input[:idx])
-			valueStr := strings.TrimSpace(input[idx+len(op):])
-			value := parseValue(valueStr)
-			return &WhereClause{
-				Field:    field,
-				Operator: op,
-				Value:    value,
-			}, nil
+		if idx := strings.Index(input, op); idx > 0 && (best < 0 || idx < best) {
+			best, bestOp = idx, op
 		}
+	}
+	if best > 0 {
+		return &WhereClause{
+			Field:    strings.TrimSpace(input[:best]),
+			Operator: bestOp,
+			Value:    parseValue(strings.TrimSpace(input[best+len(bestOp):])),
+		}, nil
 	}
 
 	// No operator - treat as boolean field check
@@ -313,8 +315,21 @@ func matchesCondition(val interface{}, operator string, target interface{}) bool
 		return exprCompareValues(val, target) >= 0
 	case "<=":
 		return exprCompareValues(val, target) <= 0
+	case "~":
+		if val == nil {
+			return false
+		}
+		return strings.Contains(strings.ToLower(asString(val)), strings.ToLower(asString(target)))
 	}
 	return false
+}
+
+// asString formats v for text matching, without fmt for the common string case.
+func asString(v interface{}) string {
+	if s, ok := v.(string); ok {
+		return s
+	}
+	return fmt.Sprint(v)
 }
 
 // valuesEqual checks if two values are equal.

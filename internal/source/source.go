@@ -224,12 +224,8 @@ func (r *Registry) InvalidateAllCaches() {
 func createSource(name string, cfg config.SourceConfig, siteDir, currentFile string) (Source, error) {
 	switch cfg.Type {
 	case "exec":
-		if !config.IsExecAllowed() {
-			return nil, &ValidationError{
-				Source: name,
-				Field:  "type",
-				Reason: "exec sources are disabled by default for security. Use --allow-exec flag to enable.",
-			}
+		if err := requireExec(name, "type", "exec sources"); err != nil {
+			return nil, err
 		}
 		return NewExecSourceWithConfig(name, cfg, siteDir)
 	case "pg":
@@ -249,6 +245,9 @@ func createSource(name string, cfg config.SourceConfig, siteDir, currentFile str
 		return wasm.NewWasmSource(name, cfg.Path, siteDir, cfg.Options)
 	case "graphql":
 		return NewGraphQLSource(name, cfg, siteDir)
+	case "stream", "merge":
+		// Streams need the server's hub, so only served pages can show them.
+		return nil, fmt.Errorf("%s source %q is only available to pages served by tinkerdown serve", cfg.Type, name)
 	default:
 		return nil, &UnsupportedSourceError{Type: cfg.Type}
 	}

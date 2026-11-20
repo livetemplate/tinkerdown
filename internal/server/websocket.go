@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"testing/fstest"
+	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/livetemplate/livetemplate"
@@ -21,6 +22,7 @@ import (
 	"github.com/livetemplate/tinkerdown/internal/config"
 	"github.com/livetemplate/tinkerdown/internal/runtime"
 	"github.com/livetemplate/tinkerdown/internal/source"
+	"github.com/livetemplate/tinkerdown/internal/stream"
 )
 
 // newUpgrader creates a WebSocket upgrader with origin validation.
@@ -112,6 +114,9 @@ type WebSocketHandler struct {
 	config         *config.Config                  // Site configuration with sources
 	conn           *websocket.Conn                 // Current connection for this handler
 	actionSources  map[string]source.Source        // Cached sources for custom actions
+	done           chan struct{}                   // closed when the connection ends; stops stream followers
+	closeOnce      sync.Once
+	followers      sync.WaitGroup // stream followers of this connection
 }
 
 // BlockInstance represents a running LiveTemplate instance for an interactive block.
@@ -141,6 +146,7 @@ func NewWebSocketHandler(page *tinkerdown.Page, server *Server, debug bool, root
 		rootDir:        rootDir,
 		config:         cfg,
 		actionSources:  make(map[string]source.Source),
+		done:           make(chan struct{}),
 	}
 
 	// Initialize lvt-source blocks (no compilation needed)
@@ -149,8 +155,12 @@ func NewWebSocketHandler(page *tinkerdown.Page, server *Server, debug bool, root
 	return h
 }
 
-// Close cleans up all resources
+// Close cleans up all resources. Stream followers stop first, before h.mu is
+// taken (a follower's push takes it), so no push renders a closed state.
 func (h *WebSocketHandler) Close() {
+	h.closeOnce.Do(func() { close(h.done) })
+	h.followers.Wait()
+
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -241,7 +251,8 @@ func (h *WebSocketHandler) initializeSourceBlocks() {
 				// Computed sources need a source lookup to find their parent
 				state, err = runtime.NewGenericStateForComputed(srcName, srcCfg, rootDir, curFile, blockMeta, h.lookupSource)
 			} else {
-				state, err = runtime.NewGenericStateWithMetadata(srcName, srcCfg, rootDir, curFile, blockMeta)
+				state, err = runtime.NewGenericStateWithMetadata(srcName, srcCfg, rootDir, curFile, blockMeta,
+					runtime.WithStreams(h.streamHub(), h.mergeInputLookup(srcName)))
 			}
 			if err != nil {
 				log.Printf("[WS] Failed to create runtime state for %s: %v", srcName, err)
@@ -365,6 +376,11 @@ func (h *WebSocketHandler) getEffectiveSource(name string) (config.SourceConfig,
 				GroupBy:     src.GroupBy,
 				Aggregate:   src.Aggregate,
 				Filter:      src.Filter,
+				Inputs:      src.Inputs,
+				Buffer:      src.Buffer,
+				Backlog:     src.Backlog,
+				Restart:     src.Restart,
+				Flush:       src.Flush,
 			}, true
 		}
 	}
@@ -404,6 +420,7 @@ func (h *WebSocketHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			h.server.UnregisterConnection(conn)
 		}
 		conn.Close()
+		h.Close()
 	}()
 
 	// Register connection for reload broadcasts (with handler for source refresh)
@@ -530,6 +547,9 @@ func (h *WebSocketHandler) initializeInstances(conn *websocket.Conn) {
 	// Send initial states (outside the h.mu lock)
 	for _, instance := range instances {
 		h.sendInitialState(instance)
+	}
+	for _, instance := range instances {
+		h.followStream(instance)
 	}
 
 	// Evaluate and send expression updates once after all blocks are initialized
@@ -1404,4 +1424,68 @@ func createSourceForAction(name string, cfg config.SourceConfig, siteDir, curren
 	default:
 		return nil, fmt.Errorf("unsupported source type %q", cfg.Type)
 	}
+}
+
+// mergeInputLookup resolves the inputs of the merge named merge. An approved
+// merge is pinned to its manifest definition, so its inputs come from the
+// manifest too; otherwise a page could redefine an input and change what the
+// approved source runs. Other merges use the page's usual source precedence.
+func (h *WebSocketHandler) mergeInputLookup(merge string) func(string) (config.SourceConfig, bool) {
+	if h.config == nil || !h.config.ApprovedSource(merge) {
+		return h.getEffectiveSource
+	}
+	return func(name string) (config.SourceConfig, bool) {
+		src, ok := h.config.Sources[name]
+		return src, ok
+	}
+}
+
+func (h *WebSocketHandler) streamHub() *stream.Hub {
+	if h.server == nil {
+		return nil
+	}
+	return h.server.streams
+}
+
+// followStream pushes a stream block's new rows to this connection until it
+// closes. Wake-ups coalesce, and pushes are at least FlushInterval apart, so a
+// burst of lines becomes one refresh. A paused page is skipped; Resume refreshes.
+func (h *WebSocketHandler) followStream(instance *BlockInstance) {
+	f, ok := instance.state.(runtime.Follower)
+	if !ok {
+		return
+	}
+	sub := f.Subscribe()
+	if sub == nil {
+		return
+	}
+	push := func() {
+		if f.IsPaused() {
+			return
+		}
+		if err := h.handleAction(instance, "Refresh", nil); err != nil {
+			log.Printf("[WS] stream refresh of block %s: %v", instance.blockID, err)
+			return
+		}
+		h.sendUpdate(instance)
+		h.refreshDependentComputedSources(instance, instance.conn)
+	}
+	h.followers.Go(func() {
+		defer sub.Close()
+		// Rows published between the initial fetch and Subscribe sent no wake-up.
+		push()
+		for {
+			select {
+			case <-h.done:
+				return
+			case <-sub.C:
+			}
+			push()
+			select {
+			case <-h.done:
+				return
+			case <-time.After(f.FlushInterval()):
+			}
+		}
+	})
 }

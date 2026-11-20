@@ -109,13 +109,21 @@ Handle form submissions. Use `name` attribute on `<form>` elements.
 
 ### lvt-on:change
 
-Handle change events (inputs, selects).
+Handle change events (inputs, selects). The action gets the field's value as `value`, and also under the field's `name` when it has one.
 
 ```html
-<select lvt-on:change="FilterByCategory">
+<select name="category" lvt-on:change="FilterByCategory">
   <option value="all">All</option>
   <option value="active">Active</option>
 </select>
+```
+
+### lvt-on:input
+
+Handle each keystroke in an input or textarea. It sends the same data as `lvt-on:change`. Add `lvt-mod:debounce` so the action runs once typing pauses, not on every key.
+
+```html
+<input type="search" name="f.msg" lvt-on:input="Filter" lvt-mod:debounce="250">
 ```
 
 ### lvt-key
@@ -166,7 +174,15 @@ Control scroll behavior.
 </div>
 ```
 
-**Values:** `bottom`, `top`, `sticky`
+**Values:**
+
+| Value | Behavior |
+|-------|----------|
+| `bottom` | Scroll to the bottom on every update. |
+| `bottom-sticky` | Follow new content at the bottom until the reader scrolls up; resume when they scroll back down. |
+| `top` | Scroll to the top on every update. |
+| `into-view` | Scroll the element itself into view once. |
+| `preserve` | Leave the scroll position alone. |
 
 ### lvt-fx:highlight
 
