@@ -1,0 +1,7 @@
+sources:
+  demo:
+    type: stream
+    cmd: ./demo-logs.sh
+  all:
+    type: merge
+    inputs: [demo]

@@ -37,6 +37,8 @@ sources:
 | [markdown](../sources/markdown.md) | Markdown files | Content management |
 | [wasm](../sources/wasm.md) | WebAssembly modules | Custom sources |
 | [computed](../sources/computed.md) | Derived/aggregated data | Dashboards, summaries |
+| [stream](../sources/stream.md) | Long-running command or growing file | Logs, live output |
+| [merge](../sources/stream.md) | Several streams in one timeline | Combined logs |
 
 ## Frontmatter Configuration (Recommended)
 
@@ -95,6 +97,34 @@ sources:
 ```
 
 See [Configuration Reference](../reference/config.md) for details.
+
+## Filtering
+
+A heading written as tabs filters the block below it. Each tab after the first carries a filter expression:
+
+```markdown
+## [All] | [Errors] level = error | [Web] source = web
+```
+
+A `Filter` form adds field filters. Each field named `f.<field>` keeps rows whose `<field>` contains the typed text, ignoring case. An empty field removes its filter:
+
+```html
+<form name="Filter">
+  <input type="search" name="f.msg" lvt-on:input="Filter" lvt-mod:debounce="250">
+</form>
+```
+
+A page shows rows that match the selected tab and every field filter. Changing a field keeps the tab, and switching tabs keeps the fields.
+
+Filter expressions support:
+
+| Expression | Keeps rows where |
+|------------|------------------|
+| `done` / `not done` | the field is truthy / falsy |
+| `status = active`, `status != active` | the field equals / differs from the value |
+| `n > 3`, `n >= 3`, `n < 3`, `n <= 3` | the field compares as a number |
+| `msg ~ timeout` | the field contains the text, ignoring case |
+| `level = error and source = web` | every clause matches |
 
 ## Caching
 

@@ -58,7 +58,7 @@ styling:
 # Shared data sources
 sources:
   source_name:
-    type: sqlite|rest|exec|json|csv|markdown|wasm
+    type: sqlite|rest|exec|json|csv|markdown|wasm|stream|merge
     # Type-specific options...
     cache:
       ttl: 5m
@@ -196,7 +196,7 @@ Sources in `tinkerdown.yaml` are available to **all pages**. Page-specific sourc
 ```yaml
 sources:
   example:
-    type: <source_type>    # Required: sqlite, rest, graphql, exec, json, csv, markdown, wasm
+    type: <source_type>    # Required: sqlite, rest, graphql, exec, json, csv, markdown, wasm, computed, stream, merge
     cache:                 # Optional: caching configuration
       ttl: 5m              # Time-to-live
       strategy: simple     # simple or stale-while-revalidate
