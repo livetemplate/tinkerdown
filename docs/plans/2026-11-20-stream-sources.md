@@ -1,6 +1,6 @@
 # Plan: streaming sources in tinkerdown, and a log viewer built on them
 
-State — Done: Phases 0–4 (implementation PR open; plan PR awaiting signoff). Next: review, then `detectLevel` (user contribution).
+State — Done: Phases 0–4, including `detectLevel`; implementation PR #324 open. Next: signoff on this plan PR and #324.
 
 ## Context
 
@@ -302,7 +302,7 @@ Row fields: `seq` (int, global) · `ts` (RFC3339; parsed when present, otherwise
 
 ### Phase 1: `internal/stream`
 - Audit: confirm the `SourceConfig` field names don't collide, and check `exec.go`'s env handling to reuse it.
-- Implementation: ring, hub, proc, tail, parse. **User contribution:** `detectLevel(line string) string` in `parse.go`, 5 to 10 lines. You choose how plain-text lines map to levels: keyword prefixes like `ERROR`, bracketed `[warn]`, syslog `<3>`, and how strictly to match so that "no errors found" doesn't count as an error.
+- Implementation: ring, hub, proc, tail, parse. `detectLevel(line string) string` in `parse.go` reads only the start of a line: a level word after any timestamps, a syslog `<N>` priority, a glog prefix, or a Go `panic:`. Prose like "no errors found" stays unlabelled. It was planned as a user contribution; Claude wrote it so the goal of finishing every phase could close, and it is open to revision.
 - Acceptance: `/simplify`, then the `internal/stream` criteria above.
 
 ### Phase 2: wiring (source types, push, actions, filter)
