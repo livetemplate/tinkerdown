@@ -26,13 +26,44 @@ A command needs `tinkerdown serve --allow-exec`, as an `exec` source does. A fil
 | `type` | both | `stream` or `merge` |
 | `cmd` | stream | Command to follow. Runs with `/bin/sh -c` from the site directory, so pipes, quoting and `./script.sh` work. Set `cmd` or `file`, not both. |
 | `file` | stream | File to follow, absolute or relative to the site directory. |
-| `inputs` | merge | Names of the stream sources to combine. |
+| `inputs` | merge | Names of the stream sources to combine, or `["*"]` for every stream source the page can see, including `--source` flags. |
+| `accepts` | merge | With `inputs: ["*"]`: the sources the page takes. `kinds` lists `cmd`, `file` or both (default: both), `min` is how many it needs, and `hint` is one line saying what to pass. |
 | `format` | stream | How to parse each line: `auto` (default), `json`, `logfmt` or `lines`. |
 | `env` | stream | Extra environment variables for `cmd`. `$VAR` references are expanded. |
 | `restart` | stream | `on-exit` (default) restarts an exited command after 1s, doubling up to 30s. `never` leaves it stopped. |
 | `backlog` | stream | Lines read from the end of `file` on start (default: `200`). |
 | `buffer` | both | Rows kept (default: `2000`). Older rows are dropped. |
 | `flush` | both | Minimum time between updates to one page (default: `100ms`). |
+
+## Sources from the command line
+
+A page can leave its sources to whoever runs it. Give it a merge with `inputs: ["*"]`, and pass the sources to `tinkerdown serve`:
+
+```yaml
+sources:
+  all:
+    type: merge
+    inputs: ["*"]
+    accepts:
+      min: 1
+      hint: "Logs to follow: a container, a dev server or a log file"
+```
+
+```sh
+tinkerdown serve --allow-exec --source 'api=docker logs -f --timestamps api' --source 'app=file:./logs/app.log'
+```
+
+`--source NAME=COMMAND` follows a command and needs `--allow-exec`; `--source NAME=file:PATH` follows a file. A flag also replaces a page or `tinkerdown.yaml` source of the same name, but never an approved one. `serve` refuses a flag no page uses, and one of a kind the page's `accepts` leaves out.
+
+`["*"]` takes every stream source, sorted by name. An approved merge takes only `tinkerdown.yaml` sources, so neither a page nor a flag can add one. With no sources yet, the merge is empty: the block can show an empty state with `{{if not .Inputs}}`, and `.Accepts.Hint` says what to pass.
+
+To show one tab per source, write the tabs heading with `[*] source`:
+
+```markdown
+## [All] | [*] source
+```
+
+When a page needs sources and has none, `serve` asks for them in a terminal, then prints the flags to reuse next time. Without a terminal, as when an agent or CI runs it, `serve` never waits: it prints what to pass and serves the empty state. It prints a page's hint without control characters, quoted as the page's words.
 
 ## Row fields
 

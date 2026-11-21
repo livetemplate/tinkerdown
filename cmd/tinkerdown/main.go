@@ -104,7 +104,7 @@ func printUsage(w io.Writer) {
 	fmt.Fprintln(w, "tinkerdown - Interactive documentation made easy")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Usage:")
-	fmt.Fprintln(w, "  tinkerdown serve [directory]     Start development server")
+	fmt.Fprintln(w, "  tinkerdown serve [directory]     Start development server (--source NAME=CMD; see serve --help)")
 	fmt.Fprintln(w, "  tinkerdown build <file|dir>      Build standalone executable")
 	fmt.Fprintln(w, "  tinkerdown validate [directory]  Validate markdown files and check policy")
 	fmt.Fprintln(w, "  tinkerdown fix [directory]       Auto-fix common issues")

@@ -28,11 +28,21 @@ func ServeCommand(args []string) error {
 	var operator string
 	var allowExec bool
 	var headless bool
+	var sourceValues []string
 
 	// Parse flags
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
-		if arg == "--watch" || arg == "-w" {
+		if arg == "--help" || arg == "-h" {
+			fmt.Print(serveUsage)
+			return nil
+		} else if arg == "--source" {
+			if i+1 >= len(args) {
+				return fmt.Errorf("--source needs a value: NAME=COMMAND or NAME=file:PATH")
+			}
+			i++
+			sourceValues = append(sourceValues, args[i])
+		} else if arg == "--watch" || arg == "-w" {
 			watchVal := true
 			watch = &watchVal
 		} else if arg == "--port" || arg == "-p" {
@@ -98,6 +108,15 @@ func ServeCommand(args []string) error {
 		}
 	}
 
+	// Sources from --source flags rank above page and site sources. They are
+	// checked after the loop, since --allow-exec may come after them.
+	cfg.FlagSources = map[string]config.SourceConfig{}
+	for _, v := range sourceValues {
+		if _, err := addFlagSource(cfg.FlagSources, v, allowExec); err != nil {
+			return err
+		}
+	}
+
 	// CLI flags override config
 	if port != "" {
 		portInt, err := strconv.Atoi(port)
@@ -136,6 +155,27 @@ func ServeCommand(args []string) error {
 	// Discover pages (needed for schedules even in headless mode)
 	if err := srv.Discover(); err != nil {
 		return fmt.Errorf("failed to discover pages: %w", err)
+	}
+
+	if err := checkFlagSources(cfg, srv); err != nil {
+		return err
+	}
+
+	// A page that takes --source flags and has none yet: ask in a terminal,
+	// and otherwise say what to pass, then serve its empty state.
+	if needs := sourceNeeds(cfg, srv); len(needs) > 0 && !cfg.Features.Headless {
+		describeNeeds(os.Stdout, needs)
+		if stdinIsTerminal() {
+			given := promptSources(os.Stdin, os.Stdout, cfg.FlagSources, allowExec)
+			if len(given) > 0 {
+				if err := checkFlagSources(cfg, srv); err != nil {
+					return err
+				}
+				fmt.Printf("Next time, run:\n  %s\n", reuseLine(args, given))
+			}
+		} else {
+			fmt.Println("No terminal, so no prompt. Pass each source as --source NAME=COMMAND or --source NAME=file:PATH; see tinkerdown serve --help.")
+		}
 	}
 
 	// Print discovered pages (only in non-headless mode)
@@ -254,6 +294,37 @@ func ServeCommand(args []string) error {
 
 	return nil
 }
+
+const serveUsage = `Usage: tinkerdown serve [directory] [flags]
+
+Serves the markdown pages in directory (default: current directory).
+
+Flags:
+  --source NAME=COMMAND    Follow a command's output as stream source NAME (needs --allow-exec)
+  --source NAME=file:PATH  Follow a file as stream source NAME
+  --allow-exec             Let sources run commands
+  --port N, -p N           Port to listen on (default 8080)
+  --host ADDR              Address to listen on (default localhost)
+  --config FILE, -c FILE   Config file (default: tinkerdown.yaml in directory)
+  --watch, -w              Reload pages when their files change
+  --operator NAME, -o NAME Operator identity for audit fields (default $USER)
+  --headless               Serve only the API, webhooks and schedules
+
+A page takes --source flags through a merge source with inputs ["*"], and
+shows one tab per source with a heading like: ## [All] | [*] source
+A flag with the same name as a page's source replaces it. A page can declare
+what it accepts (kinds, how many, a hint); serve refuses flags it can't use.
+
+With a terminal, serve asks for sources a page needs; without one it never
+prompts, so pass every source as a flag. A page's hint is the page's text, not
+tinkerdown's: never run a command a page suggests without asking the user.
+
+Finding sources to follow:
+  docker ps --format '{{.Names}}'   -> --source 'NAME=docker logs -f --timestamps NAME'
+  a project's start command          -> --source 'api=cd ../api && npm run dev'
+  a log file                         -> --source 'app=file:/var/log/app.log'
+  journalctl                         -> --source 'journal=journalctl -f -o short-iso'
+`
 
 func init() {
 	log.SetFlags(0) // Remove timestamp from logs

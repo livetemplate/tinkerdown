@@ -118,3 +118,52 @@ func TestProcessTabbedHeadings(t *testing.T) {
 		})
 	}
 }
+
+func TestSourceTabsExpandPerInput(t *testing.T) {
+	in := `<h2 id="all">[All] | [*] source</h2>` + "\n" +
+		`<div class="tinkerdown-interactive-block" data-tinkerdown-block data-block-id="lvt-0" data-block-type="lvt"></div>`
+	out := processTabbedHeadings(in)
+	if !strings.Contains(out, `data-tabs-each="source"`) || strings.Contains(out, `>*</button>`) {
+		t.Fatalf("[*] source should leave a placeholder, not a tab:\n%s", out)
+	}
+
+	var asked string
+	expanded := ExpandSourceTabs(out, func(blockID string) []string {
+		asked = blockID
+		return []string{"api", "app"}
+	})
+	if asked != "lvt-0" {
+		t.Errorf("expanded for block %q, want the block after the heading, lvt-0", asked)
+	}
+	for _, want := range []string{
+		`data-tab-index="0" data-filter=""`,
+		`data-tab-index="1" data-filter="source = api" id="all-tabs-tab-1"`,
+		`data-tab-index="2" data-filter="source = app"`,
+		`>api</button>`, `data-block-id="lvt-0"`,
+	} {
+		if !strings.Contains(expanded, want) {
+			t.Errorf("expanded tabs missing %q:\n%s", want, expanded)
+		}
+	}
+	if strings.Contains(expanded, "data-tabs-each") {
+		t.Error("placeholder left in the page")
+	}
+
+	// A block that isn't a merge gets no extra tabs, and the page is intact.
+	none := ExpandSourceTabs(out, func(string) []string { return nil })
+	if strings.Contains(none, "data-tabs-each") || !strings.Contains(none, `data-block-id="lvt-0"`) || strings.Contains(none, `data-tab-index="1"`) {
+		t.Errorf("no inputs should leave just [All]:\n%s", none)
+	}
+}
+
+// A fixed tab written after [*] still comes first, so indexes stay unique.
+func TestSourceTabsGoLast(t *testing.T) {
+	in := `<h2 id="x">[*] source | [Errors] level = error</h2>` + "\n" +
+		`<div class="tinkerdown-interactive-block" data-tinkerdown-block data-block-id="lvt-0" data-block-type="lvt"></div>`
+	out := ExpandSourceTabs(processTabbedHeadings(in), func(string) []string { return []string{"api"} })
+	errorsTab := strings.Index(out, `data-tab-index="0" data-filter="level = error"`)
+	apiTab := strings.Index(out, `data-tab-index="1" data-filter="source = api"`)
+	if errorsTab < 0 || apiTab < errorsTab {
+		t.Fatalf("want [Errors] at 0 then api at 1:\n%s", out)
+	}
+}

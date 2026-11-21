@@ -52,6 +52,10 @@ type Config struct {
 	// configured upstream host. The full request path is forwarded
 	// unchanged — the upstream is responsible for its own URL structure.
 	Routes []RouteEntry `yaml:"routes,omitempty"`
+
+	// FlagSources are stream sources from `serve --source`. They rank above
+	// page and site sources, below approved ones.
+	FlagSources map[string]SourceConfig `yaml:"-"`
 }
 
 // RouteEntry binds a URL pattern to a destination. A pattern ending in
@@ -332,6 +336,21 @@ type SourceConfig struct {
 	Backlog int      `yaml:"backlog,omitempty"` // For stream with file: lines read from the end on start (default 200)
 	Restart string   `yaml:"restart,omitempty"` // For stream with cmd: on-exit (default) or never
 	Flush   string   `yaml:"flush,omitempty"`   // For stream/merge: minimum time between pushes to one page (default 100ms)
+
+	// Accepts, on a merge with inputs ["*"], says which sources the page takes.
+	Accepts *SourceAccepts `yaml:"accepts,omitempty"`
+
+	// Wildcard is set by ExpandInputs on a merge declared with inputs ["*"]:
+	// its Inputs are the sources found, and empty means "no sources yet".
+	Wildcard bool `yaml:"-"`
+}
+
+// SourceAccepts declares the sources a page's ["*"] merge takes. It describes
+// sources and runs nothing, so any page may declare it.
+type SourceAccepts struct {
+	Kinds []string `yaml:"kinds,omitempty"` // "cmd", "file" or both (default: both)
+	Min   int      `yaml:"min,omitempty"`   // sources needed before the page is useful
+	Hint  string   `yaml:"hint,omitempty"`  // one line saying what to pass
 }
 
 // RetryConfig configures retry behavior for a source

@@ -67,6 +67,11 @@ type GenericState struct {
 	// Stream-specific: Pause/Resume set it; pushes skip a paused page.
 	Paused bool `json:"paused"`
 
+	// Inputs are a merge block's input names, with ["*"] expanded, and Accepts
+	// what its page declared it takes, so a template can render an empty state.
+	Inputs  []string              `json:"inputs,omitempty"`
+	Accepts *config.SourceAccepts `json:"accepts,omitempty"`
+
 	// Private runtime fields (not serialized)
 	source       source.Source
 	sourceCfg    config.SourceConfig
@@ -202,6 +207,7 @@ func NewGenericStateWithMetadata(name string, cfg config.SourceConfig, siteDir, 
 		siteDir:    siteDir,
 		Errors:     make(map[string]string),
 	}
+	s.Inputs, s.Accepts = cfg.Inputs, cfg.Accepts // set only on merges
 
 	// Parse metadata for element type and columns
 	if metadata != nil {

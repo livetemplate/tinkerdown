@@ -3,12 +3,16 @@ package server
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
 	"log"
+	"maps"
 	"net/http"
 	"net/url"
 	"path/filepath"
+	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing/fstest"
@@ -217,7 +221,7 @@ func (h *WebSocketHandler) initializeSourceBlocks() {
 
 		// lvt-source block - use runtime.GenericState (no compilation needed!)
 		// Check page-level sources first (from frontmatter), then site-level (from tinkerdown.yaml)
-		sourceCfg, found := h.getEffectiveSource(sourceName)
+		sourceCfg, found := ResolveSource(h.config, h.page, sourceName)
 		if !found {
 			log.Printf("[WS] Source %q not found (checked frontmatter and tinkerdown.yaml) for block %s", sourceName, blockID)
 			continue
@@ -252,11 +256,11 @@ func (h *WebSocketHandler) initializeSourceBlocks() {
 				state, err = runtime.NewGenericStateForComputed(srcName, srcCfg, rootDir, curFile, blockMeta, h.lookupSource)
 			} else {
 				state, err = runtime.NewGenericStateWithMetadata(srcName, srcCfg, rootDir, curFile, blockMeta,
-					runtime.WithStreams(h.streamHub(), h.mergeInputLookup(srcName)))
+					runtime.WithStreams(h.streamHub(), mergeInputLookup(h.config, h.page, srcName)))
 			}
 			if err != nil {
 				log.Printf("[WS] Failed to create runtime state for %s: %v", srcName, err)
-				return nil
+				return blockErrorFor(srcName, err)
 			}
 
 			// Configure page-level settings: custom actions, the source registry,
@@ -332,11 +336,17 @@ func (h *WebSocketHandler) initializeSourceBlocks() {
 // never approved — passing any check that reasons about names alone. Pinning makes an
 // approved name mean one thing regardless of what the page says.
 func (h *WebSocketHandler) getEffectiveSource(name string) (config.SourceConfig, bool) {
+	return effectiveSource(h.config, h.page, name)
+}
+
+// effectiveSource resolves name on page with the precedence getEffectiveSource
+// documents.
+func effectiveSource(cfg *config.Config, page *tinkerdown.Page, name string) (config.SourceConfig, bool) {
 	// Tier 1: an approved source is pinned to its manifest definition.
-	if h.config.ApprovedSource(name) {
-		if src, ok := h.config.Sources[name]; ok {
-			if h.page != nil && h.page.Config.Sources != nil {
-				if _, shadowed := h.page.Config.Sources[name]; shadowed {
+	if cfg.ApprovedSource(name) {
+		if src, ok := cfg.Sources[name]; ok {
+			if page != nil && page.Config.Sources != nil {
+				if _, shadowed := page.Config.Sources[name]; shadowed {
 					// Surfaced rather than silently dropped: a generating agent that
 					// tries this needs to see why its definition had no effect.
 					log.Printf("[WS] source %q is approved in tinkerdown.yaml and cannot be "+
@@ -347,52 +357,94 @@ func (h *WebSocketHandler) getEffectiveSource(name string) (config.SourceConfig,
 		}
 	}
 
+	// Tier 2: a source from `serve --source` overrides the page and the site.
+	if cfg != nil {
+		if src, ok := cfg.FlagSources[name]; ok {
+			return src, true
+		}
+	}
+
 	// Check page-level sources first (from frontmatter)
-	if h.page != nil && h.page.Config.Sources != nil {
-		if src, ok := h.page.Config.Sources[name]; ok {
-			// Convert tinkerdown.SourceConfig to config.SourceConfig
-			return config.SourceConfig{
-				Type:        src.Type,
-				Cmd:         src.Cmd,
-				Query:       src.Query,
-				From:        src.From,
-				File:        src.File,
-				Anchor:      src.Anchor,
-				DB:          src.DB,
-				Table:       src.Table,
-				Path:        src.Path,
-				QueryFile:   src.QueryFile,
-				Variables:   src.Variables,
-				Headers:     src.Headers,
-				QueryParams: src.QueryParams,
-				ResultPath:  src.ResultPath,
-				Readonly:    src.Readonly,
-				Options:     src.Options,
-				Manual:      src.Manual,
-				Format:      src.Format,
-				Delimiter:   src.Delimiter,
-				Env:         src.Env,
-				Timeout:     src.Timeout,
-				GroupBy:     src.GroupBy,
-				Aggregate:   src.Aggregate,
-				Filter:      src.Filter,
-				Inputs:      src.Inputs,
-				Buffer:      src.Buffer,
-				Backlog:     src.Backlog,
-				Restart:     src.Restart,
-				Flush:       src.Flush,
-			}, true
+	if page != nil && page.Config.Sources != nil {
+		if src, ok := page.Config.Sources[name]; ok {
+			return pageSourceConfig(src), true
 		}
 	}
 
 	// Fall back to site-level sources (from tinkerdown.yaml)
-	if h.config != nil && h.config.Sources != nil {
-		if src, ok := h.config.Sources[name]; ok {
+	if cfg != nil && cfg.Sources != nil {
+		if src, ok := cfg.Sources[name]; ok {
 			return src, true
 		}
 	}
 
 	return config.SourceConfig{}, false
+}
+
+// VisibleSourceNames lists every source name effectiveSource can resolve on
+// page: flag, page and site sources.
+func VisibleSourceNames(cfg *config.Config, page *tinkerdown.Page) []string {
+	var names []string
+	if page != nil {
+		names = slices.AppendSeq(names, maps.Keys(page.Config.Sources))
+	}
+	if cfg != nil {
+		names = slices.AppendSeq(names, maps.Keys(cfg.FlagSources))
+		names = slices.AppendSeq(names, maps.Keys(cfg.Sources))
+	}
+	return names
+}
+
+// ResolveSource resolves a source the way a page's blocks see it: with the
+// precedence effectiveSource applies, and a ["*"] merge expanded. An approved
+// merge expands through mergeInputLookup, so only tinkerdown.yaml sources
+// resolve and page or flag names drop out.
+func ResolveSource(cfg *config.Config, page *tinkerdown.Page, name string) (config.SourceConfig, bool) {
+	src, ok := effectiveSource(cfg, page, name)
+	if !ok || !src.WildcardInputs() {
+		return src, ok
+	}
+	return config.ExpandInputs(src, VisibleSourceNames(cfg, page), mergeInputLookup(cfg, page, name)), true
+}
+
+// pageSourceConfig converts a page's frontmatter source to config.SourceConfig.
+func pageSourceConfig(src tinkerdown.SourceConfig) config.SourceConfig {
+	cfg := config.SourceConfig{
+		Type:        src.Type,
+		Cmd:         src.Cmd,
+		Query:       src.Query,
+		From:        src.From,
+		File:        src.File,
+		Anchor:      src.Anchor,
+		DB:          src.DB,
+		Table:       src.Table,
+		Path:        src.Path,
+		QueryFile:   src.QueryFile,
+		Variables:   src.Variables,
+		Headers:     src.Headers,
+		QueryParams: src.QueryParams,
+		ResultPath:  src.ResultPath,
+		Readonly:    src.Readonly,
+		Options:     src.Options,
+		Manual:      src.Manual,
+		Format:      src.Format,
+		Delimiter:   src.Delimiter,
+		Env:         src.Env,
+		Timeout:     src.Timeout,
+		GroupBy:     src.GroupBy,
+		Aggregate:   src.Aggregate,
+		Filter:      src.Filter,
+		Inputs:      src.Inputs,
+		Buffer:      src.Buffer,
+		Backlog:     src.Backlog,
+		Restart:     src.Restart,
+		Flush:       src.Flush,
+		AutoBind:    src.AutoBind,
+	}
+	if a := src.Accepts; a != nil {
+		cfg.Accepts = &config.SourceAccepts{Kinds: a.Kinds, Min: a.Min, Hint: a.Hint}
+	}
+	return cfg
 }
 
 // ServeHTTP handles WebSocket upgrade and message routing.
@@ -513,7 +565,11 @@ func (h *WebSocketHandler) initializeInstances(conn *websocket.Conn) {
 			if h.debug {
 				log.Printf("[WS] Block %s template content:\n%s", blockID, block.Content)
 			}
-			blockFS := fstest.MapFS{"block.tmpl": {Data: []byte(block.Content)}}
+			content := block.Content
+			if _, failed := state.(*blockError); failed {
+				content = blockErrorTemplate
+			}
+			blockFS := fstest.MapFS{"block.tmpl": {Data: []byte(content)}}
 			tmpl, err := livetemplate.New(blockID,
 				livetemplate.WithComponentTemplates(ComponentTemplates()...),
 				livetemplate.WithParseFS(blockFS, "block.tmpl"))
@@ -1426,16 +1482,14 @@ func createSourceForAction(name string, cfg config.SourceConfig, siteDir, curren
 	}
 }
 
-// mergeInputLookup resolves the inputs of the merge named merge. An approved
-// merge is pinned to its manifest definition, so its inputs come from the
-// manifest too; otherwise a page could redefine an input and change what the
-// approved source runs. Other merges use the page's usual source precedence.
-func (h *WebSocketHandler) mergeInputLookup(merge string) func(string) (config.SourceConfig, bool) {
-	if h.config == nil || !h.config.ApprovedSource(merge) {
-		return h.getEffectiveSource
+// mergeInputLookup resolves a merge's inputs. An approved merge resolves them
+// from tinkerdown.yaml only, so a page can't change what it runs.
+func mergeInputLookup(cfg *config.Config, page *tinkerdown.Page, merge string) func(string) (config.SourceConfig, bool) {
+	if cfg == nil || !cfg.ApprovedSource(merge) {
+		return func(name string) (config.SourceConfig, bool) { return effectiveSource(cfg, page, name) }
 	}
 	return func(name string) (config.SourceConfig, bool) {
-		src, ok := h.config.Sources[name]
+		src, ok := cfg.Sources[name]
 		return src, ok
 	}
 }
@@ -1488,4 +1542,31 @@ func (h *WebSocketHandler) followStream(instance *BlockInstance) {
 			}
 		}
 	})
+}
+
+// blockError stands in for a block whose source failed to build, so the page
+// shows why instead of waiting on "Connecting..." forever.
+type blockError struct {
+	Error string
+}
+
+func (b *blockError) HandleAction(string, map[string]interface{}) error {
+	return errors.New(b.Error)
+}
+
+func (b *blockError) Close() error { return nil }
+
+const blockErrorTemplate = `<p class="tinkerdown-block-error" role="alert">⚠ {{.Error}}</p>`
+
+// blockErrorFor builds the page's message for a failed source. Only validation
+// messages, which name the source and the setting, reach the page: other
+// errors can carry a command line, path or environment value, and anyone who
+// can open the page would see them. The server log has the full error.
+func blockErrorFor(name string, err error) *blockError {
+	var cv *config.ValidationError
+	var sv *source.ValidationError
+	if errors.As(err, &cv) || errors.As(err, &sv) {
+		return &blockError{strings.TrimPrefix(err.Error(), "failed to create source "+strconv.Quote(name)+": ")}
+	}
+	return &blockError{fmt.Sprintf("source %q could not start; the server log has the details", name)}
 }

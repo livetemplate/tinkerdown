@@ -59,6 +59,16 @@ type SourceConfig struct {
 	Backlog int      `yaml:"backlog,omitempty"` // For file streams: lines read from the end on start
 	Restart string   `yaml:"restart,omitempty"` // For cmd streams: on-exit (default) or never
 	Flush   string   `yaml:"flush,omitempty"`   // Minimum time between pushes to one page (default 100ms)
+
+	// Accepts, on a merge with inputs ["*"], says which sources the page takes
+	Accepts *SourceAccepts `yaml:"accepts,omitempty"`
+}
+
+// SourceAccepts mirrors config.SourceAccepts for page frontmatter.
+type SourceAccepts struct {
+	Kinds []string `yaml:"kinds,omitempty"`
+	Min   int      `yaml:"min,omitempty"`
+	Hint  string   `yaml:"hint,omitempty"`
 }
 
 // StylingConfig represents styling/theme configuration.
@@ -716,6 +726,43 @@ type Tab struct {
 	Filter string // Filter expression (empty for "All" tab)
 }
 
+// tabButton renders one tab of the tab group tabsID. The first tab starts
+// selected.
+func tabButton(tabsID string, index int, name, filter string) string {
+	activeClass, ariaSelected, tabIndex := "", "false", "-1"
+	if index == 0 {
+		activeClass, ariaSelected, tabIndex = " active", "true", "0"
+	}
+	return fmt.Sprintf(
+		`<button type="button" role="tab" class="tinkerdown-tab%s" data-tab-index="%d" data-filter="%s" id="%s-tab-%d" aria-selected="%s" aria-controls="%s-panel" tabindex="%s">%s</button>`,
+		activeClass, index, escapeHTML(filter), escapeHTML(tabsID), index, ariaSelected, escapeHTML(tabsID), tabIndex, escapeHTML(name))
+}
+
+// sourceTabsPattern matches the placeholder a [*] FIELD tab leaves in the tab
+// bar, and the id of the first lvt block after it (the block the client's tabs
+// filter).
+var sourceTabsPattern = regexp.MustCompile(`(?s)<span hidden data-tabs-each="([^"]*)" data-tabs-id="([^"]*)" data-tab-start="(\d+)"></span>(.*?<div class="tinkerdown-interactive-block" data-tinkerdown-block data-block-id="([^"]*)")?`)
+
+// ExpandSourceTabs replaces each [*] FIELD placeholder in page with one tab per
+// input of the lvt block that follows it, labelled with the input name and
+// filtering on "FIELD = input". inputs returns a block's expanded merge
+// inputs, or nothing for a block that isn't a merge.
+func ExpandSourceTabs(page string, inputs func(blockID string) []string) string {
+	if !strings.Contains(page, "data-tabs-each=") {
+		return page // most pages: no copy
+	}
+	return sourceTabsPattern.ReplaceAllStringFunc(page, func(match string) string {
+		m := sourceTabsPattern.FindStringSubmatch(match)
+		field, tabsID, rest, blockID := html.UnescapeString(m[1]), html.UnescapeString(m[2]), m[4], m[5]
+		start, _ := strconv.Atoi(m[3])
+		var b strings.Builder
+		for i, in := range inputs(blockID) {
+			b.WriteString(tabButton(tabsID, start+i, in, field+" = "+in))
+		}
+		return b.String() + rest
+	})
+}
+
 // tabbedHeadingPattern matches headings with tab syntax: ## [Tab1] | [Tab2] filter
 // Captures: 1=tag name, 2=attributes, 3=heading content
 // Note: Go's RE2 doesn't support backreferences, so we match any closing h1-h6 tag
@@ -772,31 +819,21 @@ func processTabbedHeadings(htmlStr string) string {
 		builder.WriteString(fmt.Sprintf(`<%s%s class="tinkerdown-tabs-heading">`, tagName, attrs))
 		builder.WriteString(`<span class="tinkerdown-tabs-bar" role="tablist">`)
 
-		for i, tab := range tabs {
-			activeClass := ""
-			ariaSelected := "false"
-			tabIndex := "-1"
-			if i == 0 {
-				activeClass = " active"
-				ariaSelected = "true"
-				tabIndex = "0"
+		// A [*] FIELD tab stands for one tab per input of the merge below,
+		// known only when the page is served. It goes after the fixed tabs,
+		// wherever it was written, so the tab indexes stay unique.
+		eachField, hasEach, n := "", false, 0
+		for _, tab := range tabs {
+			if tab.Name == "*" {
+				eachField, hasEach = tab.Filter, true
+				continue
 			}
-
-			filter := escapeHTML(tab.Filter)
-			tabID := fmt.Sprintf("%s-tab-%d", tabsID, i)
-			panelID := fmt.Sprintf("%s-panel", tabsID)
-
-			builder.WriteString(fmt.Sprintf(
-				`<button type="button" role="tab" class="tinkerdown-tab%s" data-tab-index="%d" data-filter="%s" id="%s" aria-selected="%s" aria-controls="%s" tabindex="%s">%s</button>`,
-				activeClass,
-				i,
-				filter,
-				tabID,
-				ariaSelected,
-				panelID,
-				tabIndex,
-				escapeHTML(tab.Name),
-			))
+			builder.WriteString(tabButton(tabsID, n, tab.Name, tab.Filter))
+			n++
+		}
+		if hasEach {
+			builder.WriteString(fmt.Sprintf(`<span hidden data-tabs-each="%s" data-tabs-id="%s" data-tab-start="%d"></span>`,
+				escapeHTML(eachField), escapeHTML(tabsID), n))
 		}
 
 		builder.WriteString(`</span>`)
