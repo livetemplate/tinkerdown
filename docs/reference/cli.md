@@ -68,7 +68,7 @@ tinkerdown serve
 tinkerdown serve --port 3000
 
 # Run a one-file app from a URL, pinned to the content you reviewed
-tinkerdown serve --allow-exec 'https://raw.githubusercontent.com/livetemplate/logviewer/main/index.md#sha256=…' --source 'api=docker logs -f api'
+tinkerdown serve --allow-exec 'https://raw.githubusercontent.com/livetemplate/onefile/main/logs/index.md#sha256=…' --source 'api=docker logs -f api'
 
 # Follow a container and a file on a page that takes --source flags
 tinkerdown serve --allow-exec --source 'api=docker logs -f --timestamps api' --source 'app=file:./logs/app.log'

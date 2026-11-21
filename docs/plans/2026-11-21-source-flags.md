@@ -1,6 +1,6 @@
 # Plan: one-command apps — sources from flags, pages from a URL
 
-State — Done: Phases 1–3 (#329) and Phase 4 (branch `feat/remote-pages`). Next: PR reviews, then Phase 5 (log viewer).
+State — Done: Phases 1–3 (#329), Phase 4 (#330), Phase 5 (the log viewer, now `logs/` in [livetemplate/onefile](https://github.com/livetemplate/onefile)). Next: signoff and merge of #329 and #330.
 
 ## Context
 
@@ -19,7 +19,7 @@ It also fixes one gap that a mistyped flag hits: a block whose source fails to b
 The log viewer then ships with no sources, and a user runs it without cloning anything:
 
 ```sh
-tinkerdown serve --allow-exec https://raw.githubusercontent.com/livetemplate/logviewer/main/index.md \
+tinkerdown serve --allow-exec https://raw.githubusercontent.com/livetemplate/onefile/main/logs/index.md \
   --source 'api=docker logs -f --timestamps api' --source 'app=file:./logs/app.log'
 ```
 
@@ -38,7 +38,7 @@ tinkerdown serve --allow-exec https://raw.githubusercontent.com/livetemplate/log
 Serving the log viewer from its URL:
 
 ```
-$ tinkerdown serve --allow-exec https://raw.githubusercontent.com/livetemplate/logviewer/main/index.md --source 'api=docker logs -f api'
+$ tinkerdown serve --allow-exec https://raw.githubusercontent.com/livetemplate/onefile/main/logs/index.md --source 'api=docker logs -f api'
 Fetched index.md (4.1 KB, sha256 3f9a…c21e). Pin it with …/index.md#sha256=3f9a…c21e
 🌐 Server running at http://localhost:8080
 ```
@@ -345,6 +345,7 @@ Precedence, highest first: approved (`tinkerdown.yaml` with `generation.sources`
 - Audit: re-read the Contract against what shipped; write any drift into this plan in the same commit.
 - Implementation: the logviewer files listed above.
 - Acceptance: `/simplify`, the logviewer criterion, and a check in a real browser through chromedp screenshots.
+- Learn: the log viewer moved into [livetemplate/onefile](https://github.com/livetemplate/onefile), a repo of one-page apps, as `logs/index.md`; its e2e test is `e2e/logs_test.go` there, with shared helpers in `e2e/helpers_test.go`. It passes against #330. README screenshots wait for #326, which colours the rows.
 
 ## Delivery
 
