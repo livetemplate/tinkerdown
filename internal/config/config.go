@@ -15,26 +15,22 @@ import (
 
 // Config represents the tinkerdown configuration
 type Config struct {
-	// FlagSources are stream sources from `serve --source`. They rank above
-	// page and site sources, below approved ones.
-	FlagSources map[string]SourceConfig `yaml:"-"`
-
-	Title       string                   `yaml:"title"`
-	Description string                   `yaml:"description"`
-	Type        string                   `yaml:"type"` // "tutorial" or "site"
-	Site        *SiteConfig              `yaml:"site,omitempty"`
-	Navigation  []NavSection             `yaml:"navigation,omitempty"`
-	Server      ServerConfig             `yaml:"server"`
-	Styling     StylingConfig            `yaml:"styling"`
-	Blocks      BlocksConfig             `yaml:"blocks"`
-	Features    FeaturesConfig           `yaml:"features"`
-	Ignore      []string                 `yaml:"ignore"`
-	Sources     map[string]SourceConfig  `yaml:"sources,omitempty"`
-	Actions     map[string]*Action       `yaml:"actions,omitempty"`
-	API         *APIConfig               `yaml:"api,omitempty"`
-	Webhooks    map[string]*Webhook      `yaml:"webhooks,omitempty"`
+	Title       string                  `yaml:"title"`
+	Description string                  `yaml:"description"`
+	Type        string                  `yaml:"type"` // "tutorial" or "site"
+	Site        *SiteConfig             `yaml:"site,omitempty"`
+	Navigation  []NavSection            `yaml:"navigation,omitempty"`
+	Server      ServerConfig            `yaml:"server"`
+	Styling     StylingConfig           `yaml:"styling"`
+	Blocks      BlocksConfig            `yaml:"blocks"`
+	Features    FeaturesConfig          `yaml:"features"`
+	Ignore      []string                `yaml:"ignore"`
+	Sources     map[string]SourceConfig `yaml:"sources,omitempty"`
+	Actions     map[string]*Action      `yaml:"actions,omitempty"`
+	API         *APIConfig              `yaml:"api,omitempty"`
+	Webhooks    map[string]*Webhook     `yaml:"webhooks,omitempty"`
 	Outputs     map[string]*OutputConfig `yaml:"outputs,omitempty"`
-	Security    SecurityConfig           `yaml:"security,omitempty"`
+	Security    SecurityConfig          `yaml:"security,omitempty"`
 
 	// Generation, when present, declares which of this project's sources and actions
 	// an LLM is allowed to wire up when generating an app. Its presence is what makes
@@ -56,6 +52,10 @@ type Config struct {
 	// configured upstream host. The full request path is forwarded
 	// unchanged — the upstream is responsible for its own URL structure.
 	Routes []RouteEntry `yaml:"routes,omitempty"`
+
+	// FlagSources are stream sources from `serve --source`. They rank above
+	// page and site sources, below approved ones.
+	FlagSources map[string]SourceConfig `yaml:"-"`
 }
 
 // RouteEntry binds a URL pattern to a destination. A pattern ending in
@@ -326,9 +326,9 @@ type SourceConfig struct {
 	AutoBind    *bool                  `yaml:"auto_bind,omitempty"`    // Set to false to exclude from auto-table matching
 
 	// For computed sources: derive data from another source
-	GroupBy   string            `yaml:"group_by,omitempty"`  // Field to group by (e.g., "category")
-	Aggregate map[string]string `yaml:"aggregate,omitempty"` // Field → aggregation expression (e.g., "total": "sum(amount)")
-	Filter    string            `yaml:"filter,omitempty"`    // Optional filter expression (e.g., "status = active")
+	GroupBy   string            `yaml:"group_by,omitempty"`   // Field to group by (e.g., "category")
+	Aggregate map[string]string `yaml:"aggregate,omitempty"`  // Field → aggregation expression (e.g., "total": "sum(amount)")
+	Filter    string            `yaml:"filter,omitempty"`     // Optional filter expression (e.g., "status = active")
 
 	// For stream and merge sources (cmd or file is the input; format applies too)
 	Inputs  []string `yaml:"inputs,omitempty"`  // For merge: the stream sources to interleave
@@ -639,10 +639,10 @@ type SiteConfig struct {
 
 // NavSection represents a navigation section with pages
 type NavSection struct {
-	Title     string    `yaml:"title"`           // Section title (e.g., "Getting Started")
-	Path      string    `yaml:"path"`            // Section path (e.g., "getting-started")
-	Collapsed bool      `yaml:"collapsed"`       // Whether section is collapsed by default
-	Pages     []NavPage `yaml:"pages,omitempty"` // Pages in this section
+	Title     string    `yaml:"title"`              // Section title (e.g., "Getting Started")
+	Path      string    `yaml:"path"`               // Section path (e.g., "getting-started")
+	Collapsed bool      `yaml:"collapsed"`          // Whether section is collapsed by default
+	Pages     []NavPage `yaml:"pages,omitempty"`    // Pages in this section
 }
 
 // NavPage represents a single entry in navigation. It is either a leaf

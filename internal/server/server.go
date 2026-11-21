@@ -3865,11 +3865,11 @@ func (s *Server) hostAllowed(r *http.Request) bool {
 	if h, _, err := net.SplitHostPort(host); err == nil {
 		host = h
 	}
-	host = strings.Trim(host, "[]")
+	host = strings.TrimSuffix(strings.ToLower(strings.Trim(host, "[]")), ".")
 	if slices.Contains(loopbackHosts, host) {
 		return true
 	}
-	return s.config != nil && s.config.Server.Host != "" && host == s.config.Server.Host
+	return s.config != nil && s.config.Server.Host != "" && host == strings.ToLower(s.config.Server.Host)
 }
 
 // mergeInputs returns the expanded inputs of the merge source an interactive

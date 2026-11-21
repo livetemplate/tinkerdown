@@ -14,6 +14,7 @@ import (
 
 	"github.com/livetemplate/tinkerdown/internal/config"
 	"github.com/livetemplate/tinkerdown/internal/server"
+	"golang.org/x/term"
 )
 
 func TestParseSourceFlag(t *testing.T) {
@@ -148,6 +149,8 @@ func TestDescribeNeedsCleansPageText(t *testing.T) {
 // Without a terminal (go test's stdin), serve says what to pass and starts
 // serving the empty state instead of waiting for input.
 func TestServeWithoutTerminalDoesNotPrompt(t *testing.T) {
+	stdinIsTerminal = func() bool { return false }
+	defer func() { stdinIsTerminal = func() bool { return term.IsTerminal(int(os.Stdin.Fd())) } }()
 	dir := t.TempDir()
 	page := "---\ntitle: Logs\nsources:\n  all:\n    type: merge\n    inputs: [\"*\"]\n---\n\n# Logs\n"
 	os.WriteFile(filepath.Join(dir, "index.md"), []byte(page), 0o644)

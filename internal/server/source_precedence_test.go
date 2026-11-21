@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"reflect"
 	"fmt"
 	"net"
 	"net/http"
@@ -291,6 +292,7 @@ func TestHostAllowed(t *testing.T) {
 		want        bool
 	}{
 		{"127.0.0.1:8080", "localhost:8080", true},
+		{"127.0.0.1:8080", "LocalHost.:8080", true},
 		{"127.0.0.1:8080", "127.0.0.1:8080", true},
 		{"[::1]:8080", "[::1]:8080", true},
 		{"127.0.0.1:8080", "host.docker.internal:8080", true},
@@ -315,5 +317,39 @@ func TestBlockErrorShowsOnlyValidationMessages(t *testing.T) {
 	secret := fmt.Errorf("start %q: exit 1", "curl -H 'Authorization: token SECRET' api")
 	if got := blockErrorFor("api", secret).Error; strings.Contains(got, "SECRET") || !strings.Contains(got, "server log") {
 		t.Errorf("other error shown as %q; it must not carry the command", got)
+	}
+}
+
+// pageSourceConfig copies a page's frontmatter source field by field. A field
+// added to tinkerdown.SourceConfig and not copied would silently be dropped.
+func TestPageSourceConfigCopiesEveryField(t *testing.T) {
+	pageType := reflect.TypeOf(tinkerdown.SourceConfig{})
+	src := reflect.New(pageType).Elem()
+	for i := 0; i < pageType.NumField(); i++ {
+		f := src.Field(i)
+		switch f.Kind() {
+		case reflect.String:
+			f.SetString("x")
+		case reflect.Bool:
+			f.SetBool(true)
+		case reflect.Int:
+			f.SetInt(1)
+		case reflect.Slice:
+			f.Set(reflect.MakeSlice(f.Type(), 1, 1))
+		case reflect.Map:
+			f.Set(reflect.MakeMap(f.Type()))
+		case reflect.Pointer:
+			f.Set(reflect.New(f.Type().Elem()))
+		}
+	}
+	got := reflect.ValueOf(pageSourceConfig(src.Interface().(tinkerdown.SourceConfig)))
+	for i := 0; i < pageType.NumField(); i++ {
+		name := pageType.Field(i).Name
+		out := got.FieldByName(name)
+		if !out.IsValid() {
+			t.Errorf("config.SourceConfig has no field %s", name)
+		} else if out.IsZero() {
+			t.Errorf("pageSourceConfig drops %s", name)
+		}
 	}
 }

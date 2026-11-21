@@ -142,7 +142,9 @@ func sourceNeeds(cfg *config.Config, srv *server.Server) []sourceNeed {
 
 // stdinIsTerminal reports whether a person can answer a prompt. Agents, CI,
 // pipes and /dev/null get no prompt, so serve never waits on them.
-func stdinIsTerminal() bool {
+// It is a variable so tests can run serve as if no terminal were attached,
+// whatever stdin the test binary got.
+var stdinIsTerminal = func() bool {
 	return term.IsTerminal(int(os.Stdin.Fd()))
 }
 
