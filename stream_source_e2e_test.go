@@ -205,14 +205,18 @@ func TestStreamSource_E2E(t *testing.T) {
 		}
 	})
 
-	t.Run("appending to the tailed file shows up within a second", func(t *testing.T) {
+	// The tailer's own speed (250ms polls) is covered by internal/stream's tail
+	// tests. Here the line only has to reach the page promptly: Docker Chrome
+	// at half a CPU stalls frames for seconds at times, so a 1s browser limit
+	// failed on slow runners while the tailer was fine.
+	t.Run("appending to the tailed file shows up promptly", func(t *testing.T) {
 		waitSteady()
 		f, _ := os.OpenFile(appLog, os.O_APPEND|os.O_WRONLY, 0)
 		fmt.Fprintln(f, "app wrote this")
 		f.Close()
 		start := time.Now()
 		waitCount("appended file line", "li.src-app", ">= 2")
-		if d := time.Since(start); d > time.Second {
+		if d := time.Since(start); d > 5*time.Second {
 			dump()
 			t.Fatalf("file line took %v to appear", d)
 		}
