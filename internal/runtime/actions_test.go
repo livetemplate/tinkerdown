@@ -842,6 +842,11 @@ func TestExecuteFlagAction(t *testing.T) {
 	if state.Error == "" {
 		t.Error("a refused value left no block error")
 	}
+	// The next click through HandleAction starts with no error.
+	state.actions = map[string]*config.Action{"mark": action}
+	if err := state.HandleAction("mark", map[string]interface{}{"name": "web"}); err != nil || state.Error != "" {
+		t.Fatalf("a good click after a refused one: err %v, Error %q", err, state.Error)
+	}
 
 	config.SetAllowExec(false)
 	if err := state.executeCustomAction(action, map[string]interface{}{"name": "web"}); err == nil {
