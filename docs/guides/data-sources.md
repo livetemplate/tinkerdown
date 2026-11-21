@@ -122,6 +122,8 @@ A `Filter` form adds field filters. Each field named `f.<field>` keeps rows whos
 
 A page shows rows that match the selected tab and every field filter. Changing a field keeps the tab, and switching tabs keeps the fields.
 
+A filter field can be a path into a row's parsed fields: `fields.Action = fail` reads the `Action` field of a JSON or logfmt line, as do `[Failed] fields.Action = fail` in a tabs heading and `f.fields.Test` in a `Filter` form.
+
 Filter expressions support:
 
 | Expression | Keeps rows where |

@@ -3,7 +3,9 @@ package config
 import (
 	"fmt"
 	"maps"
+	"regexp"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/livetemplate/tinkerdown/internal/stream"
@@ -50,8 +52,14 @@ func ValidateStreamSource(name string, src SourceConfig, lookup func(string) (So
 		if _, err := src.StreamSpec(name).Normalize(); err != nil {
 			return invalid("%v", err)
 		}
+		if len(src.Key) > 0 || src.Collect != "" {
+			return invalid("stream source %q: key and collect apply to merge sources", name)
+		}
 	case "merge":
 		if err := validateAccepts(name, src); err != nil {
+			return err
+		}
+		if err := validateKey(name, src); err != nil {
 			return err
 		}
 		if len(src.Inputs) == 0 && !src.Wildcard {
@@ -120,6 +128,30 @@ func ExpandInputs(src SourceConfig, names []string, lookup func(string) (SourceC
 	return src
 }
 
+// fieldPath is a row field (NAME) or a parsed JSON or logfmt field (fields.NAME).
+var fieldPath = regexp.MustCompile(`^(fields\.)?[A-Za-z_][A-Za-z0-9_]*$`)
+
+func validateKey(name string, src SourceConfig) error {
+	for _, p := range src.Key {
+		if !fieldPath.MatchString(p) {
+			return invalid("merge source %q: key %q is not a field (NAME or fields.NAME)", name, p)
+		}
+	}
+	if src.CollectReset != "" {
+		path, _, ok := strings.Cut(src.CollectReset, "=")
+		if !ok || src.Collect == "" || !fieldPath.MatchString(path) {
+			return invalid("merge source %q: collect_reset %q must be PATH=VALUE, with collect set", name, src.CollectReset)
+		}
+	}
+	switch {
+	case src.Collect != "" && len(src.Key) == 0:
+		return invalid("merge source %q: collect needs key", name)
+	case src.Collect != "" && !fieldPath.MatchString(src.Collect):
+		return invalid("merge source %q: collect %q is not a field (NAME or fields.NAME)", name, src.Collect)
+	}
+	return nil
+}
+
 func validateAccepts(name string, src SourceConfig) error {
 	a := src.Accepts
 	if a == nil {
@@ -168,4 +200,11 @@ func (s SourceConfig) FlushInterval() (time.Duration, error) {
 		return 0, fmt.Errorf("flush %q is not a positive duration", s.Flush)
 	}
 	return d, nil
+}
+
+// KeySpec maps a merge's key, collect and collect_reset onto the hub's.
+func (s SourceConfig) KeySpec() stream.KeySpec {
+	k := stream.KeySpec{Paths: s.Key, Collect: s.Collect}
+	k.ResetPath, k.ResetValue, _ = strings.Cut(s.CollectReset, "=")
+	return k
 }

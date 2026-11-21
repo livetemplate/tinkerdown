@@ -128,40 +128,58 @@ func (h *Hub) Input(spec InputSpec) (*Buffer, error) {
 	return b, nil
 }
 
+// KeySpec makes a merge keyed: one row per distinct value of Paths, updated
+// in place. Collect names a field whose text is gathered across a key's rows.
+type KeySpec struct {
+	Paths   []string
+	Collect string
+	// Reset starts a key's collected text over when a row's field at
+	// ResetPath equals ResetValue (or one of its |-separated values), such
+	// as a test's next run.
+	ResetPath, ResetValue string
+}
+
 // Merge returns the buffer that interleaves inputs in seq order, creating it
 // on first use and seeding it with the inputs' current rows. Subscribing to it
-// starts every input. Inputs must be Input buffers, not other merges.
-func (h *Hub) Merge(name string, inputs []*Buffer, size int) (*Buffer, error) {
+// starts every input. Inputs must be Input buffers, not other merges. A keyed
+// merge (key.Paths set) keeps one row per key instead of every row.
+func (h *Hub) Merge(name string, inputs []*Buffer, size int, key KeySpec) (*Buffer, error) {
 	if size <= 0 {
 		size = DefaultBufferSize
 	}
-	parts := []string{name, fmt.Sprint(size)}
+	parts := []string{name, fmt.Sprint(size), strings.Join(key.Paths, ","), key.Collect, key.ResetPath, key.ResetValue}
 	for _, in := range inputs {
 		if in.merge {
 			return nil, fmt.Errorf("merge %q: input %q is itself a merge", name, in.name)
 		}
 		parts = append(parts, in.key)
 	}
-	key := "merge:" + hashKey(strings.Join(parts, "\x00"))
+	bufKey := "merge:" + hashKey(strings.Join(parts, "\x00"))
 
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if b, ok := h.buffers[key]; ok {
+	if b, ok := h.buffers[bufKey]; ok {
 		return b, nil
 	}
-	b := newBuffer(h, key, name, size)
+	b := newBuffer(h, bufKey, name, size)
 	b.merge = true
 	b.inputs = inputs
+	if len(key.Paths) > 0 {
+		b.keyed = &keyedRows{spec: key, index: map[string]int{}}
+	}
 	var seed []Row
 	for _, in := range inputs {
 		in.merges = append(in.merges, b)
 		seed = append(seed, in.snapshotLocked()...)
 	}
 	slices.SortFunc(seed, func(x, y Row) int { return cmp.Compare(x["seq"].(int64), y["seq"].(int64)) })
-	for _, r := range seed[max(0, len(seed)-size):] {
+	if b.keyed == nil {
+		seed = seed[max(0, len(seed)-size):]
+	}
+	for _, r := range seed {
 		b.appendLocked(r)
 	}
-	h.buffers[key] = b
+	h.buffers[bufKey] = b
 	return b, nil
 }
 
@@ -214,8 +232,9 @@ type Buffer struct {
 	head   int // index of the oldest row once the ring is full
 	size   int
 	subs   map[*Subscription]chan struct{}
-	merges []*Buffer // merges this input feeds
-	inputs []*Buffer // for a merge: the inputs it holds while subscribed
+	merges []*Buffer  // merges this input feeds
+	inputs []*Buffer  // for a merge: the inputs it holds while subscribed
+	keyed  *keyedRows // for a keyed merge: one row per key, in place of ring
 
 	// snap caches the oldest-first view until the next append, so every
 	// connection refreshing after one publish shares a single copy.
@@ -286,12 +305,19 @@ func (b *Buffer) releaseLocked() {
 			b.stopRun = nil
 		}
 		b.ring, b.head = nil, 0
+		if b.keyed != nil {
+			b.keyed.rows, b.keyed.index = nil, map[string]int{}
+		}
 		b.snap.Store(nil)
 	})
 }
 
 func (b *Buffer) appendLocked(r Row) {
 	b.snap.Store(nil)
+	if b.keyed != nil {
+		b.keyed.add(r, b.size)
+		return
+	}
 	if len(b.ring) < b.size {
 		b.ring = append(b.ring, r)
 		return
@@ -313,9 +339,14 @@ func (b *Buffer) snapshotLocked() []Row {
 	if p := b.snap.Load(); p != nil {
 		return *p
 	}
-	out := make([]Row, 0, len(b.ring))
-	out = append(out, b.ring[b.head:]...)
-	out = append(out, b.ring[:b.head]...)
+	var out []Row
+	if b.keyed != nil {
+		out = slices.Clone(b.keyed.rows)
+	} else {
+		out = make([]Row, 0, len(b.ring))
+		out = append(out, b.ring[b.head:]...)
+		out = append(out, b.ring[:b.head]...)
+	}
 	b.snap.Store(&out)
 	return out
 }

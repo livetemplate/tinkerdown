@@ -62,6 +62,12 @@ type SourceConfig struct {
 
 	// Accepts, on a merge with inputs ["*"], says which sources the page takes
 	Accepts *SourceAccepts `yaml:"accepts,omitempty"`
+
+	// Key and Collect make a merge keyed: one row per key, with a field's text
+	// gathered across the key's rows
+	Key          []string `yaml:"key,omitempty"`
+	Collect      string   `yaml:"collect,omitempty"`
+	CollectReset string   `yaml:"collect_reset,omitempty"`
 }
 
 // SourceAccepts mirrors config.SourceAccepts for page frontmatter.

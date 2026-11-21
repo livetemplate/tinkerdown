@@ -11,6 +11,20 @@ Earlier releases (v0.1.x) are documented in the
 
 ## [Unreleased]
 
+### Added
+
+- **Keyed merges: one row per key, updated in place.** A merge with
+  `key: [fields.Package, fields.Test]` keeps the latest row for each key in
+  first-seen order, and `collect: fields.Output` gathers a field's text across
+  a key's rows; `collect_reset: fields.Action=run` starts it over per run. Keyed rows have a stable `key` for `data-key`, so updates
+  reach the page as in-place range updates. See
+  [docs/sources/stream.md](docs/sources/stream.md#one-row-per-key).
+- **Every stream row has a `fields` map**, empty for plain-text and system
+  rows, so a template can read `.fields.NAME` on any row. A template that did
+  failed to render on the first plain-text row.
+- **Field paths in filters.** `fields.Action = fail` reads a parsed JSON or
+  logfmt field, in filter expressions, tabs headings and `f.` form fields.
+
 ## [v0.5.0] - 2026-11-21
 
 ### Added

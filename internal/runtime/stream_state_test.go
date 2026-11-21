@@ -2,8 +2,10 @@ package runtime
 
 import (
 	"fmt"
+	"html/template"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -136,5 +138,41 @@ func TestStreamSourceNeedsHubAndExecFlag(t *testing.T) {
 	config.SetAllowExec(false)
 	if _, err := NewGenericStateWithMetadata("x", config.SourceConfig{Type: "stream", Cmd: "echo hi"}, t.TempDir(), "", nil, WithStreams(hub, nil)); err == nil {
 		t.Fatal("cmd stream without --allow-exec: want error")
+	}
+}
+
+func TestFilterFieldPaths(t *testing.T) {
+	row := func(test, action string) map[string]interface{} {
+		return map[string]interface{}{"source": "go", "fields": map[string]interface{}{"Test": test, "Action": action}}
+	}
+	s := &GenericState{Data: []map[string]interface{}{
+		row("TestCreateUser", "pass"), row("TestDeleteUser", "fail"), row("TestMigrate", "fail"),
+	}}
+	s.handleFilter(map[string]interface{}{"filter": "fields.Action = fail"})
+	if got := s.GetFilteredData(); len(got) != 2 {
+		t.Fatalf("fields.Action = fail: %d rows, want 2", len(got))
+	}
+	s.handleFilter(map[string]interface{}{"f.fields.Test": "user"})
+	if got := s.GetFilteredData(); len(got) != 1 {
+		t.Fatalf("tab + f.fields.Test ~ user: %d rows, want 1 (TestDeleteUser)", len(got))
+	}
+	s.handleFilter(map[string]interface{}{"filter": "source = go", "f.fields.Test": ""})
+	if got := s.GetFilteredData(); len(got) != 3 {
+		t.Fatalf("plain field still works: %d rows, want 3", len(got))
+	}
+}
+
+// A stream page renders before its first line arrives. Its template still
+// needs a list: {{len .Data}} failed on nil, and the block never rendered.
+func TestStateDataIsAListBeforeAnyRows(t *testing.T) {
+	s := &GenericState{Errors: map[string]string{}}
+	state, err := s.GetStateAsInterface()
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmpl := template.Must(template.New("t").Parse(`{{len .Data}} {{range .Data}}x{{end}}`))
+	var out strings.Builder
+	if err := tmpl.Execute(&out, state); err != nil || out.String() != "0 " {
+		t.Fatalf("render = %q, err %v", out.String(), err)
 	}
 }

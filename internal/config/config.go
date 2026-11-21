@@ -340,6 +340,15 @@ type SourceConfig struct {
 	// Accepts, on a merge with inputs ["*"], says which sources the page takes.
 	Accepts *SourceAccepts `yaml:"accepts,omitempty"`
 
+	// Key, on a merge, keeps one row per distinct value of these field paths
+	// (NAME or fields.NAME), updated in place. Collect gathers a field's text
+	// across a key's rows into "collected".
+	Key     []string `yaml:"key,omitempty"`
+	Collect string   `yaml:"collect,omitempty"`
+	// CollectReset (PATH=VALUE) starts a key's collected text over when a row
+	// matches, such as fields.Action=run for a test's next run.
+	CollectReset string `yaml:"collect_reset,omitempty"`
+
 	// Wildcard is set by ExpandInputs on a merge declared with inputs ["*"]:
 	// its Inputs are the sources found, and empty means "no sources yet".
 	Wildcard bool `yaml:"-"`
