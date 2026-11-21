@@ -32,6 +32,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/livetemplate/tinkerdown/internal/stream"
 )
 
 // Expression represents a parsed computed expression.
@@ -287,6 +289,9 @@ func filterData(data []map[string]interface{}, where *WhereClause) []map[string]
 
 // getFieldValue gets a field value from a row, checking both lowercase and titlecase.
 func getFieldValue(row map[string]interface{}, field string) interface{} {
+	if strings.HasPrefix(field, "fields.") {
+		return stream.FieldPath(row, field) // a parsed JSON or logfmt field
+	}
 	if val, ok := row[field]; ok {
 		return val
 	}

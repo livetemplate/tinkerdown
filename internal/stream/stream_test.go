@@ -49,7 +49,7 @@ func TestMergeKeepsSeqOrderAndSeedsHistory(t *testing.T) {
 	a, c := newBuffer(h, "ka", "a", 10), newBuffer(h, "kc", "c", 10)
 	h.publish(a, "stdout", Row{"msg": "a1"})
 	h.publish(c, "stdout", Row{"msg": "c1"})
-	m, err := h.Merge("m", []*Buffer{a, c}, 10)
+	m, err := h.Merge("m", []*Buffer{a, c}, 10, KeySpec{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -285,11 +285,11 @@ func TestInputKeyFollowsSpec(t *testing.T) {
 	if a == c {
 		t.Fatal("different specs share a buffer")
 	}
-	m, _ := h.Merge("all", []*Buffer{a, c}, 0)
-	if _, err := h.Merge("nested", []*Buffer{m}, 0); err == nil {
+	m, _ := h.Merge("all", []*Buffer{a, c}, 0, KeySpec{})
+	if _, err := h.Merge("nested", []*Buffer{m}, 0, KeySpec{}); err == nil {
 		t.Fatal("merge of a merge: want error")
 	}
-	if m2, _ := h.Merge("all", []*Buffer{a, c}, 0); m2 != m {
+	if m2, _ := h.Merge("all", []*Buffer{a, c}, 0, KeySpec{}); m2 != m {
 		t.Fatal("same merge got a new buffer")
 	}
 }
@@ -302,7 +302,7 @@ func TestIdleInputStopsAndRestarts(t *testing.T) {
 	running := func() bool { return exec.Command("pgrep", "-f", marker).Run() == nil }
 
 	in, _ := h.Input(InputSpec{Name: "w", Cmd: ": " + marker + "; while true; do echo hi; sleep 0.1; done"})
-	m, _ := h.Merge("all", []*Buffer{in}, 0)
+	m, _ := h.Merge("all", []*Buffer{in}, 0, KeySpec{})
 	sub := m.Subscribe() // a merge subscriber holds its input
 	waitFor(t, "input to start through the merge", running)
 
@@ -378,4 +378,115 @@ func TestPanickingInputDoesNotCrash(t *testing.T) {
 		}
 		return false
 	})
+}
+
+// event is a parsed go-test-like JSON row: fields hold Package, Test, Action
+// and Output, as newRow would leave them.
+func event(pkg, test, action, output string) Row {
+	f := map[string]interface{}{"Package": pkg, "Action": action}
+	if test != "" {
+		f["Test"] = test
+	}
+	if output != "" {
+		f["Output"] = output
+	}
+	return Row{"msg": action, "fields": f}
+}
+
+func TestKeyedMergeKeepsOneRowPerKey(t *testing.T) {
+	h := NewHub()
+	defer h.Close()
+	in := newBuffer(h, "kin", "go", 100)
+	m, err := h.Merge("tests", []*Buffer{in}, 3, KeySpec{Paths: []string{"fields.Package", "fields.Test"}, Collect: "fields.Output"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.publish(in, "stdout", event("api", "TestA", "run", ""))
+	h.publish(in, "stdout", event("api", "TestB", "run", ""))
+	h.publish(in, "stdout", event("api", "TestA", "output", "a says hi\n"))
+	h.publish(in, "stdout", event("api", "TestA", "pass", ""))
+	h.publish(in, "stdout", event("api", "", "pass", "")) // the package's own row
+
+	rows := m.Snapshot()
+	if got := strings.Join(msgs(rows), ","); got != "pass,run,pass" {
+		t.Fatalf("keyed rows = %s, want TestA (pass), TestB (run), package (pass) in first-seen order", got)
+	}
+	if rows[0]["collected"] != "a says hi\n" || rows[1]["collected"] != "" {
+		t.Fatalf("collected = %q, %q", rows[0]["collected"], rows[1]["collected"])
+	}
+	firstKey := rows[0]["key"]
+	h.publish(in, "stdout", event("api", "TestA", "output", "again\n"))
+	if rows = m.Snapshot(); rows[0]["key"] != firstKey || rows[0]["collected"] != "a says hi\nagain\n" {
+		t.Fatalf("update in place: key %v (was %v), collected %q", rows[0]["key"], firstKey, rows[0]["collected"])
+	}
+
+	// Past buffer (3 keys), the key updated least recently goes: TestB.
+	h.publish(in, "stdout", event("api", "TestC", "run", ""))
+	if got := strings.Join(keysTests(m.Snapshot()), ","); got != "TestA,,TestC" {
+		t.Fatalf("after eviction = %s, want TestA, the package row, TestC", got)
+	}
+}
+
+func TestKeyedCollectKeepsTheEnd(t *testing.T) {
+	h := NewHub()
+	defer h.Close()
+	in := newBuffer(h, "kin2", "go", 10)
+	m, _ := h.Merge("t", []*Buffer{in}, 10, KeySpec{Paths: []string{"fields.Test"}, Collect: "fields.Output"})
+	h.publish(in, "stdout", event("p", "T", "output", strings.Repeat("x", MaxCollected)))
+	h.publish(in, "stdout", event("p", "T", "output", "END"))
+	c := m.Snapshot()[0]["collected"].(string)
+	if len(c) != MaxCollected || !strings.HasSuffix(c, "END") {
+		t.Fatalf("collected is %d bytes ending %q", len(c), c[len(c)-3:])
+	}
+}
+
+func keysTests(rows []Row) []string {
+	var out []string
+	for _, r := range rows {
+		test, _ := FieldPath(r, "fields.Test").(string)
+		out = append(out, test)
+	}
+	return out
+}
+
+// A template reads .fields.NAME on every row, so plain-text and system rows
+// need a fields map too, or rendering fails on a nil pointer.
+func TestEveryRowHasFields(t *testing.T) {
+	plain := newRow("just text", false, "auto", time.Now())
+	sys := makeRow(time.Now(), "warn", "process exited", "process exited", false, nil)
+	for name, r := range map[string]Row{"plain": plain, "system": sys} {
+		if f, ok := r["fields"].(map[string]interface{}); !ok || f == nil {
+			t.Errorf("%s row: fields = %#v, want an empty map", name, r["fields"])
+		}
+	}
+}
+
+// A test's next run must not append to its last run's output.
+func TestKeyedCollectReset(t *testing.T) {
+	h := NewHub()
+	defer h.Close()
+	in := newBuffer(h, "kin3", "go", 10)
+	m, _ := h.Merge("t", []*Buffer{in}, 10, KeySpec{Paths: []string{"fields.Test"}, Collect: "fields.Output", ResetPath: "fields.Action", ResetValue: "run|start"})
+	for _, run := range []string{"first\n", "second\n"} {
+		h.publish(in, "stdout", event("p", "T", "run", ""))
+		h.publish(in, "stdout", event("p", "T", "output", run))
+		h.publish(in, "stdout", event("p", "T", "fail", ""))
+	}
+	if got := m.Snapshot()[0]["collected"]; got != "second\n" {
+		t.Fatalf("collected = %q, want only the latest run", got)
+	}
+}
+
+func TestKeyedCollectResetAlternatives(t *testing.T) {
+	h := NewHub()
+	defer h.Close()
+	in := newBuffer(h, "kin4", "go", 10)
+	m, _ := h.Merge("t", []*Buffer{in}, 10, KeySpec{Paths: []string{"fields.Test"}, Collect: "fields.Output", ResetPath: "fields.Action", ResetValue: "run|start"})
+	for _, run := range []string{"FAIL one\n", "FAIL two\n"} {
+		h.publish(in, "stdout", event("p", "", "start", "")) // a package row: no run event
+		h.publish(in, "stdout", event("p", "", "output", run))
+	}
+	if got := m.Snapshot()[0]["collected"]; got != "FAIL two\n" {
+		t.Fatalf("package collected = %q, want only the latest run", got)
+	}
 }

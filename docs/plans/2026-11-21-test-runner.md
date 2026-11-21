@@ -1,6 +1,6 @@
 # Plan: a test runner onefile app, and keyed stream rows
 
-State — Done: nothing. Next: plan signoff, then Phase 0.
+State — Done: Phases 0–1 (branch `feat/keyed-merges`). Next: PR review, release, then Phase 2 in onefile.
 
 ## Context
 
@@ -89,20 +89,20 @@ onefile:
 
 | # | Type | Item | Severity | Status |
 |---|---|---|---|---|
-| A1 | assumption | A keyed row updated in place reaches the page as an `["u", key, diff]` op, not a full range redraw, through tinkerdown's GenericState refresh. | high | open (Phase 0) |
-| A2 | assumption | Keying belongs in the hub's merge buffer, not per page: every page showing the merge shares one keyed view, as they share rows today. | medium | open (Phase 0) |
+| A1 | assumption | A keyed row updated in place reaches the page as an `["u", key, diff]` op, not a full range redraw, through tinkerdown's GenericState refresh. | high | holds (`TestKeyedMerge_E2E` asserts the op) |
+| A2 | assumption | Keying belongs in the hub's merge buffer, not per page: every page showing the merge shares one keyed view, as they share rows today. | medium | holds (`keyedRows` in the merge `Buffer`) |
 | A3 | assumption | `watchexec` and `gotestsum --watch` both keep running and emit a new `go test -json` run per change. | medium | open (Phase 2) |
-| R1 | risk | A new run reuses keys, so a test that was deleted keeps its last row. Mitigation: a `start` event for a package marks that package's rows stale (shown dimmed) until they report again; documented. | medium | open |
+| R1 | risk | A new run reuses keys, so a test that was deleted keeps its last row until it is evicted or the server restarts. Documented; the planned mitigation (a package `start` marks rows stale) was dropped, since it is test-specific and the Constraints keep tinkerdown generic. | medium | accepted |
 | R2 | risk | Collected output can be large for chatty tests. Mitigation: the 64 KiB cap per key, keeping the end, where failures print. | low | open |
 | G1 | gap | Runners that write one JSON document at the end (jest, vitest) don't stream per test; they need a reporter that writes JSON lines. | low | unowned |
 
 ## Acceptance criteria
 
 - [ ] `/simplify` has run on each phase's diff.
-- [ ] `go test ./internal/stream/...`: a keyed merge keeps one row per key in first-seen order, updates in place, evicts the least recently updated key past `buffer`, and caps `collected` at 64 KiB keeping the end.
-- [ ] `go test ./internal/runtime/...`: `fields.Action = fail`, `fields.Test ~ user` and `f.fields.Test` match nested fields; plain names behave as before.
-- [ ] Config validation refuses `key` or `collect` on a non-merge source, and a path that isn't a field name or `fields.<name>`.
-- [ ] `TestStreamSource_E2E` (Docker Chrome) gains a keyed subtest: a test's row goes from `run` to `pass` in place, and the WebSocket frames carry `["u", …]` for it, not a redraw.
+- [x] `go test ./internal/stream/...`: a keyed merge keeps one row per key in first-seen order, updates in place, evicts the least recently updated key past `buffer`, and caps `collected` at 64 KiB keeping the end.
+- [x] `go test ./internal/runtime/...`: `fields.Action = fail`, `fields.Test ~ user` and `f.fields.Test` match nested fields; plain names behave as before.
+- [x] Config validation refuses `key` or `collect` on a non-merge source, and a path that isn't a field name or `fields.<name>`.
+- [x] A browser e2e (Docker Chrome, `TestKeyedMerge_E2E`): a test's row goes from `run` to `pass` in place, and the WebSocket frames carry `["u", …]` for it, not a redraw.
 - [ ] onefile `cd e2e && go test -run TestTests ./...`: rows per test with the right status; the Failed tab shows only failures; a failing test shows its output; search narrows by name; phone layout has no horizontal scroll.
 - [ ] The onefile page passes every remote-page check when served from its raw GitHub URL.
 - [ ] Full tinkerdown suite green; pre-commit passes; `prereview check` clean on changed docs.
@@ -119,6 +119,7 @@ onefile:
 ```
 key: [PATH, ...]       on a merge: one row per distinct key, updated in place, first-seen order
 collect: PATH          on a keyed merge: the field's text across a key's rows, in .collected (64 KiB, keep end)
+collect_reset: PATH=V  a row matching PATH=V (V may be a|b) starts its key's .collected over
 PATH                   NAME (a row field) or fields.NAME (a parsed JSON or logfmt field)
 [Tab] fields.Action = fail   field paths work in tab and Filter expressions
 f.fields.Test          Filter form fields take paths
@@ -130,11 +131,13 @@ f.fields.Test          Filter form fields take paths
 - Audit: how `GenericState` builds `.Data` from a merge buffer, and livetemplate's kept-item update path (`generateKeptItemUpdateOps`).
 - Implementation: a throwaway test that replaces one row in a buffer snapshot and dumps the WebSocket frames.
 - Acceptance: A1 and A2 recorded here; the spike file is deleted.
+- Learn: the audit found that pages key rows by `seq`, which changes on every update, so an update would be a remove and an insert. Keyed rows carry a stable `key` field for `data-key`. With that, livetemplate sends `["u", key, diff]`; the spike was folded into `TestKeyedMerge_E2E`, which asserts it.
 
 ### Phase 1: keyed merges, collect, field paths
 - Audit: every caller of `hub.Merge` and `getFieldValue`.
 - Implementation: per the tinkerdown Files list.
 - Acceptance: `/simplify`, the stream, runtime, validation and e2e criteria, docs, the full suite.
+- Learn: the onefile e2e found two gaps. A row without parsed fields (plain text, or a `system` row such as a restart) had `fields: nil`, and a template reading `.fields.Action` failed to render every update after it; rows now always carry a `fields` map. And `go test` reruns (a restart, or `watchexec`) appended each run's output to the last, so `collect_reset: PATH=VALUE` starts a key's text over; the page sets `fields.Action=run`.
 
 ### Phase 2: the tests app
 - Audit: A3. Re-read the Contract against what shipped.

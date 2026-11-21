@@ -4,6 +4,7 @@ package tinkerdown_test
 
 import (
 	"context"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -193,4 +194,90 @@ func TestRemotePageCSP_E2E(t *testing.T) {
 		dump()
 		t.Fatalf("the other origin got %d connections; the policy must block them", n)
 	}
+}
+
+// TestKeyedMerge_E2E follows go-test-like JSON lines through a keyed merge:
+// one row per test, updated in place as its events arrive, with its output
+// collected. The update must reach the page as a range ["u", ...] op.
+func TestKeyedMerge_E2E(t *testing.T) {
+	serverLog := captureServerLog(t)
+	dir := t.TempDir()
+	events := filepath.Join(dir, "events.jsonl")
+	os.WriteFile(events, []byte(`{"Action":"run","Package":"api","Test":"TestA"}`+"\n"), 0o644)
+	page := "---\ntitle: Tests\nsources:\n  tests:\n    type: merge\n    inputs: [\"*\"]\n    key: [fields.Package, fields.Test]\n    collect: fields.Output\n---\n\n## [All] | [Failed] fields.Action = fail\n\n```lvt\n" +
+		`<ol lvt-source="tests" data-testid="tests">{{range .Data}}<li data-key="{{.key}}" class="a-{{.fields.Action}}"><b>{{.fields.Test}}</b> <i>{{.fields.Action}}</i><pre>{{.collected}}</pre></li>{{end}}</ol>` + "\n```\n"
+	os.WriteFile(filepath.Join(dir, "index.md"), []byte(page), 0o644)
+
+	cfg := config.DefaultConfig()
+	cfg.FlagSources = map[string]config.SourceConfig{"go": {Type: "stream", File: events, Format: "json"}}
+	srv := server.NewWithConfig(dir, cfg)
+	if err := srv.Discover(); err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(server.WithCompression(srv))
+	defer ts.Close()
+	defer srv.StopStreams()
+
+	chrome, cleanup := SetupDockerChrome(t, 90*time.Second)
+	defer cleanup()
+	ctx := chrome.Context
+	logs := &streamBrowserLogs{}
+	logs.listen(ctx)
+	dump := func() {
+		frames := logs.frames()
+		t.Logf("console:\n%s", strings.Join(logs.console, "\n"))
+		t.Logf("ws received: %d frames, last: %s", len(frames), strings.Join(frames[max(0, len(frames)-4):], "\n"))
+		t.Logf("server log tail: %s", tail(serverLog.String(), 3000))
+	}
+	wait := func(what, js string) {
+		t.Helper()
+		if err := chromedp.Run(ctx, waitForDOM(js, 15*time.Second)); err != nil {
+			dump()
+			t.Fatalf("waiting for %s: %v", what, err)
+		}
+	}
+	appendEvents := func(lines ...string) {
+		f, _ := os.OpenFile(events, os.O_APPEND|os.O_WRONLY, 0)
+		for _, l := range lines {
+			fmt.Fprintln(f, l)
+		}
+		f.Close()
+	}
+	if err := chromedp.Run(ctx, network.Enable(), chromedp.Navigate(ConvertURLForDockerChrome(ts.URL)),
+		chromedp.WaitVisible(`[data-testid="tests"]`, chromedp.ByQuery)); err != nil {
+		dump()
+		t.Fatal(err)
+	}
+	wait("TestA running", `document.querySelectorAll("li.a-run").length === 1`)
+
+	before := len(logs.frames())
+	appendEvents(
+		`{"Action":"output","Package":"api","Test":"TestA","Output":"a_test.go:9: boom\n"}`,
+		`{"Action":"fail","Package":"api","Test":"TestA"}`,
+		`{"Action":"run","Package":"api","Test":"TestB"}`,
+		`{"Action":"pass","Package":"api","Test":"TestB"}`,
+	)
+	wait("one row per test, updated in place",
+		`document.querySelectorAll("ol li").length === 2 && !!document.querySelector("li.a-fail") && document.querySelector("li.a-fail pre").textContent.includes("boom") && !!document.querySelector("li.a-pass")`)
+	var order string
+	chromedp.Run(ctx, chromedp.Evaluate(`[...document.querySelectorAll("ol li b")].map(b => b.textContent).join(",")`, &order))
+	if order != "TestA,TestB" {
+		t.Fatalf("rows = %s, want TestA first (first seen), then TestB", order)
+	}
+	updated := false
+	for _, f := range logs.frames()[before:] {
+		if strings.Contains(f, `["u",`) {
+			updated = true
+		}
+	}
+	if !updated {
+		dump()
+		t.Fatal(`no ["u", ...] op: the keyed row was not updated in place`)
+	}
+
+	if err := chromedp.Run(ctx, chromedp.Click(`button[role="tab"][data-filter="fields.Action = fail"]`, chromedp.ByQuery)); err != nil {
+		dump()
+		t.Fatal(err)
+	}
+	wait("only the failing test", `(() => { const r = document.querySelectorAll("ol li"); return r.length === 1 && r[0].classList.contains("a-fail"); })()`)
 }

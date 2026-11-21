@@ -27,6 +27,9 @@ A command needs `tinkerdown serve --allow-exec`, as an `exec` source does. A fil
 | `cmd` | stream | Command to follow. Runs with `/bin/sh -c` from the site directory, so pipes, quoting and `./script.sh` work. Set `cmd` or `file`, not both. |
 | `file` | stream | File to follow, absolute or relative to the site directory. |
 | `inputs` | merge | Names of the stream sources to combine, or `["*"]` for every stream source the page can see, including `--source` flags. |
+| `key` | merge | Field paths (`NAME` or `fields.NAME`) that make the merge keyed: one row per distinct key, updated in place. See [One row per key](#one-row-per-key). |
+| `collect` | merge | With `key`: a field path whose text is gathered across a key's rows into `collected`. |
+| `collect_reset` | merge | With `collect`: `PATH=VALUE`, where VALUE may list alternatives as `a\|b`. A row that matches starts its key's `collected` over, such as `fields.Action=run\|start` for a test's or package's next run. |
 | `accepts` | merge | With `inputs: ["*"]`: the sources the page takes. `kinds` lists `cmd`, `file` or both (default: both), `min` is how many it needs, and `hint` is one line saying what to pass. |
 | `format` | stream | How to parse each line: `auto` (default), `json`, `logfmt` or `lines`. |
 | `env` | stream | Extra environment variables for `cmd`. `$VAR` references are expanded. |
@@ -64,6 +67,32 @@ To show one tab per source, write the tabs heading with `[*] source`:
 ```
 
 When a page needs sources and has none, `serve` asks for them in a terminal, then prints the flags to reuse next time. Without a terminal, as when an agent or CI runs it, `serve` never waits: it prints what to pass and serves the empty state. It prints a page's hint without control characters, quoted as the page's words.
+
+## One row per key
+
+Some streams report on things rather than log lines: `go test -json` writes several events per test, and `kubectl get pods -w` a line per change to a pod. A merge with `key` keeps one row per thing, the latest one:
+
+```yaml
+sources:
+  tests:
+    type: merge
+    inputs: ["*"]
+    key: [fields.Package, fields.Test]
+    collect: fields.Output
+```
+
+A row whose key matches an earlier one replaces it in place, and keeps the earlier row's position, so the list doesn't jump. A keyed row has a `key` field with the joined key values: use it as `data-key`, since `seq` changes with every update. A field missing from a row counts as empty, so `go test`'s package-level events become one row per package. `buffer` counts keys, and past it the key updated least recently is dropped.
+
+`collect` gathers a field's text from all of a key's rows into the row's `collected`, up to 64 KiB, keeping the end. A test's row then carries its output. When the same keys come back in a new run, `collect_reset: fields.Action=run` starts each key's text over at its `run` row, so the output is the latest run's:
+
+```html
+{{range .Data}}
+<li data-key="{{.key}}" class="{{.fields.Action}}">
+  {{.fields.Test}} {{.fields.Action}}
+  <pre>{{.collected}}</pre>
+</li>
+{{end}}
+```
 
 ## Row fields
 

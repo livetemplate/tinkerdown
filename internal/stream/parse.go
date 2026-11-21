@@ -108,8 +108,13 @@ func newRow(line string, truncated bool, format string, now time.Time) Row {
 	return makeRow(ts, level, msg, line, truncated, fields)
 }
 
-// makeRow builds the row shape shared by parsed lines and system rows.
+// makeRow builds the row shape shared by parsed lines and system rows. A row
+// always has a fields map, empty for plain text and system rows, so a
+// template can read .fields.NAME on any row.
 func makeRow(ts time.Time, level, msg, line string, truncated bool, fields map[string]interface{}) Row {
+	if fields == nil {
+		fields = map[string]interface{}{}
+	}
 	return Row{
 		"ts":        ts.Format(time.RFC3339Nano),
 		"time":      ts.Local().Format("15:04:05.000"),

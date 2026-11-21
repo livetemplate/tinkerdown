@@ -72,7 +72,7 @@ func NewStreamSource(hub *stream.Hub, name string, cfg config.SourceConfig, site
 			}
 			inputs = append(inputs, b)
 		}
-		buf, err = hub.Merge(name, inputs, cfg.Buffer)
+		buf, err = hub.Merge(name, inputs, cfg.Buffer, cfg.KeySpec())
 	}
 	if err != nil {
 		return nil, err
