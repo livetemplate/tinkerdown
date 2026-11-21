@@ -1,158 +1,192 @@
-# Plan: a containers onefile app, and dropping keyed rows
+# Plan: a containers onefile app, with actions and log streams from flags
 
-State — Done: audit (below). Next: plan PR, then Phase 1.
+State — Done: audit (below), prototype demo. Next: plan PR, then Phase 1.
 
 ## Context
 
-The next [onefile](https://github.com/livetemplate/onefile) app is `containers`: a live list of your Docker containers, one row per container, showing its state as it changes. Like the log viewer and the test runner, it runs from its URL and takes its feed as a `--source` command.
+The next [onefile](https://github.com/livetemplate/onefile) app is `containers`: a live list of your Docker containers, with stop, restart and kill buttons, and a container's logs following live when you open it. Like the log viewer and the test runner, it runs from its URL, and every command it runs comes from your own flags.
 
-It reuses the test runner's keyed merges: the key is the container name, and each `docker events` line updates that container's row in place. It needs one generic addition to tinkerdown, because keyed merges can update a row but never remove one:
+A read-only prototype (2026-11-21, on v0.6.0) showed the list working, but a list without logs or buttons duplicates `docker ps`. It needs four generic additions to tinkerdown:
 
-- **Dropping rows:** `drop: fields.state=removed` on a keyed merge removes a key's row when a matching row arrives. Without it, every `docker run --rm` leaves a dead row until it is evicted.
+- **`drop` on keyed merges:** `drop: fields.state=removed` removes a key's row, so a removed container disappears instead of leaving a dead row.
+- **`--action NAME=COMMAND`:** an exec action you declare on the command line, like `--source`. A page, even a remote one, can call it with a button but can't define it.
+- **Values as environment variables:** a flag action or flag source gets each value as `$TD_<name>`, so `docker stop "$TD_name"` never parses the value as shell code.
+- **Merges with `params`:** `params: [name]` takes `?name=web` from the page URL and starts the merge's inputs with `TD_name=web`. A row link `?name=web` then opens that container's logs.
 
-The audit (2026-11-21, Docker 29.3.1) settled the feed:
+The audit (2026-11-21) settled these facts:
 
-- `docker ps -a --format` and `docker events --format` both take Go templates, so one command can print both as JSON lines of the same shape. A combined feed was run against a throwaway container and printed `create`, `start`, `die (2)` and `destroy` rows for it.
-- Docker 29 events have no top-level `id` or `status`. The container is in `Actor.ID` and `Actor.Attributes.name`, and only `die` carries `Actor.Attributes.exitCode`.
-- Docker's templates support `if eq`, so the command maps event names onto `ps` states (`start` → `running`, `die` → `exited`, `destroy` → `removed`). Tabs then filter one field.
+- `docker ps -a --format` and `docker events --format` take Go templates, so one command prints both as JSON lines of one shape (checked on Docker 29.3.1 with a throwaway container: `create`, `start`, `die (2)`, `destroy`). Docker 29 events carry the container in `Actor.ID` and `Actor.Attributes.name`; only `die` has `exitCode`.
+- The feed uses `{{…}}` for Docker's own templates, so tinkerdown can't use `{{…}}` placeholders in flag commands. Hence environment variables.
+- Page-declared exec actions paste values into the command with `expandTemplate`. `sanitizeExecCommand` blocks `;|&$<>` but not quotes or spaces, so a value can add arguments.
+- The WebSocket URL is built on the server as `/ws?page=PATH` (`server.go:1102`, `:3231`), so blocks never see the page's query today.
+- Flag sources are parsed in `cmd/tinkerdown/commands/source_flags.go` and refused when they'd replace an approved source.
 
 ## Product
 
 | User journey | What they see | Built on |
 |---|---|---|
-| See what's running | one row per container, updating live | `--source docker=…`, keyed merge on `fields.name` |
-| Notice a crash | the row turns red and reads `exited (137)` | `die` event with `exitCode` |
-| Find stopped containers | the Exited tab | `fields.state = exited` tab |
-| Find a container | the search box | `f.fields.name` filter |
-| Removed containers disappear | the row goes away | `drop: fields.state=removed` |
+| See what's running | one row per container, updating live | `--source docker=…`, keyed merge on `fields.name`, `drop` |
+| Notice a crash | the row turns red: `exited (137)` | `die` event with `exitCode` |
+| Read a container's logs | click its name; logs follow live below the list | `<a href="?name=…">`, merge `params: [name]`, `--source logs=…` |
+| Stop, restart or kill it | buttons on the row; kill asks first | `--action stop=…`, `data-confirm` |
+| Filter | Running / Exited / Paused tabs, name search | `fields.state` tabs, `f.fields.name` |
 
 ```
-┌ Containers ───────────────────────────────────────────┐
-│ [All] [Running] [Exited] [Paused]                     │
-│ [🔍 name              ]                ● live · 12    │
-├───────────────────────────────────────────────────────┤
-│ ● running  web        nginx:1.27        Up 2 hours    │
-│ ● running  db         postgres:17       Up 2 hours    │
-│ ✗ exited   worker     app:dev           exited (137)  │
-│ ‖ paused   cache      redis:7           paused        │
-└───────────────────────────────────────────────────────┘
+tinkerdown serve --allow-exec https://raw.githubusercontent.com/livetemplate/onefile/main/containers/index.md \
+  --source docker='docker ps -a --format "…"; exec docker events --format "…"' \
+  --source logs='docker logs -f --tail 200 -- "$TD_name"' \
+  --action stop='docker stop -- "$TD_name"' \
+  --action restart='docker restart -- "$TD_name"' \
+  --action kill='docker kill -- "$TD_name"'
 ```
 
-On a phone, each row puts the image under the name, and the status wraps under both:
+```
+┌ Containers ───────────────────────────────────────────────────┐
+│ [All] [Running] [Exited] [Paused]   [🔍 name     ]  ● live 12 │
+├───────────────────────────────────────────────────────────────┤
+│ ● running  web     nginx:1.27    Up 2 hours    [⟳] [■] [✕]    │
+│ ✗ exited   worker  app:dev       exited (137)  [⟳]            │
+├ worker · logs ────────────────────────────────── ↓ following ─┤
+│ 17:02:11 job 41 started                                       │
+│ 17:02:12 panic: nil map            stderr                     │
+└───────────────────────────────────────────────────────────────┘
+```
 
-```
-┌ Containers ─────────────┐
-│ [All] [Running] [Exited]│
-│ [🔍 name     ] ● live 12│
-├─────────────────────────┤
-│ ● web          running  │
-│   nginx:1.27            │
-│   Up 2 hours            │
-│ ✗ worker       exited   │
-│   app:dev               │
-│   exited (137)          │
-└─────────────────────────┘
-```
+On a phone, each row puts the image and status under the name and the buttons on their own line, and the logs panel sits below the list.
 
 ## Decisions
 
 - Key rows by container name, not ID.
   alternative: key by ID
   because: `docker compose up` recreates a container under the same name with a new ID, and `ps` prints a short ID while events carry the full one
-- M1 is read-only: no stop, restart or logs buttons.
-  alternative: exec actions per row
-  because: remote pages refuse actions, so buttons would break the run-from-URL story. Exec actions also paste row values into the command unescaped: `sanitizeExecCommand` blocks `;|&$<>` but not quotes or spaces, so a row value could add docker arguments
-- Add `drop: PATH=VALUE` to keyed merges, parsed like `collect_reset` (`VALUE` may be `a|b`). A matching row removes its key's row and is not stored. A later row for the key starts a new row at the end.
-  alternative: keep removed containers as dimmed `removed` rows
-  because: `--rm` containers and e2e runs get fresh names, so dead rows pile up to `buffer`
-- `drop` and `collect_reset` share one parser for `PATH=a|b`.
+- Add `drop: PATH=VALUE` to keyed merges (`VALUE` may be `a|b`). A matching row removes its key's row and isn't stored; a later row for the key starts a new row at the end. `drop` and `collect_reset` share one `PATH=a|b` parser.
+  alternative: keep removed containers as dimmed rows
+  because: `--rm` containers get fresh names, so dead rows pile up to `buffer`
+- Commands come from flags: `--action NAME=COMMAND` alongside `--source`. A flag action is reachable from every page, like an approved action, and refused when it would replace an approved action.
+  alternative: a local config file; a local-only app
+  because: chosen by the user; it keeps "one URL, one command" and the rule that a remote page never chooses what runs
+- Flag commands get values as environment variables `TD_<name>`, never by text substitution. Names match `^[A-Za-z0-9_]{1,32}$`.
+  alternative: shell-quote values into `{{.name}}` placeholders
+  because: the Docker feed already uses `{{…}}`, and an environment variable can't be parsed as code; the prefix stops a value from replacing `PATH`
+- A value is refused when it is empty, longer than 256 bytes, starts with `-`, or holds a control character.
   alternative: none considered
-- The feed is one command, given as a copyable `--source` value in the README: `docker ps -a --format …; exec docker events --filter … --format …`.
-  alternative: ship a `feed.sh` in onefile and have the user download it
-  because: an extra download step breaks "one URL, one command"
-- Events are filtered to `create`, `start`, `die`, `pause`, `unpause` and `destroy`.
+  because: a quoted value can still be read as an option (`--output=…`); README commands also pass `--`
+- An action's values are the button's `data-*` attributes, as for page actions today.
+  alternative: none considered
+- Page-declared exec actions keep their current `{{…}}` expansion.
+  alternative: move them to environment variables too
+  because: that changes existing pages; recorded as G2
+- `params: [name]` on a merge takes the values from the page URL query and starts the merge's inputs with them. Without every param present, the block renders with no rows and no input runs.
+  alternative: a Filter-like action that sets the value from a button
+  because: a link is shareable (`?name=web`), needs no cross-block messaging, and survives a reload
+- The page's query reaches the WebSocket: the server adds it to the `ws-url` it renders, and the handler passes it to block state.
+  alternative: the client appends `location.search`
+  because: the server already builds the URL, and the client then needs no change
+- A merge with `params` gets a buffer per distinct set of values (keyed by name, config hash and values). Its inputs stop 30s after the last viewer leaves.
+  alternative: run until shutdown, as streams do today
+  because: every container opened would leave a `docker logs -f` running
+- Kill asks first through the button's `data-confirm`. Stop and restart don't.
+  alternative: none considered
+- The feed is one copyable `--source` value. Events are filtered to `create`, `start`, `die`, `pause`, `unpause` and `destroy`, and Docker templates map them onto `ps` states (`start` → `running`, `die` → `exited`, `destroy` → `removed`). Names are printed with `{{json .Names}}`.
   alternative: all container events
   because: `attach`, `exec_*` and `health_status` would overwrite the row's state with noise
-- Names are printed with `{{json .Names}}`, so the feed is valid JSON whatever the name holds.
-  alternative: none considered
-- Status text for `ps` rows is `ps`'s own (`Up 2 hours`), and doesn't tick. Event rows show the event and exit code.
+- `ps` rows show `ps`'s own status (`Up 2 hours`), which doesn't tick.
   alternative: compute uptime in the page
-  because: `ps` gives no start timestamp in its JSON, and templates have no clock
-- The page doesn't offer a suggested command when started without `--source`.
-  alternative: a serve prompt that offers the page's suggested command for one keypress
-  because: a remote page would then choose what runs, behind one Enter; `accepts.hint` already shows the command as text
+  because: `ps` JSON has no start timestamp
 
 ## Files
 
-tinkerdown (worktree `.worktrees/drop-keyed-rows`):
-- `internal/stream/keyed.go`: `drops(r)`; `add` removes the key's row and index entry, and reindexes the rows after it.
-- `internal/stream/hub.go`: `KeySpec` gains `DropPath`, `DropValue`.
-- `internal/config/config.go`, `parser.go`: `Drop string yaml:"drop"`, mirrored; `pageSourceConfig` copies it.
-- `internal/config/stream_sources.go`: `validateKey` checks `drop` (needs `key`, `PATH=VALUE`); one shared `PATH=a|b` parser for `drop` and `collect_reset`; `KeySpec()` fills the drop fields.
-- Tests: `internal/stream` (drop removes, re-adds at the end, alternatives), `internal/config` (validation), `source_flags_e2e_test.go` `TestKeyedMerge_E2E` (a drop sends `["r", key]`).
-- Docs: `docs/sources/stream.md` (`drop` row, one-row-per-key section); `CHANGELOG.md` under `[Unreleased]`.
+tinkerdown (worktree `.worktrees/containers-upstream`):
+- `internal/stream/keyed.go`, `hub.go`: `drop` in `KeySpec` and `keyedRows.add`; per-values buffers for params merges, stopped 30s after the last unsubscribe.
+- `internal/stream/proc.go`: start a cmd with extra `TD_*` environment variables.
+- `internal/config/config.go`, `parser.go`, `stream_sources.go`: `Drop`, `Params` fields, mirrored; validation (`drop` and `params` need a merge, `drop` needs `key`); one `PATH=a|b` parser for `drop` and `collect_reset`; `FlagActions`.
+- `internal/config/params.go` new?: the `TD_` name and value rules, shared by actions and streams.
+- `cmd/tinkerdown/commands/source_flags.go` (or `action_flags.go` new?): `--action NAME=COMMAND`, needs `--allow-exec`, refused over an approved action, listed in `serve --help`.
+- `internal/runtime/actions.go`: run a flag action with `TD_*` values, no `expandTemplate`, no `sanitizeExecCommand`; the 30s timeout stays.
+- `internal/server/server.go`: carry the page query into the `ws-url`. `websocket.go`: pass it to block state; reach flag actions from pages.
+- Tests: `internal/stream` (drop; params buffers and stop), `internal/config` (validation, value rules), `internal/runtime` (flag action env, refused values), `cmd/tinkerdown/commands` (`--action` parsing), e2e `TestFlagActions_E2E`, `TestParamsMerge_E2E` new?, `TestKeyedMerge_E2E` (drop sends `["r", …]`).
+- Docs: `docs/sources/stream.md` (`drop`, `params`), `docs/reference/cli.md` or the `serve` docs (`--action`, `TD_` values), `docs/reference/config.md`; `CHANGELOG.md` under `[Unreleased]`.
 
 onefile:
-- `containers/index.md` new?: the page, frontmatter merge `inputs: ["*"]`, `key: [fields.name]`, `drop: fields.state=removed`, `accepts` with the feed command as the hint.
-- `containers/README.md` new?, `containers/docs/desktop.png` and `phone.png` new?
-- `e2e/containers_test.go` new?: see Acceptance criteria.
-- Root `README.md`: list the app.
+- `containers/index.md` new?: merges `containers` (`inputs: ["*"]` accepting the feed, `key: [fields.name]`, `drop: fields.state=removed`) and `logs` (`inputs: [logs]`, `params: [name]`); row buttons and the logs panel.
+- `containers/README.md` new? with the copyable command, `containers/docs/desktop.png`, `phone.png` new?
+- `e2e/containers_test.go` new?; root `README.md` lists the app.
 
 ## Tracker
 
 | # | Type | Item | Severity | Status |
 |---|---|---|---|---|
-| A1 | assumption | The feed command survives `--source NAME='…'` quoting and `sh -c` unchanged, with the format strings' double quotes escaped. | high | open (Phase 2) |
-| A2 | assumption | Removing a keyed row mid-range reaches the page as `["r", key]`, not a redraw. livetemplate's range diff emits `r` ops (`range_ops.go`). | medium | open (Phase 1) |
-| A3 | assumption | `docker events` keeps running when no container changes, and exits only when the daemon goes away; tinkerdown's restart backoff then reconnects. | medium | open (Phase 2) |
-| R1 | risk | A rename leaves the old name's row behind, since the feed doesn't map `rename`. Mitigation if it bites: map `rename` to a drop of `oldName`. | low | accepted |
-| G1 | gap | A crashed container's last log lines. Tinkerdown can't start one `docker logs -f` per row, so this needs a per-key input, not a page change. | medium | unowned |
-| G2 | gap | Stop and restart buttons. They need a `pattern` on action params (so a value can't add arguments), and still won't run from a URL. | medium | unowned (M2) |
+| A1 | assumption | The feed survives `--source NAME='…'` quoting and `sh -c`, with the format strings' double quotes escaped. | high | open (Phase 4) |
+| A2 | assumption | Removing a keyed row mid-range reaches the page as `["r", key]`. livetemplate's range diff emits `r` ops (`range_ops.go`). | medium | open (Phase 1) |
+| A3 | assumption | A merge input can't be used by a page both as a plain input and through a params merge; if it can, the plain use must refuse a source whose command reads `TD_*`. | medium | open (Phase 3) |
+| A4 | assumption | `data-confirm` works on any button in an lvt block, not only in forms (the PII example uses it on a row button). | low | open (Phase 4) |
+| R1 | risk | A page link can set `?name=` to any value, so anyone who can send you a link chooses which container's logs start. The value rules and `--` limit it to an argument; the command is still yours. | medium | accepted |
+| R2 | risk | A rename leaves the old name's row behind. Mitigation if it bites: map `rename` to a drop of `oldName`. | low | accepted |
+| G1 | gap | Remote pages can call flag actions but still can't declare their own. Intended. | low | owned (this plan) |
+| G2 | gap | Page-declared exec actions still paste values with `{{…}}`, so a value can add arguments. | medium | unowned |
 
 ## Acceptance criteria
 
 - [ ] `/simplify` has run on each phase's diff.
-- [ ] `go test ./internal/stream/...`: a `drop` row removes its key's row and isn't stored; a later row for the key is added at the end; `a|b` alternatives match; merges without `drop` are unchanged.
-- [ ] Config validation refuses `drop` without `key`, a `drop` that isn't `PATH=VALUE`, and `drop` on a non-merge source.
-- [ ] `TestKeyedMerge_E2E`: a drop row sends `["r", …]` for the key, and the row leaves the page.
-- [ ] onefile `cd e2e && go test -run TestContainers ./...`, with containers named `ofe2e-<pid>-*` and the README feed plus `--filter name=ofe2e-<pid>`:
-  - a running `sleep` container shows `running` in the Running tab
-  - a container that exits with code 3 shows `exited (3)` in the Exited tab
-  - `docker pause` moves it to Paused; `docker rm -f` removes its row
-  - search narrows by name
-  - phone layout: no cell leaves its row
+- [ ] `go test ./internal/stream/...`:
+  - a `drop` row removes its key's row and isn't stored, and a later row re-adds at the end
+  - a params merge gets one buffer per distinct values, and stops its inputs 30s after the last unsubscribe
+  - a cmd sees its `TD_*` variables
+- [ ] `go test ./internal/config/...`: refuses `drop` without `key`, `drop` or `params` on a non-merge, a bad param name; the value rules refuse empty, over 256 bytes, a leading `-`, a control character.
+- [ ] `go test ./cmd/tinkerdown/commands/...`: `--action` parses `NAME=COMMAND`, needs `--allow-exec`, refuses a duplicate and an approved action's name.
+- [ ] `go test ./internal/runtime/...`: a flag action runs with `TD_name` set from `data-name`, a value `$(id)` reaches the command as text, and a refused value never runs.
+- [ ] Browser e2e (Docker Chrome): `TestFlagActions_E2E` clicks a row button and the command ran with the row's value; `TestParamsMerge_E2E` opens `?name=a`, sees only `a`'s rows, then `?name=b` gets a separate buffer; `TestKeyedMerge_E2E` sees `["r", …]` on a drop.
+- [ ] onefile `cd e2e && go test -run TestContainers ./...`, with containers named `ofe2e-<pid>-*` and the README command plus `--filter name=ofe2e-<pid>`:
+  - a running container shows `running`; one that exits with code 3 shows `exited (3)` in the Exited tab
+  - Stop moves a row to exited; Kill asks first; `docker rm -f` removes the row
+  - clicking a name opens its logs, and a line the container prints afterwards appears
+  - search narrows by name; on a phone no cell leaves its row
   - `t.Cleanup` removes every `ofe2e-<pid>-*` container
 - [ ] The onefile page passes every remote-page check when served from its raw GitHub URL.
 - [ ] Full tinkerdown suite green; pre-commit passes; `prereview check` clean on changed docs.
 
 ## Constraints
 
-- Keyed merges without `drop`, and merges without `key`, behave exactly as today.
-- Nothing in tinkerdown knows about Docker; `drop` is generic.
-- The onefile page stays a valid page from a URL: merge sources only, no actions, no scripts.
+- Merges without `drop` or `params`, page-declared actions and existing `--source` flags behave exactly as today.
+- Nothing in tinkerdown knows about Docker.
+- A remote page never defines a command: it only names sources and actions that flags supply.
+- Flag actions and flag sources need `--allow-exec`.
 - e2e tests use real Docker Chrome and a real Docker daemon, and are never skipped.
 
 ## Contract
 
 ```
-drop: PATH=V           on a keyed merge: a row matching PATH=V (V may be a|b) removes its key's row, and is not stored
+drop: PATH=V           keyed merge: a row matching PATH=V (V may be a|b) removes its key's row, and is not stored
+params: [NAME, ...]    merge: values from the page query; inputs start with TD_NAME=value; no rows until all are present
+--action NAME=COMMAND  exec action from the command line; values arrive as $TD_<data-* name>
+TD_ value rules        name ^[A-Za-z0-9_]{1,32}$; value 1-256 bytes, no leading "-", no control characters
 ```
 
-The feed's JSON line, for both `ps` and event rows: `{"name", "image", "state", "status"}`. `state` is one of `created`, `running`, `paused`, `exited`, `restarting`, `dead` (from `ps`), or `removed` (from `destroy`).
+The feed's JSON line: `{"name", "image", "state", "status"}`. `state` is one of `created`, `running`, `paused`, `exited`, `restarting`, `dead` (from `ps`), or `removed` (from `destroy`).
 
 ## Phases
 
 ### Phase 1: `drop` on keyed merges
 - Audit: A2; every caller of `KeySpec` and the `collect_reset` parser.
-- Implementation: per the tinkerdown Files list.
-- Acceptance: `/simplify`, the stream, validation and e2e criteria, docs, the full suite.
+- Implementation: `drop` per the Files list.
+- Acceptance: `/simplify`, the stream and config `drop` criteria, `TestKeyedMerge_E2E`.
 
-### Phase 2: the containers app
-- Audit: A1, A3. Re-read the Contract against what shipped.
+### Phase 2: `--action` flags and `TD_` values
+- Audit: how page actions reach `executeCustomAction`, and how approved actions are found from a page.
+- Implementation: the value rules, `--action`, the flag-action runner.
+- Acceptance: `/simplify`, the commands, runtime and `TestFlagActions_E2E` criteria.
+
+### Phase 3: merges with `params`
+- Audit: A3; how a block's merge buffer is resolved per connection.
+- Implementation: query into the WebSocket, per-values buffers, stop after the last viewer.
+- Acceptance: `/simplify`, the params stream criteria, `TestParamsMerge_E2E`, docs, the full suite.
+
+### Phase 4: the containers app
+- Audit: A1, A4. Re-read the Contract against what shipped.
 - Implementation: the onefile files.
 - Acceptance: `/simplify`, the onefile criteria, screenshots through chromedp.
 
 ## Delivery
 
 1. Open the plan PR, get signoff, merge. Never merge without signoff.
-2. Create `.worktrees/drop-keyed-rows` after the plan is merged. One PR for Phase 1; release through `release.sh` and bump the Homebrew formula; then Phase 2 in onefile, against the released tinkerdown.
+2. Create `.worktrees/containers-upstream` after the plan is merged. One PR per phase 1–3, or one for all three; release through `release.sh` and bump the Homebrew formula; then Phase 4 in onefile, against the released tinkerdown.
