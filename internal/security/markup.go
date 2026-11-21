@@ -30,42 +30,94 @@ func UnsafeMarkup(src string) []string {
 			found = append(found, u.what)
 		}
 	}
-	if actionInTag(src) {
-		found = append(found, "a template action in a tag name or attribute name (only quoted attribute values may hold {{ }})")
+	if strings.Contains(src, "{{-") || strings.Contains(src, "-}}") {
+		// Trim markers delete the text around an action, so "< {{- x }}"
+		// renders as "<x": markup that isn't in the source.
+		found = append(found, "a template trim marker ({{- or -}})")
+	}
+	if actionOutsideValue(src) {
+		found = append(found, "a template action in a tag name, attribute name, unquoted value or comment (only text and quoted attribute values may hold {{ }})")
 	}
 	return found
 }
 
-// actionInTag reports whether a template action sits inside an HTML tag but
-// outside a quoted attribute value, as in <{{"meta"}} ...> or
-// <img {{"onerror"}}=...>. Those build markup at render time that the raw
-// text checks above can't see, so a page from a URL may not use them.
-func actionInTag(src string) bool {
-	inTag, quote := false, byte(0)
+// actionOutsideValue reports whether a template action sits inside markup
+// anywhere but a quoted attribute value: in a tag or attribute name, an
+// unquoted value or a comment, as in <{{"meta"}}>, <img {{"onerror"}}=...>
+// or <img x"{{"onerror"}}">. Those build markup at render time that the raw
+// text checks can't see. It follows the HTML tokenizer: a quote opens a value
+// only right after "=", and is part of the name anywhere else.
+func actionOutsideValue(src string) bool {
+	const (
+		text     = iota
+		tag      // inside <...>, outside any value
+		afterEq  // after "=", before the value starts
+		unquoted // inside an unquoted value
+		quoted   // inside a quoted value
+		comment  // inside <!-- ... -->
+	)
+	state, quote := text, byte(0)
 	for i := 0; i < len(src); i++ {
 		c := src[i]
-		switch {
-		case !inTag:
-			if c == '<' && i+1 < len(src) && (isTagStart(src[i+1]) || strings.HasPrefix(src[i+1:], "{{")) {
-				inTag = true
+		action := strings.HasPrefix(src[i:], "{{")
+		switch state {
+		case text:
+			switch {
+			case strings.HasPrefix(src[i:], "<!--"):
+				state, i = comment, i+3
+			case c == '<' && i+1 < len(src) && strings.HasPrefix(src[i+1:], "{{"):
+				return true
+			case c == '<' && i+1 < len(src) && isTagStart(src[i+1]):
+				state = tag
 			}
-		case quote != 0:
+		case comment:
+			if action {
+				return true
+			}
+			if strings.HasPrefix(src[i:], "-->") {
+				state, i = text, i+2
+			}
+		case tag:
+			switch {
+			case action:
+				return true
+			case c == '=':
+				state = afterEq
+			case c == '>':
+				state = text
+			}
+		case afterEq:
+			switch {
+			case c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f':
+			case c == '"' || c == '\'':
+				state, quote = quoted, c
+			case c == '>':
+				state = text
+			case action:
+				return true
+			default:
+				state = unquoted
+			}
+		case unquoted:
+			switch {
+			case action:
+				return true
+			case c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f':
+				state = tag
+			case c == '>':
+				state = text
+			}
+		case quoted:
 			if c == quote {
-				quote = 0
+				state = tag
 			}
-		case c == '"' || c == '\'':
-			quote = c
-		case c == '>':
-			inTag = false
-		case strings.HasPrefix(src[i:], "{{"):
-			return true
 		}
 	}
 	return false
 }
 
 func isTagStart(c byte) bool {
-	return c == '/' || c == '!' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z'
+	return c == '/' || c == '!' || c == '?' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z'
 }
 
 // StrictCSP is the policy for a page from a URL: no inline script except

@@ -8,6 +8,12 @@ func TestUnsafeMarkupTemplateActionsInTags(t *testing.T) {
 		`<img src="x" {{"onerror"}}="alert(1)">`,
 		`<a href={{.url}}>x</a>`,
 		`<{{.tag}}>`,
+		`<img x"{{"onerror"}}="alert(1)">`,
+		`< {{- "meta"}} http-equiv="refresh">`,
+		`<p>{{.a -}} x</p>`,
+		`<!-- {{.x}} -->`,
+		`<img alt=x{{.y}}>`,
+		`<img alt= {{.y}}>`,
 	}
 	for _, src := range refused {
 		if found := UnsafeMarkup(src); len(found) == 0 {
@@ -19,6 +25,8 @@ func TestUnsafeMarkupTemplateActionsInTags(t *testing.T) {
 		`{{if .Paused}}<button name="Resume">Resume</button>{{else}}<button name="Pause">Pause</button>{{end}}`,
 		`<span class='x {{.y}}'>{{len .Data}} lines</span>`,
 		"a < b and {{.x}} > c",
+		`<input value="it's {{.x}}" placeholder='say "{{.y}}"'>`,
+		`<!-- a note --><p>{{.x}}</p>`,
 	}
 	for _, src := range allowed {
 		if found := UnsafeMarkup(src); len(found) != 0 {
