@@ -2,6 +2,8 @@ package server
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"html"
@@ -24,6 +26,7 @@ import (
 	"github.com/livetemplate/tinkerdown/internal/config"
 	"github.com/livetemplate/tinkerdown/internal/diagrams"
 	"github.com/livetemplate/tinkerdown/internal/schedule"
+	"github.com/livetemplate/tinkerdown/internal/security"
 	"github.com/livetemplate/tinkerdown/internal/site"
 	"github.com/livetemplate/tinkerdown/internal/stream"
 )
@@ -66,6 +69,8 @@ type Server struct {
 	sourceWriteMu      sync.Mutex                            // Protects recentSourceWrites
 	proxyRoutes        []*proxyRoute                         // Custom routes that bypass markdown resolution and reverse-proxy to upstream
 	csp                string                                // Pre-computed Content-Security-Policy header value (immutable for the server's lifetime)
+	singlePage         string                                // when set, the only page served, at "/" (see ServeSinglePage)
+	remotePage         bool                                  // the single page came from a URL: strict CSP
 	streams            *stream.Hub                           // Long-running stream inputs shared by every connection
 }
 
@@ -290,6 +295,12 @@ func (s *Server) Discover() error {
 
 		// Generate route pattern
 		pattern := mdToPattern(relPath)
+		if s.singlePage != "" {
+			if relPath != s.singlePage {
+				return nil
+			}
+			pattern = "/"
+		}
 
 		// Parse the page
 		page, err := tinkerdown.ParseFileInSite(path, s.rootDir)
@@ -943,7 +954,31 @@ func (s *Server) servePage(w http.ResponseWriter, r *http.Request, route *Route)
 	// apps. Runs per-request so each visitor gets a fresh upstream session
 	// and forwards their cookies/auth context.
 	html = tinkerdown.ProcessEmbedLvt(html, r)
+	if s.remotePage {
+		// A page from a URL runs no inline script but tinkerdown's own, which
+		// carries this response's nonce. Its markup was checked at startup to
+		// hold no <script> of its own.
+		nonce := newNonce()
+		html = strings.ReplaceAll(html, "<script>", `<script nonce="`+nonce+`">`)
+		w.Header().Set("Content-Security-Policy", security.StrictCSP(nonce))
+	}
 	w.Write([]byte(html))
+}
+
+// newNonce returns a fresh CSP nonce.
+func newNonce() string {
+	b := make([]byte, 16)
+	rand.Read(b)
+	return base64.StdEncoding.EncodeToString(b)
+}
+
+// ServeSinglePage limits the server to one page, rel (relative to the root
+// directory), routed at "/". remote marks a page fetched from a URL, which
+// is served with the strict content security policy.
+func (s *Server) ServeSinglePage(rel string, remote bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.singlePage, s.remotePage = rel, remote
 }
 
 // detectWSScheme returns the appropriate WebSocket URL scheme ("wss"

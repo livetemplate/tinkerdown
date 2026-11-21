@@ -20,6 +20,11 @@ Earlier releases (v0.1.x) are documented in the
   tabs heading with `[*] source` shows one tab per source. When a page needs
   sources and has none, `serve` asks for them in a terminal. See
   [docs/sources/stream.md](docs/sources/stream.md#sources-from-the-command-line).
+- **`tinkerdown serve` takes one page: a `.md` path, a `file://` URI or an
+  `https://` URL.** A page from a URL may only declare merge sources, is
+  checked for scripts and other unsafe markup, and is served with a strict
+  Content-Security-Policy. `#sha256=` pins its content. See
+  [docs/reference/cli.md](docs/reference/cli.md#pages-from-a-url).
 - **`tinkerdown serve --help`** prints serve's own usage. It used to start
   serving the current directory.
 
