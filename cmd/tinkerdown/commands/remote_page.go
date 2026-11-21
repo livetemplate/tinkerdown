@@ -33,6 +33,7 @@ type pageArg struct {
 	dir    string // site root
 	single string // with dir: the one page to serve, relative to dir
 	url    string // a remote page's URL, without the #sha256= pin
+	shown  string // url without credentials, for every message
 	pin    string // the expected sha256, hex
 }
 
@@ -42,17 +43,19 @@ func parsePageArg(arg string) (pageArg, error) {
 	if strings.HasPrefix(arg, "https://") || strings.HasPrefix(arg, "http://") {
 		u, err := url.Parse(arg)
 		if err != nil {
-			return pageArg{}, fmt.Errorf("page URL %q: %w", arg, err)
+			return pageArg{}, fmt.Errorf("page URL: %w", err)
 		}
 		if u.Scheme == "http" && !isLocalHost(u.Hostname()) {
-			return pageArg{}, fmt.Errorf("page URL %q: use https; plain http is allowed only to localhost", arg)
+			return pageArg{}, fmt.Errorf("page URL %s: use https; plain http is allowed only to localhost", u.Redacted())
 		}
 		pin, _ := strings.CutPrefix(u.Fragment, "sha256=")
 		if u.Fragment != "" && pin == u.Fragment {
-			return pageArg{}, fmt.Errorf("page URL %q: the only fragment allowed is #sha256=HEX", arg)
+			return pageArg{}, fmt.Errorf("page URL %s: the only fragment allowed is #sha256=HEX", u.Redacted())
 		}
 		u.Fragment = ""
-		return pageArg{url: u.String(), pin: strings.ToLower(pin)}, nil
+		shown := *u
+		shown.User = nil
+		return pageArg{url: u.String(), shown: shown.String(), pin: strings.ToLower(pin)}, nil
 	}
 	if strings.HasPrefix(arg, "file://") {
 		u, err := url.Parse(arg)
@@ -107,23 +110,27 @@ func fetchRemotePage(p pageArg) (dir, sum string, err error) {
 	}
 	resp, err := client.Get(p.url)
 	if err != nil {
-		return "", "", fmt.Errorf("fetch %s: %w", p.url, err)
+		var ue *url.Error
+		if errors.As(err, &ue) {
+			err = ue.Err // *url.Error repeats the URL, credentials included
+		}
+		return "", "", fmt.Errorf("fetch %s: %w", p.shown, err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return "", "", fmt.Errorf("fetch %s: %s", p.url, resp.Status)
+		return "", "", fmt.Errorf("fetch %s: %s", p.shown, resp.Status)
 	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxRemotePage+1))
 	if err != nil {
-		return "", "", fmt.Errorf("fetch %s: %w", p.url, err)
+		return "", "", fmt.Errorf("fetch %s: %w", p.shown, err)
 	}
 	if len(body) > maxRemotePage {
-		return "", "", fmt.Errorf("fetch %s: the page is over %d bytes", p.url, maxRemotePage)
+		return "", "", fmt.Errorf("fetch %s: the page is over %d bytes", p.shown, maxRemotePage)
 	}
 	h := sha256.Sum256(body)
 	sum = hex.EncodeToString(h[:])
 	if p.pin != "" && p.pin != sum {
-		return "", "", fmt.Errorf("fetch %s: content sha256 is %s, not the pinned %s", p.url, sum, p.pin)
+		return "", "", fmt.Errorf("fetch %s: content sha256 is %s, not the pinned %s", p.shown, sum, p.pin)
 	}
 	dir, err = os.MkdirTemp("", "tinkerdown-page-") // mode 0700
 	if err != nil {

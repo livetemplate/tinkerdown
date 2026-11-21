@@ -30,7 +30,42 @@ func UnsafeMarkup(src string) []string {
 			found = append(found, u.what)
 		}
 	}
+	if actionInTag(src) {
+		found = append(found, "a template action in a tag name or attribute name (only quoted attribute values may hold {{ }})")
+	}
 	return found
+}
+
+// actionInTag reports whether a template action sits inside an HTML tag but
+// outside a quoted attribute value, as in <{{"meta"}} ...> or
+// <img {{"onerror"}}=...>. Those build markup at render time that the raw
+// text checks above can't see, so a page from a URL may not use them.
+func actionInTag(src string) bool {
+	inTag, quote := false, byte(0)
+	for i := 0; i < len(src); i++ {
+		c := src[i]
+		switch {
+		case !inTag:
+			if c == '<' && i+1 < len(src) && (isTagStart(src[i+1]) || strings.HasPrefix(src[i+1:], "{{")) {
+				inTag = true
+			}
+		case quote != 0:
+			if c == quote {
+				quote = 0
+			}
+		case c == '"' || c == '\'':
+			quote = c
+		case c == '>':
+			inTag = false
+		case strings.HasPrefix(src[i:], "{{"):
+			return true
+		}
+	}
+	return false
+}
+
+func isTagStart(c byte) bool {
+	return c == '/' || c == '!' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z'
 }
 
 // StrictCSP is the policy for a page from a URL: no inline script except

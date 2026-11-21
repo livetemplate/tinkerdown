@@ -188,14 +188,14 @@ func ServeCommand(args []string) error {
 		}
 		routes := srv.Routes()
 		if len(routes) != 1 {
-			return fmt.Errorf("fetch %s: the page did not parse", target.url)
+			return fmt.Errorf("fetch %s: the page did not parse", target.shown)
 		}
 		if err := checkRemotePage(routes[0].Page, string(raw)); err != nil {
 			return err
 		}
 		cfg.Features.HotReload = false
 		fmt.Printf("Fetched %s (%d bytes, sha256 %s). Pin it with %s#sha256=%s\n",
-			target.url, len(raw), remoteSum, target.url, remoteSum)
+			target.shown, len(raw), remoteSum, target.shown, remoteSum)
 	}
 
 	if err := checkFlagSources(cfg, srv); err != nil {

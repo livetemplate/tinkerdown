@@ -124,3 +124,20 @@ func TestCheckRemotePage(t *testing.T) {
 		}
 	}
 }
+
+func TestRemoteMessagesHideCredentials(t *testing.T) {
+	p, err := parsePageArg("https://user:s3cret@example.invalid/page.md#sha256=abc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(p.shown, "s3cret") || !strings.Contains(p.url, "s3cret") {
+		t.Fatalf("shown %q, url %q", p.shown, p.url)
+	}
+	_, _, err = fetchRemotePage(p)
+	if err == nil || strings.Contains(err.Error(), "s3cret") {
+		t.Fatalf("fetch error %v must not carry the password", err)
+	}
+	if _, err := parsePageArg("http://user:s3cret@example.com/p.md"); err == nil || strings.Contains(err.Error(), "s3cret") {
+		t.Fatalf("refusal %v must not carry the password", err)
+	}
+}
