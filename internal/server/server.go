@@ -3884,7 +3884,7 @@ func (s *Server) mergeInputs(page *tinkerdown.Page, blockID string) []string {
 	if !ok {
 		return nil
 	}
-	src, ok := resolveSource(s.config, page, sb.Metadata["lvt-source"])
+	src, ok := ResolveSource(s.config, page, sb.Metadata["lvt-source"])
 	if !ok || src.Type != "merge" {
 		return nil
 	}

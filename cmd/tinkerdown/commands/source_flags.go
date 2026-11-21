@@ -4,12 +4,12 @@ import (
 	"bufio"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"regexp"
 	"slices"
 	"strings"
 
-	"github.com/livetemplate/tinkerdown"
 	"github.com/livetemplate/tinkerdown/internal/config"
 	"github.com/livetemplate/tinkerdown/internal/security"
 	"github.com/livetemplate/tinkerdown/internal/server"
@@ -54,6 +54,60 @@ func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
+// addFlagSource parses a --source value (or a prompt answer) and adds it to
+// flags: one place for the rules both paths share.
+func addFlagSource(flags map[string]config.SourceConfig, value string, allowExec bool) (string, error) {
+	name, src, err := parseSourceFlag(value)
+	switch {
+	case err != nil:
+		return "", err
+	case flags[name].Type != "":
+		return "", fmt.Errorf("--source %s is given twice", name)
+	case src.Cmd != "" && !allowExec:
+		return "", fmt.Errorf("--source %s runs a command; add --allow-exec to allow it", name)
+	}
+	if err := config.ValidateStreamSource(name, src, nil); err != nil {
+		return "", fmt.Errorf("--source %s: %w", name, err)
+	}
+	flags[name] = src
+	return name, nil
+}
+
+// checkFlagSources refuses a flag that replaces an approved source, and one no
+// page uses. A page uses a flag when the flag replaces a source the page or
+// the site defines, or when one of the page's merges resolves to include it.
+// Both are decided by server.ResolveSource, as the page's blocks will see them.
+func checkFlagSources(cfg *config.Config, srv *server.Server) error {
+	used := map[string]bool{}
+	for _, route := range srv.Routes() {
+		if route.Page == nil {
+			continue
+		}
+		for name := range route.Page.Config.Sources {
+			used[name] = true
+		}
+		for _, name := range server.VisibleSourceNames(cfg, route.Page) {
+			if src, ok := server.ResolveSource(cfg, route.Page, name); ok && src.Type == "merge" {
+				for _, in := range src.Inputs {
+					used[in] = true
+				}
+			}
+		}
+	}
+	for name := range cfg.Sources {
+		used[name] = true
+	}
+	for _, name := range slices.Sorted(maps.Keys(cfg.FlagSources)) {
+		if cfg.ApprovedSource(name) {
+			return fmt.Errorf("--source %s: %q is an approved source in tinkerdown.yaml and can't be replaced", name, name)
+		}
+		if !used[name] {
+			return fmt.Errorf("--source %s: no page takes it. A page takes a --source through a merge with inputs [\"*\"] that accepts %s sources, or a source of the same name", name, cfg.FlagSources[name].Kind())
+		}
+	}
+	return nil
+}
+
 // sourceNeed is a ["*"] merge on a page that has fewer sources than it needs.
 type sourceNeed struct {
 	page, hint string
@@ -68,19 +122,12 @@ func sourceNeeds(cfg *config.Config, srv *server.Server) []sourceNeed {
 		if route.Page == nil {
 			continue
 		}
-		names := make([]string, 0, len(route.Page.Config.Sources)+len(cfg.Sources))
-		for n := range route.Page.Config.Sources {
-			names = append(names, n)
-		}
-		for n := range cfg.Sources {
-			names = append(names, n)
-		}
-		slices.Sort(names)
-		for _, name := range slices.Compact(names) {
-			if !wasWildcard(cfg, route.Page, name) {
+		names := slices.Compact(slices.Sorted(slices.Values(server.VisibleSourceNames(cfg, route.Page))))
+		for _, name := range names {
+			src, ok := server.ResolveSource(cfg, route.Page, name)
+			if !ok || !src.Wildcard {
 				continue
 			}
-			src, _ := server.ResolveSource(cfg, route.Page, name)
 			need, hint := 1, ""
 			if src.Accepts != nil {
 				need, hint = max(src.Accepts.Min, 1), src.Accepts.Hint
@@ -91,14 +138,6 @@ func sourceNeeds(cfg *config.Config, srv *server.Server) []sourceNeed {
 		}
 	}
 	return needs
-}
-
-// wasWildcard reports whether a page's merge source was declared with ["*"].
-func wasWildcard(cfg *config.Config, page *tinkerdown.Page, name string) bool {
-	if src, ok := page.Config.Sources[name]; ok {
-		return server.PageSourceConfig(src).WildcardInputs()
-	}
-	return cfg.Sources[name].WildcardInputs()
 }
 
 // stdinIsTerminal reports whether a person can answer a prompt. Agents, CI,
@@ -138,21 +177,12 @@ func promptSources(in io.Reader, out io.Writer, flags map[string]config.SourceCo
 		if line == "" {
 			return given
 		}
-		name, src, err := parseSourceFlag(line)
-		switch {
-		case err != nil:
+		name, err := addFlagSource(flags, line, allowExec)
+		if err != nil {
 			fmt.Fprintln(out, err)
 			continue
-		case src.Cmd != "" && !allowExec:
-			fmt.Fprintf(out, "%s runs a command; restart with --allow-exec to allow it\n", name)
-			continue
 		}
-		if _, dup := flags[name]; dup {
-			fmt.Fprintf(out, "%s is already set\n", name)
-			continue
-		}
-		flags[name] = src
-		given = append(given, sourceFlagValue(name, src))
+		given = append(given, sourceFlagValue(name, flags[name]))
 	}
 }
 

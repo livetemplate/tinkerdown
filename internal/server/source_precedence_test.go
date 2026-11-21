@@ -205,11 +205,11 @@ func TestApprovedMergePinsItsInputs(t *testing.T) {
 		page:   &tinkerdown.Page{Config: tinkerdown.PageConfig{Sources: map[string]tinkerdown.SourceConfig{"web": pageWeb}}},
 	}
 
-	if got, _ := h.mergeInputLookup("all")("web"); got.Cmd != manifestWeb.Cmd {
+	if got, _ := mergeInputLookup(h.config, h.page, "all")("web"); got.Cmd != manifestWeb.Cmd {
 		t.Fatalf("approved merge resolved input web to %q, want the manifest's %q", got.Cmd, manifestWeb.Cmd)
 	}
 	// A merge outside the approved set keeps the usual precedence.
-	if got, _ := h.mergeInputLookup("other")("web"); got.Cmd != pageWeb.Cmd {
+	if got, _ := mergeInputLookup(h.config, h.page, "other")("web"); got.Cmd != pageWeb.Cmd {
 		t.Fatalf("unapproved merge resolved input web to %q, want the page's %q", got.Cmd, pageWeb.Cmd)
 	}
 }
@@ -231,14 +231,14 @@ func TestApprovedWildcardMergeTakesOnlyManifestSources(t *testing.T) {
 	}}}
 	h := &WebSocketHandler{config: cfg, page: page}
 
-	got, _ := h.resolveSource("all")
+	got, _ := ResolveSource(h.config, h.page, "all")
 	if len(got.Inputs) != 1 || got.Inputs[0] != "web" {
 		t.Fatalf("approved [\"*\"] merge expanded to %v, want only [web]", got.Inputs)
 	}
 
 	// The same merge outside the approved set takes every stream it can see.
 	cfg.Generation = nil
-	got, _ = h.resolveSource("all")
+	got, _ = ResolveSource(h.config, h.page, "all")
 	if want := []string{"flagged", "sneaky", "web"}; !slices.Equal(got.Inputs, want) {
 		t.Fatalf("unapproved [\"*\"] merge expanded to %v, want %v", got.Inputs, want)
 	}
@@ -269,7 +269,7 @@ func TestWildcardMergeHonoursAcceptsKinds(t *testing.T) {
 		"all": {Type: "merge", Inputs: []string{"*"}, Accepts: &tinkerdown.SourceAccepts{Kinds: []string{"file"}}},
 	}}}
 	h := &WebSocketHandler{config: cfg, page: page}
-	got, _ := h.resolveSource("all")
+	got, _ := ResolveSource(h.config, h.page, "all")
 	if !slices.Equal(got.Inputs, []string{"log"}) || got.Accepts == nil {
 		t.Fatalf("file-only merge expanded to %v (accepts %v), want [log]", got.Inputs, got.Accepts)
 	}

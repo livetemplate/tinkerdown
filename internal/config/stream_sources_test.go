@@ -101,36 +101,3 @@ func TestValidateAccepts(t *testing.T) {
 		}
 	}
 }
-
-func TestCheckFlagSources(t *testing.T) {
-	wildcard := map[string]SourceConfig{"all": {Type: "merge", Inputs: []string{"*"}}}
-	fileOnly := map[string]SourceConfig{"all": {Type: "merge", Inputs: []string{"*"}, Accepts: &SourceAccepts{Kinds: []string{"file"}}}}
-	named := map[string]SourceConfig{"api": {Type: "stream", File: "x.log"}}
-	cmd := SourceConfig{Type: "stream", Cmd: "docker logs -f api"}
-
-	cases := []struct {
-		name    string
-		cfg     Config
-		pages   []map[string]SourceConfig
-		wantErr string
-	}{
-		{"taken by a [\"*\"] merge", Config{FlagSources: map[string]SourceConfig{"api": cmd}}, []map[string]SourceConfig{wildcard}, ""},
-		{"replaces a page source by name", Config{FlagSources: map[string]SourceConfig{"api": cmd}}, []map[string]SourceConfig{named}, ""},
-		{"no page takes it", Config{FlagSources: map[string]SourceConfig{"api": cmd}}, nil, "no page takes it"},
-		{"wrong kind", Config{FlagSources: map[string]SourceConfig{"api": cmd}}, []map[string]SourceConfig{fileOnly}, "accepts cmd sources"},
-		{"approved name", Config{
-			FlagSources: map[string]SourceConfig{"api": cmd},
-			Sources:     map[string]SourceConfig{"api": {Type: "stream", File: "x.log"}},
-			Generation:  &GenerationConfig{Sources: []string{"api"}},
-		}, nil, "approved source"},
-	}
-	for _, c := range cases {
-		err := c.cfg.CheckFlagSources(c.pages)
-		switch {
-		case c.wantErr == "" && err != nil:
-			t.Errorf("%s: %v", c.name, err)
-		case c.wantErr != "" && (err == nil || !strings.Contains(err.Error(), c.wantErr)):
-			t.Errorf("%s: got %v, want an error containing %q", c.name, err, c.wantErr)
-		}
-	}
-}

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/livetemplate/tinkerdown/internal/config"
+	"github.com/livetemplate/tinkerdown/internal/server"
 )
 
 func TestParseSourceFlag(t *testing.T) {
@@ -115,7 +116,7 @@ func TestPromptSources(t *testing.T) {
 	if want := []string{"app=file:./logs/app.log"}; !slices.Equal(given, want) {
 		t.Fatalf("given = %q, want %q\n%s", given, want, out.String())
 	}
-	for _, want := range []string{"NAME=COMMAND", "restart with --allow-exec", "api is already set"} {
+	for _, want := range []string{"NAME=COMMAND", "add --allow-exec", "api is given twice"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("prompt output missing %q:\n%s", want, out.String())
 		}
@@ -164,4 +165,52 @@ func TestServeWithoutTerminalDoesNotPrompt(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 	}
 	t.Fatal("serve did not start listening; it may be waiting on stdin")
+}
+
+// checkFlagSources decides from resolution, as the page will see it. An
+// approved ["*"] merge takes only tinkerdown.yaml sources, so a flag it would
+// seem to take is unused, and refused.
+func TestCheckFlagSources(t *testing.T) {
+	serveDir := func(yaml, page string) (*config.Config, *server.Server) {
+		dir := t.TempDir()
+		if yaml != "" {
+			os.WriteFile(filepath.Join(dir, "tinkerdown.yaml"), []byte(yaml), 0o644)
+		}
+		os.WriteFile(filepath.Join(dir, "index.md"), []byte(page), 0o644)
+		cfg, err := config.LoadFromDir(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		srv := server.NewWithConfig(dir, cfg)
+		if err := srv.Discover(); err != nil {
+			t.Fatal(err)
+		}
+		return cfg, srv
+	}
+	wildcardPage := "---\nsources:\n  all:\n    type: merge\n    inputs: [\"*\"]\n---\n# Logs\n"
+	approvedYAML := "sources:\n  web:\n    type: stream\n    file: web.log\n  all:\n    type: merge\n    inputs: [\"*\"]\ngeneration:\n  sources: [all, web]\n"
+	flag := map[string]config.SourceConfig{"api": {Type: "stream", File: "api.log"}}
+
+	cases := []struct {
+		name, yaml, page string
+		flags            map[string]config.SourceConfig
+		wantErr          string
+	}{
+		{"taken by a [\"*\"] merge", "", wildcardPage, flag, ""},
+		{"replaces a page source by name", "", "---\nsources:\n  api:\n    type: stream\n    file: x.log\n---\n# A\n", flag, ""},
+		{"no page takes it", "", "# Hi\n", flag, "no page takes it"},
+		{"approved [\"*\"] merge takes only manifest sources", approvedYAML, "# Hi\n", flag, "no page takes it"},
+		{"approved name", approvedYAML, "# Hi\n", map[string]config.SourceConfig{"web": {Type: "stream", File: "x.log"}}, "approved source"},
+	}
+	for _, c := range cases {
+		cfg, srv := serveDir(c.yaml, c.page)
+		cfg.FlagSources = c.flags
+		err := checkFlagSources(cfg, srv)
+		switch {
+		case c.wantErr == "" && err != nil:
+			t.Errorf("%s: %v", c.name, err)
+		case c.wantErr != "" && (err == nil || !strings.Contains(err.Error(), c.wantErr)):
+			t.Errorf("%s: got %v, want an error containing %q", c.name, err, c.wantErr)
+		}
+	}
 }

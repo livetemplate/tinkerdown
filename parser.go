@@ -726,9 +726,9 @@ type Tab struct {
 	Filter string // Filter expression (empty for "All" tab)
 }
 
-// TabButton renders one tab of the tab group tabsID. The first tab starts
+// tabButton renders one tab of the tab group tabsID. The first tab starts
 // selected.
-func TabButton(tabsID string, index int, name, filter string) string {
+func tabButton(tabsID string, index int, name, filter string) string {
 	activeClass, ariaSelected, tabIndex := "", "false", "-1"
 	if index == 0 {
 		activeClass, ariaSelected, tabIndex = " active", "true", "0"
@@ -739,23 +739,25 @@ func TabButton(tabsID string, index int, name, filter string) string {
 }
 
 // sourceTabsPattern matches the placeholder a [*] FIELD tab leaves in the tab
-// bar, and the id of the first lvt block after it.
-var sourceTabsPattern = regexp.MustCompile(`(?s)<span hidden data-tabs-each="([^"]*)" data-tabs-id="([^"]*)" data-tab-start="(\d+)"></span>(.*?data-block-id="([^"]*)")?`)
+// bar, and the id of the first lvt block after it (the block the client's tabs
+// filter).
+var sourceTabsPattern = regexp.MustCompile(`(?s)<span hidden data-tabs-each="([^"]*)" data-tabs-id="([^"]*)" data-tab-start="(\d+)"></span>(.*?<div class="tinkerdown-interactive-block" data-tinkerdown-block data-block-id="([^"]*)")?`)
 
 // ExpandSourceTabs replaces each [*] FIELD placeholder in page with one tab per
 // input of the lvt block that follows it, labelled with the input name and
 // filtering on "FIELD = input". inputs returns a block's expanded merge
 // inputs, or nothing for a block that isn't a merge.
 func ExpandSourceTabs(page string, inputs func(blockID string) []string) string {
+	if !strings.Contains(page, "data-tabs-each=") {
+		return page // most pages: no copy
+	}
 	return sourceTabsPattern.ReplaceAllStringFunc(page, func(match string) string {
 		m := sourceTabsPattern.FindStringSubmatch(match)
 		field, tabsID, rest, blockID := html.UnescapeString(m[1]), html.UnescapeString(m[2]), m[4], m[5]
 		start, _ := strconv.Atoi(m[3])
 		var b strings.Builder
-		if blockID != "" {
-			for i, in := range inputs(blockID) {
-				b.WriteString(TabButton(tabsID, start+i, in, field+" = "+in))
-			}
+		for i, in := range inputs(blockID) {
+			b.WriteString(tabButton(tabsID, start+i, in, field+" = "+in))
 		}
 		return b.String() + rest
 	})
@@ -817,15 +819,21 @@ func processTabbedHeadings(htmlStr string) string {
 		builder.WriteString(fmt.Sprintf(`<%s%s class="tinkerdown-tabs-heading">`, tagName, attrs))
 		builder.WriteString(`<span class="tinkerdown-tabs-bar" role="tablist">`)
 
-		for i, tab := range tabs {
+		// A [*] FIELD tab stands for one tab per input of the merge below,
+		// known only when the page is served. It goes after the fixed tabs,
+		// wherever it was written, so the tab indexes stay unique.
+		eachField, hasEach, n := "", false, 0
+		for _, tab := range tabs {
 			if tab.Name == "*" {
-				// One tab per input of the merge below, known only when the
-				// page is served; ExpandSourceTabs fills it in.
-				builder.WriteString(fmt.Sprintf(`<span hidden data-tabs-each="%s" data-tabs-id="%s" data-tab-start="%d"></span>`,
-					escapeHTML(tab.Filter), escapeHTML(tabsID), i))
+				eachField, hasEach = tab.Filter, true
 				continue
 			}
-			builder.WriteString(TabButton(tabsID, i, tab.Name, tab.Filter))
+			builder.WriteString(tabButton(tabsID, n, tab.Name, tab.Filter))
+			n++
+		}
+		if hasEach {
+			builder.WriteString(fmt.Sprintf(`<span hidden data-tabs-each="%s" data-tabs-id="%s" data-tab-start="%d"></span>`,
+				escapeHTML(eachField), escapeHTML(tabsID), n))
 		}
 
 		builder.WriteString(`</span>`)

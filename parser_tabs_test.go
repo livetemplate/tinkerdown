@@ -155,3 +155,15 @@ func TestSourceTabsExpandPerInput(t *testing.T) {
 		t.Errorf("no inputs should leave just [All]:\n%s", none)
 	}
 }
+
+// A fixed tab written after [*] still comes first, so indexes stay unique.
+func TestSourceTabsGoLast(t *testing.T) {
+	in := `<h2 id="x">[*] source | [Errors] level = error</h2>` + "\n" +
+		`<div class="tinkerdown-interactive-block" data-tinkerdown-block data-block-id="lvt-0" data-block-type="lvt"></div>`
+	out := ExpandSourceTabs(processTabbedHeadings(in), func(string) []string { return []string{"api"} })
+	errorsTab := strings.Index(out, `data-tab-index="0" data-filter="level = error"`)
+	apiTab := strings.Index(out, `data-tab-index="1" data-filter="source = api"`)
+	if errorsTab < 0 || apiTab < errorsTab {
+		t.Fatalf("want [Errors] at 0 then api at 1:\n%s", out)
+	}
+}

@@ -207,9 +207,7 @@ func NewGenericStateWithMetadata(name string, cfg config.SourceConfig, siteDir, 
 		siteDir:    siteDir,
 		Errors:     make(map[string]string),
 	}
-	if cfg.Type == "merge" {
-		s.Inputs, s.Accepts = cfg.Inputs, cfg.Accepts
-	}
+	s.Inputs, s.Accepts = cfg.Inputs, cfg.Accepts // set only on merges
 
 	// Parse metadata for element type and columns
 	if metadata != nil {

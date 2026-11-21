@@ -340,9 +340,9 @@ type SourceConfig struct {
 	// Accepts, on a merge with inputs ["*"], says which sources the page takes.
 	Accepts *SourceAccepts `yaml:"accepts,omitempty"`
 
-	// expanded marks a merge whose ["*"] was replaced by ExpandInputs, so an
-	// empty Inputs means "no sources yet" rather than a config mistake.
-	expanded bool
+	// Wildcard is set by ExpandInputs on a merge declared with inputs ["*"]:
+	// its Inputs are the sources found, and empty means "no sources yet".
+	Wildcard bool `yaml:"-"`
 }
 
 // SourceAccepts declares the sources a page's ["*"] merge takes. It describes

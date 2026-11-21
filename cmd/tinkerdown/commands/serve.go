@@ -28,7 +28,7 @@ func ServeCommand(args []string) error {
 	var operator string
 	var allowExec bool
 	var headless bool
-	flagSources := map[string]config.SourceConfig{}
+	var sourceValues []string
 
 	// Parse flags
 	for i := 0; i < len(args); i++ {
@@ -41,14 +41,7 @@ func ServeCommand(args []string) error {
 				return fmt.Errorf("--source needs a value: NAME=COMMAND or NAME=file:PATH")
 			}
 			i++
-			name, src, err := parseSourceFlag(args[i])
-			if err != nil {
-				return err
-			}
-			if _, dup := flagSources[name]; dup {
-				return fmt.Errorf("--source %s is given twice", name)
-			}
-			flagSources[name] = src
+			sourceValues = append(sourceValues, args[i])
 		} else if arg == "--watch" || arg == "-w" {
 			watchVal := true
 			watch = &watchVal
@@ -115,16 +108,14 @@ func ServeCommand(args []string) error {
 		}
 	}
 
-	// Sources from --source flags rank above page and site sources.
-	for name, src := range flagSources {
-		if src.Cmd != "" && !allowExec {
-			return fmt.Errorf("--source %s runs a command; add --allow-exec to allow it", name)
-		}
-		if err := config.ValidateStreamSource(name, src, nil); err != nil {
-			return fmt.Errorf("--source %s: %w", name, err)
+	// Sources from --source flags rank above page and site sources. They are
+	// checked after the loop, since --allow-exec may come after them.
+	cfg.FlagSources = map[string]config.SourceConfig{}
+	for _, v := range sourceValues {
+		if _, err := addFlagSource(cfg.FlagSources, v, allowExec); err != nil {
+			return err
 		}
 	}
-	cfg.FlagSources = flagSources
 
 	// CLI flags override config
 	if port != "" {
@@ -166,7 +157,7 @@ func ServeCommand(args []string) error {
 		return fmt.Errorf("failed to discover pages: %w", err)
 	}
 
-	if err := cfg.CheckFlagSources(pageSources(srv)); err != nil {
+	if err := checkFlagSources(cfg, srv); err != nil {
 		return err
 	}
 
@@ -177,7 +168,7 @@ func ServeCommand(args []string) error {
 		if stdinIsTerminal() {
 			given := promptSources(os.Stdin, os.Stdout, cfg.FlagSources, allowExec)
 			if len(given) > 0 {
-				if err := cfg.CheckFlagSources(pageSources(srv)); err != nil {
+				if err := checkFlagSources(cfg, srv); err != nil {
 					return err
 				}
 				fmt.Printf("Next time, run:\n  %s\n", reuseLine(args, given))
@@ -302,22 +293,6 @@ func ServeCommand(args []string) error {
 	}
 
 	return nil
-}
-
-// pageSources lists each discovered page's own sources, for CheckFlagSources.
-func pageSources(srv *server.Server) []map[string]config.SourceConfig {
-	var out []map[string]config.SourceConfig
-	for _, route := range srv.Routes() {
-		if route.Page == nil || len(route.Page.Config.Sources) == 0 {
-			continue
-		}
-		set := make(map[string]config.SourceConfig, len(route.Page.Config.Sources))
-		for name, src := range route.Page.Config.Sources {
-			set[name] = server.PageSourceConfig(src)
-		}
-		out = append(out, set)
-	}
-	return out
 }
 
 const serveUsage = `Usage: tinkerdown serve [directory] [flags]
