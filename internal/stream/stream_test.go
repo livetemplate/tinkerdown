@@ -561,7 +561,7 @@ func TestParseMatch(t *testing.T) {
 	if !ok || m.Path != "fields.state" || len(m.Values) != 2 || m.String() != "fields.state=removed|dead" {
 		t.Fatalf("ParseMatch = %+v, %v", m, ok)
 	}
-	for _, bad := range []string{"", "fields.state", "=x", "fields.state="} {
+	for _, bad := range []string{"", "fields.state", "=x", "fields.state=", "fields.state=a||b", "fields.state=a|"} {
 		if _, ok := ParseMatch(bad); ok {
 			t.Errorf("ParseMatch(%q) ok, want refused", bad)
 		}

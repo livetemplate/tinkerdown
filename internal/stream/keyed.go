@@ -26,6 +26,7 @@ func (k *keyedRows) add(r Row, size int) {
 	key := k.keyOf(r)
 	i, known := k.index[key]
 	if k.spec.Drop.Matches(r) {
+		// A drop for a key never seen, or already dropped, changes nothing.
 		if known {
 			k.remove(i)
 		}
@@ -80,17 +81,20 @@ type Match struct {
 	Values []string
 }
 
-// ParseMatch reads PATH=VALUE. It reports false when "=" is missing or either
-// side is empty; the caller checks that Path is a field path.
+// ParseMatch reads PATH=VALUE. It reports false when "=" is missing, PATH is
+// empty, or an alternative is empty (a||b); the caller checks that Path is a
+// field path. "|" can't be escaped.
 func ParseMatch(s string) (Match, bool) {
 	path, value, ok := strings.Cut(s, "=")
-	if !ok || path == "" || value == "" {
+	values := strings.Split(value, "|")
+	if !ok || path == "" || slices.Contains(values, "") {
 		return Match{}, false
 	}
-	return Match{Path: path, Values: strings.Split(value, "|")}, true
+	return Match{Path: path, Values: values}, true
 }
 
-// Matches reports whether r's field at m.Path is one of m.Values.
+// Matches reports whether r's field at m.Path is one of m.Values. A number is
+// compared as it prints, so 0 matches the value "0".
 func (m Match) Matches(r Row) bool {
 	if m.Path == "" {
 		return false
