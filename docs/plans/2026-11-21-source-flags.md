@@ -1,6 +1,6 @@
 # Plan: one-command apps — sources from flags, pages from a URL
 
-State — Done: Phases 1–3 (`20a3b27`, `5505372`, `64c7a5e`, simplify `b2993cf`). Next: PR review for Phases 1–3, then Phase 4.
+State — Done: Phases 1–3 (#329), Phase 4 (#330), Phase 5 (the log viewer, now `logs/` in [livetemplate/onefile](https://github.com/livetemplate/onefile)). Next: signoff and merge of #329 and #330.
 
 ## Context
 
@@ -19,7 +19,7 @@ It also fixes one gap that a mistyped flag hits: a block whose source fails to b
 The log viewer then ships with no sources, and a user runs it without cloning anything:
 
 ```sh
-tinkerdown serve --allow-exec https://raw.githubusercontent.com/livetemplate/logviewer/main/index.md \
+tinkerdown serve --allow-exec https://raw.githubusercontent.com/livetemplate/onefile/main/logs/index.md \
   --source 'api=docker logs -f --timestamps api' --source 'app=file:./logs/app.log'
 ```
 
@@ -38,7 +38,7 @@ tinkerdown serve --allow-exec https://raw.githubusercontent.com/livetemplate/log
 Serving the log viewer from its URL:
 
 ```
-$ tinkerdown serve --allow-exec https://raw.githubusercontent.com/livetemplate/logviewer/main/index.md --source 'api=docker logs -f api'
+$ tinkerdown serve --allow-exec https://raw.githubusercontent.com/livetemplate/onefile/main/logs/index.md --source 'api=docker logs -f api'
 Fetched index.md (4.1 KB, sha256 3f9a…c21e). Pin it with …/index.md#sha256=3f9a…c21e
 🌐 Server running at http://localhost:8080
 ```
@@ -269,18 +269,18 @@ Assumptions (A) are checked before building, risks (R) are what we'd act on, and
   - an invalid source shows its error in the block
 - [x] `tinkerdown serve --help` prints the usage above and exits 0 without listening (a test in `cmd/tinkerdown/commands/cli_test.go`); every example in it is checked to parse with `parseSourceFlag`. ✅ (`TestServeHelpExitsWithoutServing`, in `source_flags_test.go`)
 - [x] The prompt: a test drives it and checks the printed reuse line; a run with stdin not a terminal doesn't block. ✅ (`TestPromptSources` feeds a reader, not a pseudo-terminal; `TestServeWithoutTerminalDoesNotPrompt`)
-- [ ] Pages from a URL, tested against an `httptest` server in `cmd/tinkerdown/commands`:
+- [x] Pages from a URL, tested against an `httptest` server in `cmd/tinkerdown/commands` ✅ (`TestParsePageArg`, `TestFetchRemotePage`, `TestCheckRemotePage`):
   - a merge-only page serves
   - a page with an `exec`, `stream` or file-reading source, an action, a schedule, an include, a `server` or `embed-lvt` block, an `on*` attribute, a `javascript:` URL, or a `<script>`, `<meta>` or `<base>` element is refused, and the same file served locally runs
   - a merge `buffer` over 10,000 is refused; a redirect to `http://` or to a private address is refused; a URL path with `..` still saves as `page.md`
   - a hint holding `\x1b[2J` prints without the escape sequence
   - a `#sha256=` mismatch, a body over 1 MiB and a non-localhost `http://` URL are refused
   - no `tinkerdown.yaml` is read without `--config`
-- [ ] `TestStreamSource_E2E` gains a subtest serving its page from an `httptest` URL with `--source` flags, in Docker Chrome. The page's template includes `<img src="http://<other host>/?{{.msg}}">`, and the other host receives no request.
+- [x] A browser e2e serves a page as one from a URL, with `--source` flags, in Docker Chrome. ✅ (`TestRemotePageCSP_E2E`; it fails without the strict policy) The page's template includes `<img src="http://<other host>/?{{.msg}}">`, and the other host receives no request.
 - [x] With the server on `127.0.0.1`, a request with `Host: evil.example` is refused, and `Host: localhost:PORT` is accepted. ✅ (`TestHostAllowed`; the check is in `ServeHTTP`, before the WebSocket upgrade)
 - [x] A failed block's page error contains no command text; the server log has it. ✅ (`TestBlockErrorShowsOnlyValidationMessages`)
 - [x] `parseSourceFlag` refuses names outside `[A-Za-z0-9_-]{1,32}`; the reuse line round-trips through `sh -c` for a command holding a single quote. ✅ (`TestParseSourceFlag`, `TestShellQuoteRoundTrips`, `TestPromptSources`)
-- [ ] `serve page.md` and `serve file:///abs/page.md` serve that page at `/` and no other file in its directory; a `file://` URI with a host other than empty or `localhost` is refused.
+- [x] `serve page.md` and `serve file:///abs/page.md` serve that page at `/` and no other file in its directory; a `file://` URI with a host other than empty or `localhost` is refused. ✅ (`TestServeSinglePage`, `TestParsePageArg`)
 - [ ] logviewer: `cd e2e && go test ./...` passes with the demo passed as flags, and `index.md` has no `cmd` or `file`.
 - [ ] Full tinkerdown suite green; pre-commit passes; `prereview check` clean on changed docs.
 
@@ -339,11 +339,13 @@ Precedence, highest first: approved (`tinkerdown.yaml` with `generation.sources`
 - Audit: A4. Check how `Discover`, routing and the watcher assume a directory.
 - Implementation: URL and file arguments, the fetch, the allow-list check, the sanitizer, the strict CSP with nonces, the limits, redirect rules, `#sha256=`. The `Host` allow-list lands in Phase 1, since it protects every page.
 - Acceptance: `/simplify`, the URL, file and e2e URL criteria, docs.
+- Learn: A4 holds with a `ServeSinglePage` filter in `Discover`; site mode is turned off for one page. A5 holds: tinkerdown's HTML has no inline handlers, and its seven inline scripts take a per-response nonce. The client's only `new Function` runs lifecycle-hook attributes, so the strict policy also drops `'unsafe-eval'`. The e2e's leak target has to be https: the default policy already blocks `http:` images, so a plain-http target passed even without the strict policy. `blocks` and `features` frontmatter are allowed too, since they're cosmetic. `/simplify` for Phase 4 was a single self-review pass, not the four-agent run.
 
 ### Phase 5: log viewer
 - Audit: re-read the Contract against what shipped; write any drift into this plan in the same commit.
 - Implementation: the logviewer files listed above.
 - Acceptance: `/simplify`, the logviewer criterion, and a check in a real browser through chromedp screenshots.
+- Learn: the log viewer moved into [livetemplate/onefile](https://github.com/livetemplate/onefile), a repo of one-page apps, as `logs/index.md`; its e2e test is `e2e/logs_test.go` there, with shared helpers in `e2e/helpers_test.go`. It passes against #330. README screenshots wait for #326, which colours the rows.
 
 ## Delivery
 

