@@ -159,8 +159,7 @@ A block whose source is invalid shows the error in place of its content:
   alternative: a separate `tinkerdown run <url>` command
   because: one command with one set of flags; the argument's form says what it is
 - A page from a URL may declare only `merge` sources, and no actions and no raw `<script>`. Anything else fails at startup with a message listing it. There is no flag to lift this: to run such a page, the user downloads it, reviews it and serves the local file.
-  alternative: a `--trust` flag that lifts the rule, guarded by a required `#sha256=` pin
-  alternative: list the page's commands and ask the user to confirm
+  alternative: a `--trust` flag guarded by a `#sha256=` pin, or a prompt to confirm the page's commands.
   because: a flag gets passed by habit, or by an agent the refusal told how. Confirmation can't work without a terminal. Downloading makes the user own a reviewed copy, and with sources from flags most shared pages need nothing else.
 - `serve` prints a fetched page's SHA-256. A URL ending in `#sha256=HEX` is refused when the content doesn't match.
   alternative: none considered
