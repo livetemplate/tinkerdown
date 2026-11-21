@@ -73,8 +73,10 @@ func TestFetchRemotePage(t *testing.T) {
 	if string(got) != body || len(sum) != 64 || info.Mode().Perm() != 0o700 {
 		t.Fatalf("saved %q, sum %q, dir mode %v", got, sum, info.Mode().Perm())
 	}
-	if _, _, err := fetchRemotePage(pageArg{url: ts.URL + "/page.md", pin: sum}); err != nil {
+	if pinned, _, err := fetchRemotePage(pageArg{url: ts.URL + "/page.md", pin: sum}); err != nil {
 		t.Errorf("matching pin refused: %v", err)
+	} else {
+		os.RemoveAll(pinned)
 	}
 
 	for name, p := range map[string]pageArg{
