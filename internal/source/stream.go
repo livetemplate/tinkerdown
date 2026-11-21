@@ -6,6 +6,7 @@ import (
 	"maps"
 	"net/url"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"sync"
 	"time"
@@ -25,10 +26,11 @@ type Followable interface {
 // StreamSource is a Source backed by a stream.Buffer shared with every other
 // page showing the same input. Fetch returns the buffer's current rows.
 //
-// A merge with params is gated: its buffer is nil until the page's query
-// holds every param, and while it does, the buffer shows rows only while each
-// value is in its gate merge. The source then watches the gates and holds
-// its own buffer (running its inputs) only while every gate is open.
+// A merge with params is gated: with every param in the page's query, it
+// watches its gate merges and shows rows only while each value is in its
+// gate. Its own buffer is built the first time every gate opens, so a value
+// never listed creates nothing in the hub, and it holds that buffer (running
+// its inputs) only while every gate is open.
 type StreamSource struct {
 	name  string
 	hub   *stream.Hub
@@ -37,8 +39,9 @@ type StreamSource struct {
 	gates []gate
 
 	mu       sync.Mutex
-	sub      *stream.Subscription // the page's subscription, once Subscribe ran
-	attached bool                 // buf is attached to sub
+	build    func() (*stream.Buffer, error) // a gated source's buffer, on first open
+	sub      *stream.Subscription           // the page's subscription, once Subscribe ran
+	attached bool                           // buf is attached to sub
 }
 
 // gate is one params value and the merge that must list it.
@@ -66,28 +69,46 @@ func (s *StreamSource) Name() string { return s.name }
 
 // Fetch returns the buffered rows, oldest first. The rows are shared and must
 // not be modified. A gated source returns no rows while a gate is closed, and
-// attaches or detaches its buffer to match.
+// attaches or detaches its buffer to match. That works because a gate's new
+// rows wake the page's subscription, and every wake-up refreshes, so Fetch
+// runs each time a gate may have opened or closed.
 func (s *StreamSource) Fetch(ctx context.Context) ([]map[string]interface{}, error) {
-	if s.buf == nil {
-		return nil, nil
-	}
-	if s.gates != nil {
-		open := s.open()
-		s.mu.Lock()
-		if s.sub != nil && open != s.attached {
-			if open {
-				s.sub.Attach(s.buf)
-			} else {
-				s.sub.Detach(s.buf)
-			}
-			s.attached = open
-		}
-		s.mu.Unlock()
-		if !open {
+	if s.gates == nil {
+		if s.buf == nil {
 			return nil, nil
 		}
+		return s.buf.Snapshot(), nil
 	}
-	return s.buf.Snapshot(), nil
+	open := s.open()
+	s.mu.Lock()
+	err := s.syncLocked(open)
+	buf := s.buf
+	s.mu.Unlock()
+	if err != nil || !open {
+		return nil, err
+	}
+	return buf.Snapshot(), nil
+}
+
+// syncLocked builds the buffer on the first open, and attaches it to the
+// page's subscription while open, detaching it once closed. s.mu is held.
+func (s *StreamSource) syncLocked(open bool) error {
+	if open && s.buf == nil {
+		buf, err := s.build()
+		if err != nil {
+			return err
+		}
+		s.buf = buf
+	}
+	if s.sub != nil && s.buf != nil && open != s.attached {
+		if open {
+			s.sub.Attach(s.buf)
+		} else {
+			s.sub.Detach(s.buf)
+		}
+		s.attached = open
+	}
+	return nil
 }
 
 // open reports whether every gate's merge has a row holding its value.
@@ -107,10 +128,10 @@ func (s *StreamSource) Close() error { return nil }
 // gated source wakes on its gates' rows too, and starts its own input only
 // while its gates are open; it returns nil when the query lacks a param.
 func (s *StreamSource) Subscribe() *stream.Subscription {
-	if s.buf == nil {
-		return nil
-	}
 	if s.gates == nil {
+		if s.buf == nil {
+			return nil
+		}
 		return s.buf.Subscribe()
 	}
 	s.mu.Lock()
@@ -119,9 +140,7 @@ func (s *StreamSource) Subscribe() *stream.Subscription {
 	for _, g := range s.gates {
 		s.sub.Attach(g.buf)
 	}
-	if s.attached = s.open(); s.attached {
-		s.sub.Attach(s.buf)
-	}
+	_ = s.syncLocked(s.open()) // a build error reaches the page through Fetch
 	return s.sub
 }
 
@@ -148,8 +167,10 @@ func NewStreamSource(hub *stream.Hub, name string, cfg config.SourceConfig, site
 
 	src := &StreamSource{name: name, hub: hub, flush: flush}
 	if cfg.Type == "stream" {
-		src.buf, err = streamInput(hub, name, cfg, dir, nil, 0)
-		return src, err
+		if src.buf, err = streamInput(hub, name, cfg, dir, nil, 0); err != nil {
+			return nil, err
+		}
+		return src, nil
 	}
 	var env map[string]string
 	idle := time.Duration(0)
@@ -158,7 +179,8 @@ func NewStreamSource(hub *stream.Hub, name string, cfg config.SourceConfig, site
 			return nil, fmt.Errorf("merge source %q: params need a page", name)
 		}
 		env, idle = map[string]string{}, MergeParamIdle
-		for p, spec := range cfg.Params {
+		for _, p := range slices.Sorted(maps.Keys(cfg.Params)) {
+			spec := cfg.Params[p]
 			v := page.Query.Get(p)
 			if v == "" {
 				return src, nil // no value yet: no rows, nothing runs
@@ -168,7 +190,13 @@ func NewStreamSource(hub *stream.Hub, name string, cfg config.SourceConfig, site
 			}
 			env["TD_"+p] = v
 			gateName, path := spec.Gate()
-			gateCfg, _ := page.Resolve(gateName) // ValidateStreamSource checked it is a merge
+			gateCfg, _ := page.Resolve(gateName)
+			// The gate this merge was validated against is the one lookup
+			// resolves; the page's own resolution must be that same merge,
+			// or a page could swap in a gate listing any value.
+			if want, _ := lookup(gateName); !sameMerge(want, gateCfg) {
+				return nil, &ValidationError{Source: name, Field: "params", Reason: fmt.Sprintf("param %s: gate %q is not the merge this source was checked against", p, gateName)}
+			}
 			g, err := NewStreamSource(hub, gateName, gateCfg, siteDir, page.InputLookup(gateName), nil)
 			if err != nil {
 				return nil, fmt.Errorf("merge source %q: param %s: %w", name, p, err)
@@ -176,20 +204,45 @@ func NewStreamSource(hub *stream.Hub, name string, cfg config.SourceConfig, site
 			src.gates = append(src.gates, gate{buf: g.buf, match: stream.Match{Path: path, Values: []string{v}}})
 		}
 	}
-	inputs := make([]*stream.Buffer, 0, len(cfg.Inputs))
-	for _, in := range cfg.Inputs {
-		inCfg, _ := lookup(in) // ValidateStreamSource checked it exists and is a stream
-		b, err := streamInput(hub, in, inCfg, dir, env, idle)
-		if err != nil {
-			return nil, fmt.Errorf("merge source %q: %w", name, err)
+	build := func() (*stream.Buffer, error) {
+		inputs := make([]*stream.Buffer, 0, len(cfg.Inputs))
+		for _, in := range cfg.Inputs {
+			inCfg, _ := lookup(in) // ValidateStreamSource checked it exists and is a stream
+			b, err := streamInput(hub, in, inCfg, dir, env, idle)
+			if err != nil {
+				return nil, fmt.Errorf("merge source %q: %w", name, err)
+			}
+			inputs = append(inputs, b)
 		}
-		inputs = append(inputs, b)
+		return hub.Merge(name, inputs, cfg.Buffer, cfg.KeySpec())
 	}
-	src.buf, err = hub.Merge(name, inputs, cfg.Buffer, cfg.KeySpec())
-	if err != nil {
+	if src.gates != nil {
+		// Check the inputs now, so a misconfigured input fails at page load
+		// rather than when the first value opens.
+		for _, in := range cfg.Inputs {
+			if inCfg, _ := lookup(in); inCfg.Cmd != "" {
+				if err := requireExec(in, "cmd", "stream sources that run a command"); err != nil {
+					return nil, err
+				}
+			}
+		}
+		src.build = build
+		return src, nil
+	}
+	if src.buf, err = build(); err != nil {
 		return nil, err
 	}
 	return src, nil
+}
+
+// sameMerge reports whether got, a merge as the page resolves it, is the
+// merge want describes. A ["*"] merge resolves to the inputs found, so its
+// inputs are left out of the comparison.
+func sameMerge(want, got config.SourceConfig) bool {
+	if want.WildcardInputs() {
+		got.Inputs, got.Wildcard = want.Inputs, want.Wildcard
+	}
+	return reflect.DeepEqual(want, got)
 }
 
 // streamInput resolves a stream source's command or file against dir (the

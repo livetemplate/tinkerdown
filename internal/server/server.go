@@ -981,14 +981,6 @@ func (s *Server) ServeSinglePage(rel string, remote bool) {
 	s.singlePage, s.remotePage = rel, remote
 }
 
-// detectWSScheme returns the appropriate WebSocket URL scheme ("wss"
-// or "ws") for the request. A page served over HTTPS must connect to
-// a wss:// endpoint or browsers reject the upgrade as mixed-content,
-// silently breaking every interactive block on the page.
-//
-// We trust X-Forwarded-Proto from the edge first (fly, cloudflare,
-// generic reverse proxies all set it on TLS-terminated requests),
-// then fall back to r.TLS for direct HTTPS servers, then "ws".
 // pageWSURL is the WebSocket URL of the page at path. It carries the page
 // URL's query, with page set last so the query can't name another page.
 func pageWSURL(scheme, host, path, rawQuery string) string {
@@ -997,6 +989,14 @@ func pageWSURL(scheme, host, path, rawQuery string) string {
 	return fmt.Sprintf("%s://%s/ws?%s", scheme, host, q.Encode())
 }
 
+// detectWSScheme returns the appropriate WebSocket URL scheme ("wss"
+// or "ws") for the request. A page served over HTTPS must connect to
+// a wss:// endpoint or browsers reject the upgrade as mixed-content,
+// silently breaking every interactive block on the page.
+//
+// We trust X-Forwarded-Proto from the edge first (fly, cloudflare,
+// generic reverse proxies all set it on TLS-terminated requests),
+// then fall back to r.TLS for direct HTTPS servers, then "ws".
 func detectWSScheme(r *http.Request) string {
 	// When X-Forwarded-Proto is present, it is authoritative — the
 	// proxy knows what scheme the client actually spoke. We must NOT
