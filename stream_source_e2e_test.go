@@ -218,6 +218,33 @@ func TestStreamSource_E2E(t *testing.T) {
 		}
 	})
 
+	t.Run("rows are coloured by level with no page CSS", func(t *testing.T) {
+		f, _ := os.OpenFile(appLog, os.O_APPEND|os.O_WRONLY, 0)
+		fmt.Fprintln(f, `{"level":"error","msg":"styled error"}`)
+		f.Close()
+		waitCount("an error row", "li.lvl-error", ">= 1")
+		waitCount("a warn row", "li.lvl-warn", ">= 1")
+		// colour resolves a CSS colour the way the browser computes it inside
+		// the block, so the test compares against the theme's own values.
+		var got map[string]string
+		if err := run(chromedp.Evaluate(`(() => {
+			const block = document.querySelector(".tinkerdown-interactive-block");
+			const colour = c => { const p = document.createElement("span"); p.style.color = c; block.appendChild(p);
+				const v = getComputedStyle(p).color; p.remove(); return v; };
+			const of = sel => getComputedStyle(document.querySelector(sel)).color;
+			return { error: of("li.lvl-error"), wantError: colour("var(--pico-del-color)"),
+				warn: of("li.lvl-warn"), wantWarn: colour("var(--tinkerdown-warn-color)"),
+				info: of("li.lvl-info") };
+		})()`, &got)); err != nil {
+			dump()
+			t.Fatal(err)
+		}
+		if got["error"] != got["wantError"] || got["warn"] != got["wantWarn"] || got["info"] == got["error"] || got["info"] == got["warn"] {
+			dump()
+			t.Fatalf("row colours: %v", got)
+		}
+	})
+
 	t.Run("two pages share one process", func(t *testing.T) {
 		// A second connection to the same page, as another browser tab makes.
 		wsURL := "ws" + strings.TrimPrefix(ts.URL, "http") + "/ws?page=" + neturl.QueryEscape("/")

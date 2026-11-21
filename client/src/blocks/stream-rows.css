@@ -1,0 +1,32 @@
+/**
+ * Default styles for stream rows.
+ *
+ * docs/sources/stream.md tells authors to set a row's level and stream as
+ * classes (class="lvl-{{.level}} stream-{{.stream}}"), so these rules colour
+ * any such row in an lvt block with no page CSS. Pico variables follow the
+ * light and dark themes; Pico has no amber, so warn defines its own pair.
+ */
+
+.tinkerdown-interactive-block {
+  --tinkerdown-warn-color: #9a5b00;
+}
+
+[data-theme="dark"] .tinkerdown-interactive-block {
+  --tinkerdown-warn-color: #e8a33d;
+}
+
+.tinkerdown-interactive-block :is(.lvl-error, .lvl-fatal) {
+  color: var(--pico-del-color);
+}
+
+.tinkerdown-interactive-block .lvl-warn {
+  color: var(--tinkerdown-warn-color);
+}
+
+.tinkerdown-interactive-block :is(.lvl-debug, .lvl-trace, .stream-system) {
+  color: var(--pico-muted-color);
+}
+
+.tinkerdown-interactive-block .stream-system {
+  font-style: italic;
+}

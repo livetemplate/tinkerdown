@@ -26,7 +26,4 @@ Follows `demo-logs.sh` with a `stream` source. Run with `tinkerdown serve --allo
 
 <style>
 .log { max-height: 60vh; overflow-y: auto; font-family: monospace; list-style: none; padding: 0; }
-.log .lvl-error, .log .lvl-fatal { color: #c0392b; }
-.log .lvl-warn { color: #b9770e; }
-.log .stream-system { opacity: .6; font-style: italic; }
 </style>
