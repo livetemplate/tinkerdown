@@ -11,7 +11,7 @@ A read-only prototype (2026-11-21, on v0.6.0) showed the list working, but a lis
 - **`drop` on keyed merges:** `drop: fields.state=removed` removes a key's row, so a removed container disappears instead of leaving a dead row.
 - **`--action NAME=COMMAND`:** an exec action you declare on the command line, like `--source`. A page, even a remote one, can call it with a button but can't define it.
 - **Values as environment variables:** a flag action or flag source gets each value as `$TD_<name>`, so `docker stop "$TD_name"` never parses the value as shell code.
-- **Merges with `params`:** `params: [name]` takes `?name=web` from the page URL and starts the merge's inputs with `TD_name=web`. A row link `?name=web` then opens that container's logs.
+- **Merges with `params`:** `params: {name: {in: containers.fields.name}}` takes `?name=web` from the page URL, accepts it only if `web` is a row in the page's `containers` merge, and starts the merge's inputs with `TD_name=web`. A row link `?name=web` then opens that container's logs.
 
 The audit (2026-11-21) settled these facts:
 
@@ -27,7 +27,7 @@ The audit (2026-11-21) settled these facts:
 |---|---|---|
 | See what's running | one row per container, updating live | `--source docker=…`, keyed merge on `fields.name`, `drop` |
 | Notice a crash | the row turns red: `exited (137)` | `die` event with `exitCode` |
-| Read a container's logs | click its name; logs follow live below the list | `<a href="?name=…">`, merge `params: [name]`, `--source logs=…` |
+| Read a container's logs | click its name; logs follow live below the list | `<a href="?name=…">`, merge `params` with `in`, `--source logs=…` |
 | Stop, restart or kill it | buttons on the row; kill asks first | `--action stop=…`, `data-confirm` |
 | Filter | Running / Exited / Paused tabs, name search | `fields.state` tabs, `f.fields.name` |
 
@@ -71,14 +71,21 @@ On a phone, each row puts the image and status under the name and the buttons on
 - A value is refused when it is empty, longer than 256 bytes, starts with `-`, or holds a control character.
   alternative: none considered
   because: a quoted value can still be read as an option (`--output=…`); README commands also pass `--`
+- A value stays one argument only when the command quotes it: `"$TD_name"`. Unquoted, the shell splits `a b` into two. Tinkerdown can't enforce this; the docs and every README command quote it.
+  alternative: none considered
 - An action's values are the button's `data-*` attributes, as for page actions today.
   alternative: none considered
 - Page-declared exec actions keep their current `{{…}}` expansion.
   alternative: move them to environment variables too
   because: that changes existing pages; recorded as G2
-- `params: [name]` on a merge takes the values from the page URL query and starts the merge's inputs with them. Without every param present, the block renders with no rows and no input runs.
+- `params` on a merge takes the values from the page URL query and starts the merge's inputs with them. Without every param present, the block renders with no rows and no input runs.
   alternative: a Filter-like action that sets the value from a button
   because: a link is shareable (`?name=web`), needs no cross-block messaging, and survives a reload
+- Every param needs `in: MERGE.PATH`: a value is accepted only while it equals PATH in a row of MERGE on the same page. A link can then open only what the page already lists.
+  alternative: free values; or open logs with a WebSocket action, which already refuses other origins
+  because: anyone can write a link. A free value lets another site make your machine run your command with a value it picks, and an action loses the shareable link
+- The `in` check runs again when MERGE's rows change. A link opened before the feed's first rows starts once the row appears; a value never listed starts nothing.
+  alternative: none considered
 - The page's query reaches the WebSocket: the server adds it to the `ws-url` it renders, and the handler passes it to block state.
   alternative: the client appends `location.search`
   because: the server already builds the URL, and the client then needs no change
@@ -99,7 +106,8 @@ On a phone, each row puts the image and status under the name and the buttons on
 tinkerdown (worktree `.worktrees/containers-upstream`):
 - `internal/stream/keyed.go`, `hub.go`: `drop` in `KeySpec` and `keyedRows.add`; per-values buffers for params merges, stopped 30s after the last unsubscribe.
 - `internal/stream/proc.go`: start a cmd with extra `TD_*` environment variables.
-- `internal/config/config.go`, `parser.go`, `stream_sources.go`: `Drop`, `Params` fields, mirrored; validation (`drop` and `params` need a merge, `drop` needs `key`); one `PATH=a|b` parser for `drop` and `collect_reset`; `FlagActions`.
+- `internal/config/config.go`, `parser.go`, `stream_sources.go`: `Drop`, `Params` fields, mirrored; validation (`drop` and `params` need a merge, `drop` needs `key`, every param needs `in` naming a merge on the page and a field path); one `PATH=a|b` parser for `drop` and `collect_reset`; `FlagActions`.
+- `internal/runtime/state.go` or `internal/server/websocket.go`: the `in` check against the named merge's current rows, rerun on its updates.
 - `internal/config/params.go` new?: the `TD_` name and value rules, shared by actions and streams.
 - `cmd/tinkerdown/commands/source_flags.go` (or `action_flags.go` new?): `--action NAME=COMMAND`, needs `--allow-exec`, refused over an approved action, listed in `serve --help`.
 - `internal/runtime/actions.go`: run a flag action with `TD_*` values, no `expandTemplate`, no `sanitizeExecCommand`; the 30s timeout stays.
@@ -108,7 +116,7 @@ tinkerdown (worktree `.worktrees/containers-upstream`):
 - Docs: `docs/sources/stream.md` (`drop`, `params`), `docs/reference/cli.md` or the `serve` docs (`--action`, `TD_` values), `docs/reference/config.md`; `CHANGELOG.md` under `[Unreleased]`.
 
 onefile:
-- `containers/index.md` new?: merges `containers` (`inputs: ["*"]` accepting the feed, `key: [fields.name]`, `drop: fields.state=removed`) and `logs` (`inputs: [logs]`, `params: [name]`); row buttons and the logs panel.
+- `containers/index.md` new?: merges `containers` (`inputs: ["*"]` accepting the feed, `key: [fields.name]`, `drop: fields.state=removed`) and `logs` (`inputs: [logs]`, `params: {name: {in: containers.fields.name}}`); row buttons and the logs panel.
 - `containers/README.md` new? with the copyable command, `containers/docs/desktop.png`, `phone.png` new?
 - `e2e/containers_test.go` new?; root `README.md` lists the app.
 
@@ -120,7 +128,7 @@ onefile:
 | A2 | assumption | Removing a keyed row mid-range reaches the page as `["r", key]`. livetemplate's range diff emits `r` ops (`range_ops.go`). | medium | open (Phase 1) |
 | A3 | assumption | A merge input can't be used by a page both as a plain input and through a params merge; if it can, the plain use must refuse a source whose command reads `TD_*`. | medium | open (Phase 3) |
 | A4 | assumption | `data-confirm` works on any button in an lvt block, not only in forms (the PII example uses it on a row button). | low | open (Phase 4) |
-| R1 | risk | A page link can set `?name=` to any value, so anyone who can send you a link chooses which container's logs start. The value rules and `--` limit it to an argument; the command is still yours. | medium | accepted |
+| R1 | risk | Anyone can write a link with `?name=`. `in` limits it to a container the page already lists, so the worst a hostile page can do is start logs for one of those; it can't read them (same-origin policy, Host allow-list). | low | mitigated (`in`) |
 | R2 | risk | A rename leaves the old name's row behind. Mitigation if it bites: map `rename` to a drop of `oldName`. | low | accepted |
 | G1 | gap | Remote pages can call flag actions but still can't declare their own. Intended. | low | owned (this plan) |
 | G2 | gap | Page-declared exec actions still paste values with `{{…}}`, so a value can add arguments. | medium | unowned |
@@ -135,7 +143,11 @@ onefile:
 - [ ] `go test ./internal/config/...`: refuses `drop` without `key`, `drop` or `params` on a non-merge, a bad param name; the value rules refuse empty, over 256 bytes, a leading `-`, a control character.
 - [ ] `go test ./cmd/tinkerdown/commands/...`: `--action` parses `NAME=COMMAND`, needs `--allow-exec`, refuses a duplicate and an approved action's name.
 - [ ] `go test ./internal/runtime/...`: a flag action runs with `TD_name` set from `data-name`, a value `$(id)` reaches the command as text, and a refused value never runs.
-- [ ] Browser e2e (Docker Chrome): `TestFlagActions_E2E` clicks a row button and the command ran with the row's value; `TestParamsMerge_E2E` opens `?name=a`, sees only `a`'s rows, then `?name=b` gets a separate buffer; `TestKeyedMerge_E2E` sees `["r", …]` on a drop.
+- [ ] Browser e2e (Docker Chrome):
+  - `TestFlagActions_E2E`: clicking a row button runs the command with the row's value
+  - `TestParamsMerge_E2E`: `?name=a` shows only `a`'s rows, and `?name=b` gets a separate buffer
+  - `TestParamsMerge_E2E`: `?name=c`, not in the list, runs no command until a `c` row appears
+  - `TestKeyedMerge_E2E`: a drop sends `["r", …]`
 - [ ] onefile `cd e2e && go test -run TestContainers ./...`, with containers named `ofe2e-<pid>-*` and the README command plus `--filter name=ofe2e-<pid>`:
   - a running container shows `running`; one that exits with code 3 shows `exited (3)` in the Exited tab
   - Stop moves a row to exited; Kill asks first; `docker rm -f` removes the row
@@ -151,13 +163,15 @@ onefile:
 - Nothing in tinkerdown knows about Docker.
 - A remote page never defines a command: it only names sources and actions that flags supply.
 - Flag actions and flag sources need `--allow-exec`.
+- Every documented flag command quotes its values: `"$TD_name"`, never `$TD_name`.
 - e2e tests use real Docker Chrome and a real Docker daemon, and are never skipped.
 
 ## Contract
 
 ```
 drop: PATH=V           keyed merge: a row matching PATH=V (V may be a|b) removes its key's row, and is not stored
-params: [NAME, ...]    merge: values from the page query; inputs start with TD_NAME=value; no rows until all are present
+params:                merge: values from the page query; inputs start with TD_NAME=value; no rows until all are present
+  NAME: {in: M.PATH}   a value is accepted only while it equals PATH in a row of merge M on the page
 --action NAME=COMMAND  exec action from the command line; values arrive as $TD_<data-* name>
 TD_ value rules        name ^[A-Za-z0-9_]{1,32}$; value 1-256 bytes, no leading "-", no control characters
 ```
