@@ -10,7 +10,7 @@ The log viewer's `index.md` ships demo sources, because a tinkerdown page can't 
 - **`inputs: ["*"]`:** a merge source takes every stream source the page can see.
 - **`[*] field` tabs:** a tabs heading gets one tab per input of the merge below it.
 - **A serve prompt:** when a page needs sources and has none, `serve` asks for them in a terminal.
-- **Pages from a URL:** `tinkerdown serve <url>` downloads one page and serves it; `serve <file.md>` serves one local page. A page from a URL can never run commands, read files or send data elsewhere.
+- **Pages from a URL:** `tinkerdown serve <url>` downloads one page and serves it; `serve <file.md>` or `serve file:///path/page.md` serves one local page. A page from a URL can never run commands, read files or send data elsewhere.
 - **Help an agent can follow:** `tinkerdown serve --help` explains `--source` with examples and how to find sources, so a coding agent can set the app up from the help alone. Today `serve --help` ignores the flag and starts serving the current directory.
 
 It also fixes one gap that a mistyped flag hits: a block whose source fails to build shows "Connecting..." forever.
@@ -70,7 +70,7 @@ Next time, run:
 `tinkerdown serve --help` prints, and exits without serving:
 
 ```
-Usage: tinkerdown serve [directory | file.md | url] [flags]
+Usage: tinkerdown serve [directory | file.md | file:// URI | https:// URL] [flags]
 
 Serves the markdown pages in directory (default: current directory), one file, or one page from a URL.
 
@@ -149,7 +149,7 @@ A block whose source is invalid shows the error in place of its content:
   because: agents, CI and the e2e tests start `serve` without a terminal and must never hang
 - `serve --help` (and `-h`) prints serve's own usage and exits 0 without serving. The usage leads with `--source`, gives copyable examples for docker, a dev server, a file and journald, and says that without a terminal every source must be a flag. The non-terminal message points to `serve --help`.
   because: an agent reads the help and the error output, not the docs site; the help has to be enough to finish the setup
-- `serve` takes a URL or a single `.md` file as well as a directory. A URL is fetched once at startup over HTTPS (or HTTP to localhost), capped at 1 MiB, into a temp directory, and served as the site's only page. A file is served as the only page, with its directory as the site root. Neither watches for changes.
+- `serve` takes a remote URL, a local `.md` file (a path or a `file://` URI) or a directory. A `file://` URI is the same as its path: a local page, with no remote-page rules. A URL is fetched once at startup over HTTPS (or HTTP to localhost), capped at 1 MiB, into a temp directory, and served as the site's only page. A file is served as the only page, with its directory as the site root. Neither watches for changes.
   alternative: a separate `tinkerdown run <url>` command
   because: one command with one set of flags; the argument's form says what it is
 - A page from a URL may declare only `merge` sources, and no actions and no raw `<script>`. Anything else fails at startup with a message listing it. There is no flag to lift this: to run such a page, the user downloads it, reviews it and serves the local file.
@@ -252,7 +252,7 @@ Assumptions (A) are checked before building, risks (R) are what we'd act on, and
   - a `#sha256=` mismatch, a body over 1 MiB and a non-localhost `http://` URL are refused
   - no `tinkerdown.yaml` is read without `--config`
 - [ ] `TestStreamSource_E2E` gains a subtest serving its page from an `httptest` URL with `--source` flags, in Docker Chrome. The page's template includes `<img src="http://<other host>/?{{.msg}}">`, and the other host receives no request.
-- [ ] `serve page.md` serves that page at `/` and no other file in its directory.
+- [ ] `serve page.md` and `serve file:///abs/page.md` serve that page at `/` and no other file in its directory; a `file://` URI with a host other than empty or `localhost` is refused.
 - [ ] logviewer: `cd e2e && go test ./...` passes with the demo passed as flags, and `index.md` has no `cmd` or `file`.
 - [ ] Full tinkerdown suite green; pre-commit passes; `prereview check` clean on changed docs.
 
@@ -272,6 +272,7 @@ Assumptions (A) are checked before building, risks (R) are what we'd act on, and
 --source NAME=file:PATH      stream source following PATH
 serve URL[#sha256=HEX]       fetch one page (https, or http to localhost; max 1 MiB) and serve it
 serve FILE.md                serve one local page
+serve file:///PATH/FILE.md   the same as serve /PATH/FILE.md
 page from a URL              may declare merge sources only; no actions, no raw <script>
 inputs: ["*"]                every stream source the merge can see, sorted by name
 ## [All] | [*] FIELD         one tab per merge input: label INPUT, filter "FIELD = INPUT"
