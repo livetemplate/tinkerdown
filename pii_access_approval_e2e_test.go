@@ -212,22 +212,19 @@ func TestPIIAccessApproval(t *testing.T) {
 
 	if err := chromedp.Run(ctx,
 		chromedp.Click(fmt.Sprintf(`button[name="approve-export"][data-id="%s"]`, approveID), chromedp.ByQuery),
-		chromedp.Sleep(700*time.Millisecond),
 	); err != nil {
 		ch.dump(t)
 		t.Fatalf("click approve: %v", err)
 	}
 
-	// UI is server-authoritative: the approved request no longer offers Approve.
-	var approveGone bool
-	if err := chromedp.Run(ctx,
-		chromedp.Evaluate(fmt.Sprintf(`document.querySelector('button[name="approve-export"][data-id="%s"]') === null`, approveID), &approveGone),
-	); err != nil {
-		t.Fatalf("check approve gone: %v", err)
-	}
-	if !approveGone {
+	// UI is server-authoritative: the approved request no longer offers
+	// Approve. Wait for the update rather than sleeping a fixed time: on a
+	// slow CI runner (Docker Chrome at half a CPU, -race) the frame can take
+	// seconds, and a fixed 700ms check failed there although the server sent it.
+	gone := fmt.Sprintf(`document.querySelector('button[name="approve-export"][data-id="%s"]') === null`, approveID)
+	if err := chromedp.Run(ctx, waitForDOM(gone, 15*time.Second)); err != nil {
 		ch.dump(t)
-		t.Errorf("after approve, the request still offers an Approve button (state not server-authoritative)")
+		t.Errorf("after approve, the request still offers an Approve button (state not server-authoritative): %v", err)
 	}
 
 	// DB: status flipped, audit row appended, export bounded to the request's cap.
