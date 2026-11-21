@@ -1,34 +1,56 @@
-# Plan: sources from the command line, so apps ship without demo sources
+# Plan: one-command apps — sources from flags, pages from a URL
 
-State — Done: nothing. Next: plan PR, then Phase 1.
+State — Done: nothing. Next: plan signoff, then Phase 1.
 
 ## Context
 
-The log viewer's `index.md` ships demo sources, because a tinkerdown page can't run without its sources written into it. Its review asked for a production page with no demo, and for a way to follow your own logs without editing the page ([#327](https://github.com/livetemplate/tinkerdown/issues/327)). This plan adds four generic pieces to tinkerdown:
+The log viewer's `index.md` ships demo sources, because a tinkerdown page can't run without its sources written into it, and running it means cloning its repo. Its review asked for a production page with no demo, for following your own logs without editing the page ([#327](https://github.com/livetemplate/tinkerdown/issues/327)), and for running a one-file app in one command ([#325](https://github.com/livetemplate/tinkerdown/issues/325)). This plan adds these generic pieces to tinkerdown:
 
 - **`--source` flags:** `tinkerdown serve` takes stream sources on the command line.
 - **`inputs: ["*"]`:** a merge source takes every stream source the page can see.
 - **`[*] field` tabs:** a tabs heading gets one tab per input of the merge below it.
 - **A serve prompt:** when a page needs sources and has none, `serve` asks for them in a terminal.
+- **Pages from a URL:** `tinkerdown serve <url>` downloads one page and serves it; `serve <file.md>` serves one local page. A page from a URL can't run commands or read files unless the user passes `--trust`.
 - **Help an agent can follow:** `tinkerdown serve --help` explains `--source` with examples and how to find sources, so a coding agent can set the app up from the help alone. Today `serve --help` ignores the flag and starts serving the current directory.
 
 It also fixes one gap that a mistyped flag hits: a block whose source fails to build shows "Connecting..." forever.
 
-The log viewer then ships with no sources. A user runs it like this:
+The log viewer then ships with no sources, and a user runs it without cloning anything:
 
 ```sh
-tinkerdown serve --allow-exec . --source 'api=docker logs -f --timestamps api' --source 'app=file:./logs/app.log'
+tinkerdown serve --allow-exec https://raw.githubusercontent.com/livetemplate/logviewer/main/index.md \
+  --source 'api=docker logs -f --timestamps api' --source 'app=file:./logs/app.log'
 ```
 
 ## Product
 
 | User journey | What they see | Built on |
 |---|---|---|
+| Run a one-file app without cloning it | `serve <url> --source ...`, the page's hash, then the app | URL pages |
+| Run a page I don't fully trust | a refusal naming what the page declares, and `--trust` | remote page check |
 | Follow my logs without editing files | `serve ... --source name=...`, then a tab per source | `--source`, `inputs: ["*"]`, `[*] source` tabs |
 | Start with no idea what to pass | `serve` asks, then prints the flags to reuse | serve prompt |
 | Run from an agent or CI | no prompt; usage printed; page shows the empty state | terminal check |
 | Let a coding agent set it up | `serve --help` says what to run and how to find sources | serve help |
 | Mistype a source | the block shows the error, not "Connecting..." | block error |
+
+Serving the log viewer from its URL:
+
+```
+$ tinkerdown serve --allow-exec https://raw.githubusercontent.com/livetemplate/logviewer/main/index.md --source 'api=docker logs -f api'
+Fetched index.md (4.1 KB, sha256 3f9a…c21e). Pin it with …/index.md#sha256=3f9a…c21e
+🌐 Server running at http://localhost:8080
+```
+
+A page from a URL that declares its own commands, without `--trust`:
+
+```
+$ tinkerdown serve https://example.com/tool.md
+tool.md declares sources that run commands or read files:
+  deploy (exec): ./deploy.sh
+  secrets (json): ~/.aws/credentials
+A page from a URL can't use these unless you pass --trust. Pass them as --source flags instead.
+```
 
 A terminal run with no sources:
 
@@ -125,6 +147,17 @@ A block whose source is invalid shows the error in place of its content:
   because: agents, CI and the e2e tests start `serve` without a terminal and must never hang
 - `serve --help` (and `-h`) prints serve's own usage and exits 0 without serving. The usage leads with `--source`, gives copyable examples for docker, a dev server, a file and journald, and says that without a terminal every source must be a flag. The non-terminal message points to `serve --help`.
   because: an agent reads the help and the error output, not the docs site; the help has to be enough to finish the setup
+- `serve` takes a URL or a single `.md` file as well as a directory. A URL is fetched once at startup over HTTPS (or HTTP to localhost), capped at 1 MiB, into a temp directory, and served as the site's only page. A file is served as the only page, with its directory as the site root. Neither watches for changes.
+  alternative: a separate `tinkerdown run <url>` command
+  because: one command with one set of flags; the argument's form says what it is
+- A page from a URL may declare only `merge` sources and no actions. Any other source or any action fails at startup with a message listing them, unless `--trust` is passed. `--trust` makes the page behave as a local one; commands still need `--allow-exec`.
+  alternative: show the page's commands and ask for confirmation
+  because: confirmation can't work without a terminal, and agents run without one; with sources coming from flags, most shared pages need nothing else
+- `serve` prints a fetched page's SHA-256. A URL ending in `#sha256=HEX` is refused when the content doesn't match.
+  alternative: none considered
+  because: the content behind a URL can change after the user read it
+- A page from a URL loads no `tinkerdown.yaml` unless `--config` names one.
+  because: a page fetched from elsewhere shouldn't pick up whatever config sits in the current directory
 - Prompt answers are not saved. After the prompt, `serve` prints the equivalent `--source` command line.
   alternative: write the answers to `tinkerdown.yaml`
   because: `serve` shouldn't change files the user didn't ask it to change
@@ -145,15 +178,17 @@ tinkerdown (worktree `.worktrees/source-flags`):
 - `internal/runtime/state.go`: `Inputs` on `GenericState`.
 - `parser.go`: record `[*] field` as a dynamic tab group.
 - `internal/server/server.go`: expand dynamic tab groups when serving a page.
+- `cmd/tinkerdown/commands/remote_page.go` new?: fetch, size cap, `#sha256=` check, the remote page check and its message.
+- `internal/server/server.go`: serve a single page (`Discover` over one file).
 - `go.mod`: add `golang.org/x/term` for the terminal check.
 - Tests: `source_flags_test.go` new?, `stream_source_e2e_test.go`, `internal/server/source_precedence_test.go`, `parser_test.go`.
-- Docs: `docs/sources/stream.md` (`["*"]`, `Inputs`, `[*]` tabs), `docs/reference/cli.md` (`--source`), `docs/guides/data-sources.md` (tabs), `CHANGELOG.md`.
+- Docs: `docs/sources/stream.md` (`["*"]`, `Inputs`, `[*]` tabs), `docs/reference/cli.md` (`--source`, URL and file arguments, `--trust`), `docs/guides/data-sources.md` (tabs), `CHANGELOG.md`.
 
 logviewer:
 
 - `index.md`: no sources except `all: {type: merge, inputs: ["*"]}`; heading `## [All] | [*] source`; an empty state for `{{if not .Inputs}}`.
 - `scripts/demo-logs.sh` and `logs/app.log` move to `e2e/testdata/`; the e2e test passes them as `--source` flags.
-- `README.md` "Run it" and "Add your own logs": use `--source` and stop editing `index.md`. `AGENTS.md` shrinks to: install, ask the user which logs, run `tinkerdown serve --help`, then serve with `--source`.
+- `README.md` "Run it": the one-command run from the raw GitHub URL; "Add your own logs": `--source`, no editing `index.md`. `AGENTS.md` shrinks to: install, ask the user which logs, run `tinkerdown serve --help`, then serve with `--source`.
 
 ## Tracker
 
@@ -164,9 +199,11 @@ Assumptions (A) are checked before building, risks (R) are what we'd act on, and
 | A1 | assumption | The server builds each page's HTML when serving it, or can post-process it, so dynamic tab groups expand per request with current sources. | high | open (Phase 2) |
 | A2 | assumption | The client renders a block that arrives with only `.Error` set, so a failed block can reuse the normal path. | medium | open (Phase 1) |
 | A3 | assumption | `serve` knows every page's sources before it listens (`Discover` runs first), so it can decide whether to prompt. | medium | open (Phase 3) |
+| A4 | assumption | `Discover` can be pointed at one file, so a URL or file page is routed at `/` without serving its directory's other files. | medium | open (Phase 4) |
 | R1 | risk | Flag sources apply to every page of a multi-page site, which may surprise a site author. Mitigation: flags only feed pages that ask for them through `["*"]` or a name; document it. | medium | open |
 | R2 | risk | The `[*]` tabs and the block's `.Inputs` could disagree if they resolve sources differently. Mitigation: both call `ExpandMergeInputs`. | medium | open |
-| G1 | gap | Serving a page from a URL (#325) will want the same flag tier to override a remote page's sources. Not in this plan. | low | unowned |
+| R3 | risk | Users pass `--trust` by habit, which restores the risk. Mitigation: the refusal lists exactly what `--trust` would allow, and the docs show `--source` as the usual way. | medium | open |
+| G1 | gap | A page from a URL can't use relative includes, partials or local assets; it must be self-contained. | low | unowned |
 
 ## Acceptance criteria
 
@@ -182,6 +219,13 @@ Assumptions (A) are checked before building, risks (R) are what we'd act on, and
   - an invalid source shows its error in the block
 - [ ] `tinkerdown serve --help` prints the usage above and exits 0 without listening (a test in `cmd/tinkerdown/commands/cli_test.go`); every example in it is checked to parse with `parseSourceFlag`.
 - [ ] The prompt: a test drives it through a pseudo-terminal and checks the printed reuse line; a run with stdin not a terminal doesn't block.
+- [ ] Pages from a URL, tested against an `httptest` server in `cmd/tinkerdown/commands`:
+  - a merge-only page serves
+  - a page with an `exec`, `stream` or file-reading source, or an action, is refused without `--trust` and serves with it
+  - a `#sha256=` mismatch, a body over 1 MiB and a non-localhost `http://` URL are refused
+  - no `tinkerdown.yaml` is read without `--config`
+- [ ] `TestStreamSource_E2E` gains a subtest serving its page from an `httptest` URL with `--source` flags, in Docker Chrome.
+- [ ] `serve page.md` serves that page at `/` and no other file in its directory.
 - [ ] logviewer: `cd e2e && go test ./...` passes with the demo passed as flags, and `index.md` has no `cmd` or `file`.
 - [ ] Full tinkerdown suite green; pre-commit passes; `prereview check` clean on changed docs.
 
@@ -191,6 +235,7 @@ Assumptions (A) are checked before building, risks (R) are what we'd act on, and
 - Approved sources stay pinned: no flag, page or `["*"]` expansion reaches into an approved merge.
 - `serve` never waits for input without a terminal.
 - Commands, from any origin, run only with `--allow-exec`.
+- A page from a URL never runs a command or reads a local file through its own frontmatter without `--trust`.
 - e2e tests use real Docker Chrome and are never skipped.
 
 ## Contract
@@ -198,6 +243,9 @@ Assumptions (A) are checked before building, risks (R) are what we'd act on, and
 ```
 --source NAME=COMMAND        stream source running COMMAND (needs --allow-exec)
 --source NAME=file:PATH      stream source following PATH
+serve URL[#sha256=HEX]       fetch one page (https, or http to localhost; max 1 MiB) and serve it
+serve FILE.md                serve one local page
+--trust                      let a page from a URL use its own non-merge sources and actions
 inputs: ["*"]                every stream source the merge can see, sorted by name
 ## [All] | [*] FIELD         one tab per merge input: label INPUT, filter "FIELD = INPUT"
 .Inputs                      []string, a merge block's expanded inputs
@@ -222,7 +270,12 @@ Precedence, highest first: approved (`tinkerdown.yaml` with `generation.sources`
 - Implementation: terminal check, prompt loop, reuse line, non-terminal message, `serve --help`.
 - Acceptance: `/simplify`, the prompt criterion, the e2e empty-state subtest, docs and CHANGELOG, the full suite.
 
-### Phase 4: log viewer
+### Phase 4: pages from a URL
+- Audit: A4. Check how `Discover`, routing and the watcher assume a directory.
+- Implementation: URL and file arguments, the fetch, the remote page check, `--trust`, `#sha256=`.
+- Acceptance: `/simplify`, the URL, file and e2e URL criteria, docs.
+
+### Phase 5: log viewer
 - Audit: re-read the Contract against what shipped; write any drift into this plan in the same commit.
 - Implementation: the logviewer files listed above.
 - Acceptance: `/simplify`, the logviewer criterion, and a check in a real browser through chromedp screenshots.
@@ -230,5 +283,5 @@ Precedence, highest first: approved (`tinkerdown.yaml` with `generation.sources`
 ## Delivery
 
 1. Open the plan PR, run `/planprcommentsfix`, get signoff, merge. Never merge without signoff.
-2. Create `.worktrees/source-flags` only after the plan is merged. One PR for Phases 1–3, then the logviewer change once it's released or built from `main`.
+2. Create `.worktrees/source-flags` only after the plan is merged. One PR for Phases 1–3, one for Phase 4, then the logviewer change once it's released or built from `main`.
 3. Release only through `release.sh`.
