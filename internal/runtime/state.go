@@ -173,12 +173,18 @@ type Option func(*stateOptions)
 type stateOptions struct {
 	hub    *stream.Hub
 	lookup func(string) (config.SourceConfig, bool)
+	page   *source.Page
 }
 
 // WithStreams lets the state build stream and merge sources on hub. lookup
 // resolves the stream sources a merge lists in inputs.
 func WithStreams(hub *stream.Hub, lookup func(string) (config.SourceConfig, bool)) Option {
 	return func(o *stateOptions) { o.hub, o.lookup = hub, lookup }
+}
+
+// WithPage gives a merge with params the page's query and resolvers.
+func WithPage(page *source.Page) Option {
+	return func(o *stateOptions) { o.page = page }
 }
 
 // NewGenericStateWithMetadata creates a new state with block metadata for datatable support.
@@ -283,7 +289,7 @@ func createSource(name string, cfg config.SourceConfig, siteDir, currentFile str
 	case "graphql":
 		return source.NewGraphQLSource(name, cfg, siteDir)
 	case "stream", "merge":
-		return source.NewStreamSource(o.hub, name, cfg, siteDir, o.lookup)
+		return source.NewStreamSource(o.hub, name, cfg, siteDir, o.lookup, o.page)
 	case "computed":
 		// Computed sources are handled specially — they need a parent source.
 		// The parent is created by the caller and passed via sourceLookup.

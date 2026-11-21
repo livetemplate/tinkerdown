@@ -377,8 +377,10 @@ what it accepts (kinds, how many, a hint); serve refuses flags it can't use.
 
 An --action command gets the button's values as environment variables: a
 button's data-name="web" arrives as $TD_name. Quote it so it stays one
-argument: --action 'stop=docker stop -- "$TD_name"'. A value is refused when
-it is empty, over 256 bytes, starts with -, or holds a control character.
+argument: --action 'stop=docker stop -- "$TD_name"'. A --source read by a
+merge with params gets the page URL's values the same way (?name=web). A
+value is refused when it is empty, over 256 bytes, starts with -, or holds a
+control character.
 
 With a terminal, serve asks for sources a page needs; without one it never
 prompts, so pass every source as a flag. A page's hint is the page's text, not

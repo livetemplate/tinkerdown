@@ -195,14 +195,14 @@ func (h *PlaygroundHandler) HandlePreviewWS(w http.ResponseWriter, r *http.Reque
 	}
 
 	// Create WebSocket handler for this session's page
-	wsHandler := NewWebSocketHandler(session.Page, h.server, true, "", h.server.config)
+	wsHandler := NewWebSocketHandler(session.Page, h.server, true, "", h.server.config, nil)
 	wsHandler.ServeHTTP(w, r)
 }
 
 // renderPage renders a page to HTML using the server's rendering logic.
 func (h *PlaygroundHandler) renderPage(page *tinkerdown.Page, host string, wsScheme string) string {
 	// Use the server's renderPage method for consistent output
-	return h.server.renderPage(page, "/playground/preview", host, wsScheme)
+	return h.server.renderPage(page, "/playground/preview", host, wsScheme, "")
 }
 
 // jsonError sends a JSON error response.

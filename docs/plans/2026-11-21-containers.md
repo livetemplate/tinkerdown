@@ -1,6 +1,6 @@
 # Plan: a containers onefile app, with actions and log streams from flags
 
-State — Done: plan merged (#336), Phase 1 (`drop`, #337), Phase 2 (`--action`). Next: Phase 3.
+State — Done: plan merged (#336), Phase 1 (`drop`, #337), Phase 2 (`--action`, #338), Phase 3 (`params`). Next: release, then Phase 4.
 
 ## Context
 
@@ -11,7 +11,7 @@ A read-only prototype (2026-11-21, on v0.6.0) showed the list working, but a lis
 - **`drop` on keyed merges:** `drop: fields.state=removed` removes a key's row, so a removed container disappears instead of leaving a dead row.
 - **`--action NAME=COMMAND`:** an exec action you declare on the command line, like `--source`. A page, even a remote one, can call it with a button but can't define it.
 - **Values as environment variables:** a flag action or flag source gets each value as `$TD_<name>`, so `docker stop "$TD_name"` never parses the value as shell code.
-- **Merges with `params`:** `params: {name: {in: containers.fields.name}}` takes `?name=web` from the page URL, accepts it only if `web` is a row in the page's `containers` merge, and starts the merge's inputs with `TD_name=web`. A row link `?name=web` then opens that container's logs.
+- **Merges with `params`:** `params: {name: {in: containers.fields.name}}`, on a merge named `logview`, takes `?name=web` from the page URL, accepts it only if `web` is a row in the page's `containers` merge, and starts the merge's inputs with `TD_name=web`. A row link `?name=web` then opens that container's logs.
 
 The audit (2026-11-21) settled these facts:
 
@@ -90,9 +90,14 @@ On a phone, each row puts the image and status under the name and the buttons on
 - The page's query reaches the WebSocket: the server adds it to the `ws-url` it renders, and the handler passes it to block state.
   alternative: the client appends `location.search`
   because: the server already builds the URL, and the client then needs no change
-- A merge with `params` gets a buffer per distinct set of values (keyed by name, config hash and values). Its inputs stop 30s after the last viewer leaves.
-  alternative: run until shutdown, as streams do today
-  because: every container opened would leave a `docker logs -f` running
+- A merge with `params` gets a buffer per distinct set of values: the values join the input's environment, which is part of its hub key. Its inputs stop 30s after the last viewer leaves (a per-input `IdleStop`).
+  alternative: the hub's 5-minute idle stop, which every stream input already has
+  because: every container opened starts its own `docker logs -f`
+- A `["*"]` merge doesn't take the inputs a `params` merge lists (`paramsInputs` in `ResolveSource`), and a `params` merge lists its inputs by name (A3).
+  alternative: refuse a page where both use one input
+  because: the containers feed is `["*"]` and must leave `logs` alone; found when the Phase 3 e2e saw `logs` in the list's inputs
+- The gate's block and the `params` block build the gate merge through the same resolver (`source.Page`), so they share one buffer and one feed command.
+  alternative: none considered
 - A flag action passes the approval gate by its `FromFlag` marker (`yaml:"-"`), checked at the page dispatch, and lives in `cfg.FlagActions`, apart from `cfg.Actions`.
   alternative: exempt flag names inside `EnforceApprovedAction`
   because: webhooks share that gate, so a flag name would approve a same-named yaml action; webhooks and the HTTP action API read only `cfg.Actions`
@@ -115,7 +120,7 @@ On a phone, each row puts the image and status under the name and the buttons on
 
 tinkerdown (worktree `.worktrees/containers-upstream`):
 - `internal/stream/keyed.go`, `hub.go`: `drop` in `KeySpec` and `keyedRows.add`; per-values buffers for params merges, stopped 30s after the last unsubscribe.
-- `internal/stream/proc.go`: start a cmd with extra `TD_*` environment variables.
+- `internal/stream/proc.go`: no change; it already adds `InputSpec.Env` to the command's environment.
 - `internal/config/config.go`, `parser.go`, `stream_sources.go`: `Drop`, `Params` fields, mirrored; validation (`drop` and `params` need a merge, `drop` needs `key`, every param needs `in` naming a merge on the page and a field path); one `PATH=a|b` parser for `drop` and `collect_reset`; `FlagActions`.
 - `internal/runtime/state.go` or `internal/server/websocket.go`: the `in` check against the named merge's current rows, rerun on its updates.
 - `internal/config/params.go` new?: the `TD_` name and value rules, shared by actions and streams.
@@ -126,7 +131,7 @@ tinkerdown (worktree `.worktrees/containers-upstream`):
 - Docs: `docs/sources/stream.md` (`drop`, `params`), `docs/reference/cli.md` or the `serve` docs (`--action`, `TD_` values), `docs/reference/config.md`; `CHANGELOG.md` under `[Unreleased]`.
 
 onefile:
-- `containers/index.md` new?: merges `containers` (`inputs: ["*"]` accepting the feed, `key: [fields.name]`, `drop: fields.state=removed`) and `logs` (`inputs: [logs]`, `params: {name: {in: containers.fields.name}}`); row buttons and the logs panel.
+- `containers/index.md` new?: merges `containers` (`inputs: ["*"]` accepting the feed, `key: [fields.name]`, `drop: fields.state=removed`) and `logview` (`inputs: [logs]`, `params: {name: {in: containers.fields.name}}`; not `logs`, which the `--source logs` flag would replace); row buttons and the logs panel.
 - `containers/README.md` new? with the copyable command, `containers/docs/desktop.png`, `phone.png` new?
 - `e2e/containers_test.go` new?; root `README.md` lists the app.
 
@@ -136,7 +141,7 @@ onefile:
 |---|---|---|---|---|
 | A1 | assumption | The feed survives `--source NAME='…'` quoting and `sh -c`, with the format strings' double quotes escaped. | high | open (Phase 4) |
 | A2 | assumption | Removing a keyed row mid-range reaches the page as `["r", key]`. livetemplate's range diff emits `r` ops (`range_ops.go`). | medium | verified 2026-11-21 (`TestKeyedMerge_E2E`) |
-| A3 | assumption | A merge input can't be used by a page both as a plain input and through a params merge; if it can, the plain use must refuse a source whose command reads `TD_*`. | medium | open (Phase 3) |
+| A3 | assumption | A merge input can't be used by a page both as a plain input and through a params merge; if it can, the plain use must refuse a source whose command reads `TD_*`. | medium | false: `["*"]` took it; fixed by reserving `params` inputs (Phase 3) |
 | A4 | assumption | `data-confirm` works on any button in an lvt block, not only in forms (the PII example uses it on a row button). | low | open (Phase 4) |
 | R1 | risk | Anyone can write a link with `?name=`. `in` limits it to a container the page already lists, so the worst a hostile page can do is start logs for one of those; it can't read them (same-origin policy, Host allow-list). | low | mitigated (`in`) |
 | R2 | risk | A rename leaves the old name's row behind. Mitigation if it bites: map `rename` to a drop of `oldName`. | low | accepted |

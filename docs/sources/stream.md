@@ -31,6 +31,7 @@ A command needs `tinkerdown serve --allow-exec`, as an `exec` source does. A fil
 | `collect` | merge | With `key`: a field path whose text is gathered across a key's rows into `collected`. |
 | `collect_reset` | merge | With `collect`: `PATH=VALUE`, where VALUE may list alternatives as `a\|b`. A row that matches starts its key's `collected` over, such as `fields.Action=run\|start` for a test's or package's next run. |
 | `drop` | merge | With `key`: `PATH=VALUE`, where VALUE may list alternatives as `a\|b` (a value can't contain `\|`, and a number matches as it prints). A row that matches removes its key's row and isn't stored, such as `fields.state=removed` for a removed container. |
+| `params` | merge | Values taken from the page URL's query, each with `in: MERGE.PATH`. See [Values from the page URL](#values-from-the-page-url). |
 | `accepts` | merge | With `inputs: ["*"]`: the sources the page takes. `kinds` lists `cmd`, `file` or both (default: both), `min` is how many it needs, and `hint` is one line saying what to pass. |
 | `format` | stream | How to parse each line: `auto` (default), `json`, `logfmt` or `lines`. |
 | `env` | stream | Extra environment variables for `cmd`. `$VAR` references are expanded. |
@@ -96,6 +97,33 @@ A row whose key matches an earlier one replaces it in place, and keeps the earli
 ```
 
 Some keys end for good, such as a container that was removed. `drop: fields.state=removed` takes a matching row as the end of its key, so the key's row leaves the list and the page gets a remove for it. A later row for the same key starts a new row at the end of the list.
+
+## Values from the page URL
+
+A merge with `params` takes values from the page URL's query and starts its inputs with them, so a link opens one item's stream. Each value reaches the input's command as `TD_<name>`, never pasted into it:
+
+```yaml
+sources:
+  containers:
+    type: merge
+    inputs: ["*"]
+    key: [fields.name]
+  logview:
+    type: merge
+    inputs: [logs]
+    params:
+      name: {in: containers.fields.name}
+```
+
+```sh
+tinkerdown serve --allow-exec page.md --source docker='…' --source logs='docker logs -f --tail 200 -- "$TD_name"'
+```
+
+A row links to `?name={{.fields.name}}`, and `logview` then follows that container. Quote the variable, `"$TD_name"`, so a value stays one argument.
+
+Because anyone can write a link, every param needs `in`. A value is accepted only while it equals `PATH` in a row of `MERGE`, another merge on the same page, so a link opens only what the page already lists. The check runs again when `MERGE`'s rows change: a link opened before its row arrives starts once the row appears. Without every param in the query, the block shows no rows and nothing runs. A value that is empty, over 256 bytes, starts with `-`, or holds a control character shows an error instead.
+
+Each distinct set of values gets its own buffer and its own commands, which stop 30 seconds after the last page showing them closes. A `["*"]` merge on the page doesn't take the inputs a `params` merge lists, since they need its values. A `params` merge lists its inputs by name. Name it differently from its inputs: a `--source` flag replaces a page source of the same name.
 
 ## Row fields
 

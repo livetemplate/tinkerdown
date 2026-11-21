@@ -65,10 +65,16 @@ type SourceConfig struct {
 
 	// Key and Collect make a merge keyed: one row per key, with a field's text
 	// gathered across the key's rows
-	Key          []string `yaml:"key,omitempty"`
-	Collect      string   `yaml:"collect,omitempty"`
-	CollectReset string   `yaml:"collect_reset,omitempty"`
-	Drop         string   `yaml:"drop,omitempty"`
+	Key          []string               `yaml:"key,omitempty"`
+	Collect      string                 `yaml:"collect,omitempty"`
+	CollectReset string                 `yaml:"collect_reset,omitempty"`
+	Drop         string                 `yaml:"drop,omitempty"`
+	Params       map[string]SourceParam `yaml:"params,omitempty"`
+}
+
+// SourceParam mirrors config.SourceParam for page frontmatter.
+type SourceParam struct {
+	In string `yaml:"in"`
 }
 
 // SourceAccepts mirrors config.SourceAccepts for page frontmatter.

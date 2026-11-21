@@ -19,6 +19,13 @@ Earlier releases (v0.1.x) are documented in the
   value that is empty, over 256 bytes, starts with `-` or holds a control
   character runs nothing. See
   [docs/reference/cli.md](docs/reference/cli.md#actions-from-the-command-line).
+- **Merges with `params`.** `params: {name: {in: containers.fields.name}}`
+  takes `?name=web` from the page URL and starts the merge's inputs with
+  `TD_name=web`, so a row link opens that item's stream. A value is accepted
+  only while it is in a row of the merge `in` names, and each set of values
+  gets its own buffer, stopped 30 seconds after its last viewer. A `["*"]`
+  merge doesn't take a `params` merge's inputs. See
+  [docs/sources/stream.md](docs/sources/stream.md#values-from-the-page-url).
 - **`drop` on keyed merges.** `drop: fields.state=removed` removes a key's
   row when a matching row arrives, and the page gets a remove for it. Values
   may list alternatives as `a|b`. See

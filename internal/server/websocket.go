@@ -121,6 +121,7 @@ type WebSocketHandler struct {
 	done           chan struct{}                   // closed when the connection ends; stops stream followers
 	closeOnce      sync.Once
 	followers      sync.WaitGroup // stream followers of this connection
+	query          url.Values     // the page URL's query, for merges with params
 }
 
 // BlockInstance represents a running LiveTemplate instance for an interactive block.
@@ -133,7 +134,10 @@ type BlockInstance struct {
 }
 
 // NewWebSocketHandler creates a new WebSocket handler for a page.
-func NewWebSocketHandler(page *tinkerdown.Page, server *Server, debug bool, rootDir string, cfg *config.Config) *WebSocketHandler {
+//
+// query is the page URL's query, which the server copies into the WebSocket
+// URL; a merge with params reads its values from it.
+func NewWebSocketHandler(page *tinkerdown.Page, server *Server, debug bool, rootDir string, cfg *config.Config, query url.Values) *WebSocketHandler {
 	if debug {
 		log.Printf("[WS] Creating WebSocket handler for page: %s", page.ID)
 		log.Printf("[WS] Page has %d server blocks", len(page.ServerBlocks))
@@ -151,6 +155,7 @@ func NewWebSocketHandler(page *tinkerdown.Page, server *Server, debug bool, root
 		config:         cfg,
 		actionSources:  make(map[string]source.Source),
 		done:           make(chan struct{}),
+		query:          query,
 	}
 
 	// Initialize lvt-source blocks (no compilation needed)
@@ -255,7 +260,8 @@ func (h *WebSocketHandler) initializeSourceBlocks() {
 				state, err = runtime.NewGenericStateForComputed(srcName, srcCfg, rootDir, curFile, blockMeta, h.lookupSource)
 			} else {
 				state, err = runtime.NewGenericStateWithMetadata(srcName, srcCfg, rootDir, curFile, blockMeta,
-					runtime.WithStreams(h.streamHub(), mergeInputLookup(h.config, h.page, srcName)))
+					runtime.WithStreams(h.streamHub(), mergeInputLookup(h.config, h.page, srcName)),
+					runtime.WithPage(h.streamPage()))
 			}
 			if err != nil {
 				log.Printf("[WS] Failed to create runtime state for %s: %v", srcName, err)
@@ -403,7 +409,42 @@ func ResolveSource(cfg *config.Config, page *tinkerdown.Page, name string) (conf
 	if !ok || !src.WildcardInputs() {
 		return src, ok
 	}
-	return config.ExpandInputs(src, VisibleSourceNames(cfg, page), mergeInputLookup(cfg, page, name)), true
+	names := VisibleSourceNames(cfg, page)
+	reserved := paramsInputs(cfg, page, names)
+	names = slices.DeleteFunc(names, func(n string) bool { return reserved[n] })
+	return config.ExpandInputs(src, names, mergeInputLookup(cfg, page, name)), true
+}
+
+// paramsInputs lists the inputs of the page's merges with params. Those
+// inputs read TD_ values, so a ["*"] merge doesn't take them: run without
+// their values, they would fail and restart in a loop.
+func paramsInputs(cfg *config.Config, page *tinkerdown.Page, names []string) map[string]bool {
+	hasParams := func(srcs map[string]config.SourceConfig) bool {
+		for _, s := range srcs {
+			if len(s.Params) > 0 {
+				return true
+			}
+		}
+		return false
+	}
+	found := cfg != nil && (hasParams(cfg.Sources) || hasParams(cfg.FlagSources))
+	if page != nil {
+		for _, s := range page.Config.Sources {
+			found = found || len(s.Params) > 0
+		}
+	}
+	if !found {
+		return nil // the common case: no merge with params, nothing to resolve
+	}
+	reserved := map[string]bool{}
+	for _, n := range slices.Compact(slices.Sorted(slices.Values(names))) {
+		if src, ok := effectiveSource(cfg, page, n); ok && src.Type == "merge" && len(src.Params) > 0 {
+			for _, in := range src.Inputs {
+				reserved[in] = true
+			}
+		}
+	}
+	return reserved
 }
 
 // pageSourceConfig converts a page's frontmatter source to config.SourceConfig.
@@ -446,6 +487,12 @@ func pageSourceConfig(src tinkerdown.SourceConfig) config.SourceConfig {
 	}
 	if a := src.Accepts; a != nil {
 		cfg.Accepts = &config.SourceAccepts{Kinds: a.Kinds, Min: a.Min, Hint: a.Hint}
+	}
+	if src.Params != nil {
+		cfg.Params = make(map[string]config.SourceParam, len(src.Params))
+		for name, p := range src.Params {
+			cfg.Params[name] = config.SourceParam{In: p.In}
+		}
 	}
 	return cfg
 }
@@ -1518,6 +1565,19 @@ func mergeInputLookup(cfg *config.Config, page *tinkerdown.Page, merge string) f
 	return func(name string) (config.SourceConfig, bool) {
 		src, ok := cfg.Sources[name]
 		return src, ok
+	}
+}
+
+// streamPage is what a merge with params needs from this connection: the
+// page's query, and the resolvers its blocks use, so a gate merge shares the
+// buffer of the gate's own block.
+func (h *WebSocketHandler) streamPage() *source.Page {
+	return &source.Page{
+		Query:   h.query,
+		Resolve: func(name string) (config.SourceConfig, bool) { return ResolveSource(h.config, h.page, name) },
+		InputLookup: func(merge string) func(string) (config.SourceConfig, bool) {
+			return mergeInputLookup(h.config, h.page, merge)
+		},
 	}
 }
 

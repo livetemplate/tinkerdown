@@ -68,6 +68,8 @@ type InputSpec struct {
 	Buffer  int               `json:"buffer"`  // rows kept
 	Backlog int               `json:"backlog"` // lines read from the end of File on start
 	Restart string            `json:"restart"` // on-exit or never
+	// IdleStop, when set, replaces the hub's IdleStop for this input.
+	IdleStop time.Duration `json:"idle_stop"`
 }
 
 // Formats lists the accepted values of InputSpec.Format.
@@ -117,6 +119,7 @@ func (h *Hub) Input(spec InputSpec) (*Buffer, error) {
 		return b, nil
 	}
 	b := newBuffer(h, key, spec.Name, spec.Buffer)
+	b.idleStop = spec.IdleStop
 	b.run = func(ctx context.Context) {
 		if spec.Cmd != "" {
 			runCmd(ctx, spec, b)
@@ -248,7 +251,8 @@ type Buffer struct {
 	refs     int
 	stopRun  context.CancelFunc // non-nil while the input runs
 	idle     *time.Timer
-	idleSeen int // refs epoch, so a stale idle timer doesn't stop a re-used input
+	idleSeen int           // refs epoch, so a stale idle timer doesn't stop a re-used input
+	idleStop time.Duration // overrides hub.IdleStop when set
 }
 
 func newBuffer(h *Hub, key, name string, size int) *Buffer {
@@ -295,7 +299,11 @@ func (b *Buffer) releaseLocked() {
 		return
 	}
 	epoch := b.idleSeen
-	b.idle = time.AfterFunc(b.hub.IdleStop, func() {
+	wait := b.hub.IdleStop
+	if b.idleStop > 0 {
+		wait = b.idleStop
+	}
+	b.idle = time.AfterFunc(wait, func() {
 		b.hub.mu.Lock()
 		defer b.hub.mu.Unlock()
 		if b.refs > 0 || b.idleSeen != epoch {
@@ -368,30 +376,68 @@ func (b *Buffer) system(level, msg string) {
 
 // Subscription delivers a wake-up on C whenever its buffer gains rows.
 type Subscription struct {
-	C <-chan struct{}
-	b *Buffer
+	C   <-chan struct{}
+	c   chan struct{}
+	hub *Hub
+	// bufs are the buffers that wake C; guarded by hub.mu. Each is held
+	// (and so running) while attached.
+	bufs   []*Buffer
+	closed bool
 }
 
 // Subscribe starts the input if it isn't running and returns a subscription
 // whose channel holds at most one pending wake-up.
 func (b *Buffer) Subscribe() *Subscription {
-	c := make(chan struct{}, 1)
-	s := &Subscription{C: c, b: b}
-	b.hub.mu.Lock()
-	defer b.hub.mu.Unlock()
-	b.subs[s] = c
-	b.retainLocked()
+	s := b.hub.NewSubscription()
+	s.Attach(b)
 	return s
 }
 
-// Close stops wake-ups. The input keeps running for other subscribers, and
-// for the hub's IdleStop after the last one leaves. Close is idempotent.
-func (s *Subscription) Close() {
-	s.b.hub.mu.Lock()
-	defer s.b.hub.mu.Unlock()
-	if _, ok := s.b.subs[s]; !ok {
+// NewSubscription returns a subscription attached to no buffer. Attach adds
+// buffers whose rows should wake it.
+func (h *Hub) NewSubscription() *Subscription {
+	c := make(chan struct{}, 1)
+	return &Subscription{C: c, c: c, hub: h}
+}
+
+// Attach makes b's new rows wake s, and holds b, starting its input if it is
+// stopped. Attaching a buffer twice, or after Close, does nothing.
+func (s *Subscription) Attach(b *Buffer) {
+	s.hub.mu.Lock()
+	defer s.hub.mu.Unlock()
+	if s.closed || slices.Contains(s.bufs, b) {
 		return
 	}
-	delete(s.b.subs, s)
-	s.b.releaseLocked()
+	s.bufs = append(s.bufs, b)
+	b.subs[s] = s.c
+	b.retainLocked()
+}
+
+// Detach stops b waking s and releases it; the input stops after its idle
+// time if nothing else holds it. Detaching a buffer not attached does nothing.
+func (s *Subscription) Detach(b *Buffer) {
+	s.hub.mu.Lock()
+	defer s.hub.mu.Unlock()
+	s.detachLocked(b)
+}
+
+func (s *Subscription) detachLocked(b *Buffer) {
+	i := slices.Index(s.bufs, b)
+	if i < 0 {
+		return
+	}
+	s.bufs = slices.Delete(s.bufs, i, i+1)
+	delete(b.subs, s)
+	b.releaseLocked()
+}
+
+// Close stops wake-ups. The inputs keep running for other subscribers, and
+// for their idle time after the last one leaves. Close is idempotent.
+func (s *Subscription) Close() {
+	s.hub.mu.Lock()
+	defer s.hub.mu.Unlock()
+	for len(s.bufs) > 0 {
+		s.detachLocked(s.bufs[0])
+	}
+	s.closed = true
 }

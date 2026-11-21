@@ -83,7 +83,7 @@ An `--action` command never has values pasted into it. Because a value reaches t
 tinkerdown serve --allow-exec page.md --action 'stop=docker stop -- "$TD_name"'
 ```
 
-Quote the variable: `"$TD_name"` stays one argument, while an unquoted `$TD_name` splits on spaces. The `--` keeps a value from being read as an option.
+Quote the variable: `"$TD_name"` stays one argument, while an unquoted `$TD_name` splits on spaces. The `--` keeps a value from being read as an option. A `--source` command read by a merge with `params` gets the page URL's values the same way; see [values from the page URL](../sources/stream.md#values-from-the-page-url).
 
 A click runs nothing when a value is empty, longer than 256 bytes, starts with `-`, or holds a control character; the block shows the reason. An attribute whose name isn't 1-32 letters, digits or `_` is skipped. The command runs in the site directory with a 30-second timeout.
 
