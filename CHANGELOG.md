@@ -11,6 +11,8 @@ Earlier releases (v0.1.x) are documented in the
 
 ## [Unreleased]
 
+## [v0.5.0] - 2026-11-21
+
 ### Added
 
 - **`tinkerdown serve --source` adds stream sources from the command line.**
