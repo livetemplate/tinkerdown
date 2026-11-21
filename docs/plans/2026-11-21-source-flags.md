@@ -10,6 +10,7 @@ The log viewer's `index.md` ships demo sources, because a tinkerdown page can't 
 - **`inputs: ["*"]`:** a merge source takes every stream source the page can see.
 - **`[*] field` tabs:** a tabs heading gets one tab per input of the merge below it.
 - **A serve prompt:** when a page needs sources and has none, `serve` asks for them in a terminal.
+- **Help an agent can follow:** `tinkerdown serve --help` explains `--source` with examples and how to find sources, so a coding agent can set the app up from the help alone. Today `serve --help` ignores the flag and starts serving the current directory.
 
 It also fixes one gap that a mistyped flag hits: a block whose source fails to build shows "Connecting..." forever.
 
@@ -26,6 +27,7 @@ tinkerdown serve --allow-exec . --source 'api=docker logs -f --timestamps api' -
 | Follow my logs without editing files | `serve ... --source name=...`, then a tab per source | `--source`, `inputs: ["*"]`, `[*] source` tabs |
 | Start with no idea what to pass | `serve` asks, then prints the flags to reuse | serve prompt |
 | Run from an agent or CI | no prompt; usage printed; page shows the empty state | terminal check |
+| Let a coding agent set it up | `serve --help` says what to run and how to find sources | serve help |
 | Mistype a source | the block shows the error, not "Connecting..." | block error |
 
 A terminal run with no sources:
@@ -40,6 +42,29 @@ source>
 Next time, run:
   tinkerdown serve --allow-exec . --source 'api=docker logs -f --timestamps api' --source 'app=file:./logs/app.log'
 🌐 Server running at http://localhost:8080
+```
+
+`tinkerdown serve --help` prints, and exits without serving:
+
+```
+Usage: tinkerdown serve [directory] [flags]
+
+Serves the markdown pages in directory (default: current directory).
+
+Flags:
+  --source NAME=COMMAND    Follow a command's output as stream source NAME (needs --allow-exec)
+  --source NAME=file:PATH  Follow a file as stream source NAME
+  --allow-exec             Let sources run commands
+  --port N, --host ADDR    Where to listen (default localhost:8080)
+  ...
+
+Finding sources to follow:
+  docker ps --format '{{.Names}}'   -> --source 'NAME=docker logs -f --timestamps NAME'
+  a project's start command          -> --source 'api=cd ../api && npm run dev'
+  a log file                         -> --source 'app=file:/var/log/app.log'
+  journalctl                         -> --source 'journal=journalctl -f -o short-iso'
+
+Without a terminal, serve never prompts: pass every source as a flag.
 ```
 
 Without a terminal (an agent, CI, a pipe), `serve` prints the same instructions once, without prompting, and starts. The page then shows its empty state:
@@ -98,6 +123,8 @@ A block whose source is invalid shows the error in place of its content:
   because: the heading keeps the tabs component's styling, ARIA roles and keyboard handling, and the page needs no tab markup
 - `serve` prompts for sources only when stdin is a terminal and some page has a `["*"]` merge with no stream sources. Without a terminal it prints the instructions and serves the empty state.
   because: agents, CI and the e2e tests start `serve` without a terminal and must never hang
+- `serve --help` (and `-h`) prints serve's own usage and exits 0 without serving. The usage leads with `--source`, gives copyable examples for docker, a dev server, a file and journald, and says that without a terminal every source must be a flag. The non-terminal message points to `serve --help`.
+  because: an agent reads the help and the error output, not the docs site; the help has to be enough to finish the setup
 - Prompt answers are not saved. After the prompt, `serve` prints the equivalent `--source` command line.
   alternative: write the answers to `tinkerdown.yaml`
   because: `serve` shouldn't change files the user didn't ask it to change
@@ -108,7 +135,8 @@ A block whose source is invalid shows the error in place of its content:
 
 tinkerdown (worktree `.worktrees/source-flags`):
 
-- `cmd/tinkerdown/commands/serve.go`: parse `--source`; check them against `--allow-exec` and approved names; the prompt and the non-terminal message.
+- `cmd/tinkerdown/commands/serve.go`: parse `--source`; check them against `--allow-exec` and approved names; the prompt and the non-terminal message; `--help` and `-h`.
+- `cmd/tinkerdown/main.go`: the top-level usage line for `serve` mentions `--source`.
 - `cmd/tinkerdown/commands/source_flags.go` new?: `parseSourceFlag`, the prompt loop and `printReuse`, with tests.
 - `internal/config/config.go`: hold flag sources apart from site sources (`FlagSources`).
 - `internal/config/stream_sources.go`: `["*"]` in `ValidateStreamSource`; `ExpandMergeInputs(name, src, visible)`.
@@ -125,7 +153,7 @@ logviewer:
 
 - `index.md`: no sources except `all: {type: merge, inputs: ["*"]}`; heading `## [All] | [*] source`; an empty state for `{{if not .Inputs}}`.
 - `scripts/demo-logs.sh` and `logs/app.log` move to `e2e/testdata/`; the e2e test passes them as `--source` flags.
-- `README.md` "Run it" and "Add your own logs", and `AGENTS.md` step 3: use `--source` and stop editing `index.md`.
+- `README.md` "Run it" and "Add your own logs": use `--source` and stop editing `index.md`. `AGENTS.md` shrinks to: install, ask the user which logs, run `tinkerdown serve --help`, then serve with `--source`.
 
 ## Tracker
 
@@ -152,6 +180,7 @@ Assumptions (A) are checked before building, risks (R) are what we'd act on, and
   - a page with `inputs: ["*"]` served with two `--source` flags shows a tab per source, and each tab filters to it
   - with no sources, the page shows its empty state
   - an invalid source shows its error in the block
+- [ ] `tinkerdown serve --help` prints the usage above and exits 0 without listening (a test in `cmd/tinkerdown/commands/cli_test.go`); every example in it is checked to parse with `parseSourceFlag`.
 - [ ] The prompt: a test drives it through a pseudo-terminal and checks the printed reuse line; a run with stdin not a terminal doesn't block.
 - [ ] logviewer: `cd e2e && go test ./...` passes with the demo passed as flags, and `index.md` has no `cmd` or `file`.
 - [ ] Full tinkerdown suite green; pre-commit passes; `prereview check` clean on changed docs.
@@ -190,7 +219,7 @@ Precedence, highest first: approved (`tinkerdown.yaml` with `generation.sources`
 
 ### Phase 3: the prompt
 - Audit: A3. Confirm `Discover` runs before listening.
-- Implementation: terminal check, prompt loop, reuse line, non-terminal message.
+- Implementation: terminal check, prompt loop, reuse line, non-terminal message, `serve --help`.
 - Acceptance: `/simplify`, the prompt criterion, the e2e empty-state subtest, docs and CHANGELOG, the full suite.
 
 ### Phase 4: log viewer
