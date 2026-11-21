@@ -15,6 +15,12 @@
   --tinkerdown-warn-color: #e8a33d;
 }
 
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .tinkerdown-interactive-block {
+    --tinkerdown-warn-color: #e8a33d;
+  }
+}
+
 .tinkerdown-interactive-block :is(.lvl-error, .lvl-fatal) {
   color: var(--pico-del-color);
 }

@@ -75,7 +75,7 @@ Bind an `lvt` block to the source and key each row by `seq`:
 
 Because every row has the same markup and a key, each update sends only the new rows. Set per-row differences with attribute values, like the `class` above, and not with `{{if}}` inside the row. A row that changes shape forces a full redraw of the list.
 
-Tinkerdown colours rows by these classes, so a page needs no CSS for them. `lvl-error` and `lvl-fatal` rows are red, and `lvl-warn` rows are amber. `lvl-debug`, `lvl-trace` and `stream-system` rows are muted, and system rows are italic. The colours follow the light and dark themes. To change them, override the rules or set `--tinkerdown-warn-color`.
+Tinkerdown colours rows by these classes, so a page needs no CSS for them. `lvl-error` and `lvl-fatal` rows are red, and `lvl-warn` rows are amber. `lvl-debug`, `lvl-trace` and `stream-system` rows are muted, and system rows are italic. The colours follow the light and dark themes. To change them, override the rules or set `--tinkerdown-warn-color`. Because the names are generic, any element in an lvt block with a `lvl-*` class gets these colours. Colour alone is a weak cue, so show the level as text too, as in `<i>{{.level}}</i>`.
 
 `lvt-fx:scroll="bottom-sticky"` follows new rows until the reader scrolls up, and resumes when they scroll back to the bottom.
 
