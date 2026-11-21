@@ -419,6 +419,11 @@ func (s *GenericState) GetStateAsInterface() (interface{}, error) {
 		filteredData := s.GetFilteredData()
 		rawMap["data"] = filteredData
 	}
+	if rawMap["data"] == nil {
+		// No rows yet (a stream before its first line): templates still get
+		// a list, since {{len .Data}} and {{range .Data}} need one.
+		rawMap["data"] = []interface{}{}
+	}
 
 	// Process state map to add titlecase keys for template access
 	// This allows templates to use both {{.data}} and {{.Data}}

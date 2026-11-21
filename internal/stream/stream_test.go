@@ -490,3 +490,23 @@ func TestKeyedCollectResetAlternatives(t *testing.T) {
 		t.Fatalf("package collected = %q, want only the latest run", got)
 	}
 }
+
+// A key is hex whatever its fields hold, so it is safe as a data-key: a test
+// named TestParseValue/"hello" once broke the client's row lookup.
+func TestKeyedRowKeyIsHex(t *testing.T) {
+	h := NewHub()
+	defer h.Close()
+	in := newBuffer(h, "kin5", "go", 10)
+	m, _ := h.Merge("t", []*Buffer{in}, 10, KeySpec{Paths: []string{"fields.Test"}})
+	h.publish(in, "stdout", event("p", `TestParseValue/"hello"`, "pass", ""))
+	h.publish(in, "stdout", event("p", `TestParseValue/'world'`, "pass", ""))
+	rows := m.Snapshot()
+	for _, r := range rows {
+		if k := r["key"].(string); strings.Trim(k, "0123456789abcdef") != "" || k == "" {
+			t.Errorf("key %q is not hex", k)
+		}
+	}
+	if rows[0]["key"] == rows[1]["key"] {
+		t.Error("different tests share a key")
+	}
+}

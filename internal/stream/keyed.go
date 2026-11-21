@@ -50,8 +50,11 @@ func (k *keyedRows) add(r Row, size int) {
 	k.rows = append(k.rows, row)
 }
 
-// keyOf joins the row's key fields. A missing field counts as empty, so a
-// row without one still gets a key of its own (go test's package rows).
+// keyOf hashes the row's key fields into the row's "key". A missing field
+// counts as empty, so a row without one still gets a key of its own (go
+// test's package rows). The hash is hex, so a page can use it as data-key
+// whatever the fields hold: quotes or other characters in a test name broke
+// the client's lookup of the row to update or remove.
 func (k *keyedRows) keyOf(r Row) string {
 	parts := make([]string, len(k.spec.Paths))
 	for i, p := range k.spec.Paths {
@@ -59,7 +62,7 @@ func (k *keyedRows) keyOf(r Row) string {
 			parts[i] = fmt.Sprint(v)
 		}
 	}
-	return strings.Join(parts, "\x1f")
+	return hashKey(strings.Join(parts, "\x1f"))
 }
 
 // resets reports whether r starts its key's collected text over.

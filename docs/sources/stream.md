@@ -81,7 +81,7 @@ sources:
     collect: fields.Output
 ```
 
-A row whose key matches an earlier one replaces it in place, and keeps the earlier row's position, so the list doesn't jump. A keyed row has a `key` field with the joined key values: use it as `data-key`, since `seq` changes with every update. A field missing from a row counts as empty, so `go test`'s package-level events become one row per package. `buffer` counts keys, and past it the key updated least recently is dropped.
+A row whose key matches an earlier one replaces it in place, and keeps the earlier row's position, so the list doesn't jump. A keyed row has a `key` field, a short hex hash of its key values: use it as `data-key`, since `seq` changes with every update. Being hex, it is safe whatever the key fields hold. A field missing from a row counts as empty, so `go test`'s package-level events become one row per package. `buffer` counts keys, and past it the key updated least recently is dropped.
 
 `collect` gathers a field's text from all of a key's rows into the row's `collected`, up to 64 KiB, keeping the end. A test's row then carries its output. When the same keys come back in a new run, `collect_reset: fields.Action=run` starts each key's text over at its `run` row, so the output is the latest run's:
 

@@ -2,8 +2,10 @@ package runtime
 
 import (
 	"fmt"
+	"html/template"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -157,5 +159,20 @@ func TestFilterFieldPaths(t *testing.T) {
 	s.handleFilter(map[string]interface{}{"filter": "source = go", "f.fields.Test": ""})
 	if got := s.GetFilteredData(); len(got) != 3 {
 		t.Fatalf("plain field still works: %d rows, want 3", len(got))
+	}
+}
+
+// A stream page renders before its first line arrives. Its template still
+// needs a list: {{len .Data}} failed on nil, and the block never rendered.
+func TestStateDataIsAListBeforeAnyRows(t *testing.T) {
+	s := &GenericState{Errors: map[string]string{}}
+	state, err := s.GetStateAsInterface()
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmpl := template.Must(template.New("t").Parse(`{{len .Data}} {{range .Data}}x{{end}}`))
+	var out strings.Builder
+	if err := tmpl.Execute(&out, state); err != nil || out.String() != "0 " {
+		t.Fatalf("render = %q, err %v", out.String(), err)
 	}
 }
