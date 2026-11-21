@@ -105,21 +105,23 @@ func TestCheckRemotePage(t *testing.T) {
 		return p
 	}
 	ok := "---\ntitle: Logs\nsources:\n  all:\n    type: merge\n    inputs: [\"*\"]\n    accepts: {kinds: [file], min: 1, hint: logs}\n---\n\n## [All] | [*] source\n\n```lvt\n<ol lvt-source=\"all\">{{range .Data}}<li data-key=\"{{.seq}}\">{{.msg}}</li>{{end}}</ol>\n```\n"
-	if err := checkRemotePage(parse(ok), ok); err != nil {
+	if err := checkRemotePage(parse(ok)); err != nil {
 		t.Fatalf("a merge-only page with accepts: %v", err)
 	}
 	cases := map[string]string{
-		"a stream source":  "---\nsources:\n  x:\n    type: stream\n    cmd: id\n---\n# X\n",
-		"a json source":    "---\nsources:\n  x:\n    type: json\n    file: ~/.aws/credentials\n---\n# X\n",
-		"an action":        "---\nactions:\n  wipe:\n    kind: sql\n    statement: DELETE FROM t\n---\n# X\n",
-		"a big buffer":     "---\nsources:\n  all:\n    type: merge\n    inputs: [\"*\"]\n    buffer: 100000\n---\n# X\n",
-		"a script":         "# X\n\n<script>fetch('https://evil.example')</script>\n",
-		"an event handler": "# X\n\n<img src=x onerror=\"alert(1)\">\n",
-		"a javascript URL": "# X\n\n<a href=\"javascript:alert(1)\">x</a>\n",
-		"a meta refresh":   "# X\n\n<meta http-equiv=\"refresh\" content=\"0;url=https://evil.example\">\n",
+		"a stream source":                 "---\nsources:\n  x:\n    type: stream\n    cmd: id\n---\n# X\n",
+		"a json source":                   "---\nsources:\n  x:\n    type: json\n    file: ~/.aws/credentials\n---\n# X\n",
+		"an action":                       "---\nactions:\n  wipe:\n    kind: sql\n    statement: DELETE FROM t\n---\n# X\n",
+		"a big buffer":                    "---\nsources:\n  all:\n    type: merge\n    inputs: [\"*\"]\n    buffer: 100000\n---\n# X\n",
+		"a script":                        "# X\n\n<script>fetch('https://evil.example')</script>\n",
+		"an event handler":                "# X\n\n<img src=x onerror=\"alert(1)\">\n",
+		"a javascript URL":                "# X\n\n<a href=\"javascript:alert(1)\">x</a>\n",
+		"a meta refresh":                  "# X\n\n<meta http-equiv=\"refresh\" content=\"0;url=https://evil.example\">\n",
+		"a template action in a tag name": "---\nsources:\n  all:\n    type: merge\n    inputs: [\"*\"]\n---\n\n```lvt\n<p lvt-source=\"all\"><{{\"meta\"}} http-equiv=\"refresh\"></p>\n```\n",
+		"a template action in a raw-text element": "---\nsources:\n  all:\n    type: merge\n    inputs: [\"*\"]\n---\n\n```lvt\n<div lvt-source=\"all\"><textarea>{{range .Data}}{{.msg}}{{end}}</textarea></div>\n```\n",
 	}
 	for name, src := range cases {
-		if err := checkRemotePage(parse(src), src); err == nil {
+		if err := checkRemotePage(parse(src)); err == nil {
 			t.Errorf("%s: want a refusal", name)
 		} else if !strings.Contains(err.Error(), "tinkerdown serve page.md") {
 			t.Errorf("%s: the refusal should say how to run a reviewed copy: %v", name, err)

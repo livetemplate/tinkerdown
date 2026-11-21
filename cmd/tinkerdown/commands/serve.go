@@ -182,20 +182,16 @@ func ServeCommand(args []string) error {
 	}
 
 	if target.url != "" {
-		raw, err := os.ReadFile(filepath.Join(absDir, target.single))
-		if err != nil {
-			return err
-		}
 		routes := srv.Routes()
 		if len(routes) != 1 {
 			return fmt.Errorf("fetch %s: the page did not parse", target.shown)
 		}
-		if err := checkRemotePage(routes[0].Page, string(raw)); err != nil {
+		if err := checkRemotePage(routes[0].Page); err != nil {
 			return err
 		}
 		cfg.Features.HotReload = false
-		fmt.Printf("Fetched %s (%d bytes, sha256 %s). Pin it with %s#sha256=%s\n",
-			target.shown, len(raw), remoteSum, target.shown, remoteSum)
+		fmt.Printf("Fetched %s (sha256 %s). Pin it with %s#sha256=%s\n",
+			target.shown, remoteSum, target.shown, remoteSum)
 	}
 
 	if err := checkFlagSources(cfg, srv); err != nil {

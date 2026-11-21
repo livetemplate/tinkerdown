@@ -1,123 +1,129 @@
 package security
 
 import (
+	"io"
 	"regexp"
 	"slices"
 	"strings"
+
+	"golang.org/x/net/html"
 )
 
-// unsafeMarkup lists markup that runs script, loads from another origin or
-// navigates without a click. A page from a URL may not contain any of it: its
-// template controls where the operator's log rows end up.
-var unsafeMarkup = []struct {
-	what string
-	re   *regexp.Regexp
-}{
-	{"a <script>, <meta>, <base>, <link>, <iframe>, <frame>, <object>, <embed> or <applet> element",
-		regexp.MustCompile(`(?i)<\s*(script|meta|base|link|iframe|frame|frameset|object|embed|applet)\b`)},
-	{"an on* event handler attribute", regexp.MustCompile(`(?i)[\s"'/]on[a-z]+\s*=`)},
-	{"a javascript: or vbscript: URL", regexp.MustCompile(`(?i)(java|vb)script\s*:`)},
-	{"an srcdoc attribute", regexp.MustCompile(`(?i)\ssrcdoc\s*=`)},
+// Checks for a page from a URL. The page controls its markdown and its lvt
+// templates, and so where the operator's log rows end up. The checks read
+// markup the way a browser does, with the HTML tokenizer, rather than
+// guessing from the raw text: raw-text elements, comments, bogus comments
+// and attribute quoting all follow the spec without being copied here.
+
+// forbiddenElements run script, load from another origin, or navigate
+// without a click.
+var forbiddenElements = []string{
+	"script", "meta", "base", "link", "iframe", "frame", "frameset",
+	"object", "embed", "applet", "portal",
 }
 
-// UnsafeMarkup reports which kinds of unsafe markup src contains, if any.
-// It scans the raw page, so it covers markdown, raw HTML and lvt templates
-// alike. It errs toward refusing: prose that quotes "<script>" is refused too.
-func UnsafeMarkup(src string) []string {
+// rawTextElements hold text the tokenizer doesn't parse as markup. A
+// template action inside one could close it early and start new markup.
+var rawTextElements = []string{
+	"style", "textarea", "title", "xmp", "noembed", "noframes", "noscript", "plaintext",
+}
+
+// urlAttributes can navigate or load when they hold a javascript: URL.
+var urlAttributes = []string{"href", "src", "action", "formaction", "xlink:href", "poster", "data", "background"}
+
+// actionMarker stands in for each template action when a template is
+// tokenized. It is letters only, so it can show up in a tag or attribute
+// name, which is exactly what the check looks for.
+const actionMarker = "tdtemplateaction"
+
+var templateAction = regexp.MustCompile(`(?s)\{\{.*?\}\}`)
+
+// UnsafeHTML reports which kinds of unsafe markup doc contains: forbidden
+// elements, on* event handlers, srcdoc, and javascript: or vbscript: URLs.
+func UnsafeHTML(doc string) []string {
+	return scan(doc, false)
+}
+
+// UnsafeTemplate reports UnsafeHTML's findings for an lvt template, and
+// any template action outside a text node or an attribute value: in a tag
+// or attribute name, a comment, or a raw-text element. Those build markup
+// at render time that no check of the source can see. It also refuses the
+// trim markers {{- and -}}, which delete the text around an action and so
+// change how the rendered markup tokenizes.
+func UnsafeTemplate(tmpl string) []string {
 	var found []string
-	for _, u := range unsafeMarkup {
-		if u.re.MatchString(src) && !slices.Contains(found, u.what) {
-			found = append(found, u.what)
-		}
-	}
-	if strings.Contains(src, "{{-") || strings.Contains(src, "-}}") {
-		// Trim markers delete the text around an action, so "< {{- x }}"
-		// renders as "<x": markup that isn't in the source.
+	if strings.Contains(tmpl, "{{-") || strings.Contains(tmpl, "-}}") {
 		found = append(found, "a template trim marker ({{- or -}})")
 	}
-	if actionOutsideValue(src) {
-		found = append(found, "a template action in a tag name, attribute name, unquoted value or comment (only text and quoted attribute values may hold {{ }})")
-	}
-	return found
+	return append(found, scan(templateAction.ReplaceAllString(tmpl, actionMarker), true)...)
 }
 
-// actionOutsideValue reports whether a template action sits inside markup
-// anywhere but a quoted attribute value: in a tag or attribute name, an
-// unquoted value or a comment, as in <{{"meta"}}>, <img {{"onerror"}}=...>
-// or <img x"{{"onerror"}}">. Those build markup at render time that the raw
-// text checks can't see. It follows the HTML tokenizer: a quote opens a value
-// only right after "=", and is part of the name anywhere else.
-func actionOutsideValue(src string) bool {
-	const (
-		text     = iota
-		tag      // inside <...>, outside any value
-		afterEq  // after "=", before the value starts
-		unquoted // inside an unquoted value
-		quoted   // inside a quoted value
-		comment  // inside <!-- ... -->
-	)
-	state, quote := text, byte(0)
-	for i := 0; i < len(src); i++ {
-		c := src[i]
-		action := strings.HasPrefix(src[i:], "{{")
-		switch state {
-		case text:
-			switch {
-			case strings.HasPrefix(src[i:], "<!--"):
-				state, i = comment, i+3
-			case c == '<' && i+1 < len(src) && strings.HasPrefix(src[i+1:], "{{"):
-				return true
-			case c == '<' && i+1 < len(src) && isTagStart(src[i+1]):
-				state = tag
+func scan(doc string, template bool) []string {
+	var found []string
+	add := func(what string) {
+		if !slices.Contains(found, what) {
+			found = append(found, what)
+		}
+	}
+	const misplaced = "a template action in a tag name, attribute name, comment or raw-text element (only text and attribute values may hold {{ }})"
+	z := html.NewTokenizer(strings.NewReader(doc))
+	rawText := false
+	for {
+		tt := z.Next()
+		if tt == html.ErrorToken {
+			if z.Err() != io.EOF {
+				add("markup the HTML tokenizer can't read")
 			}
-		case comment:
-			if action {
-				return true
+			return found
+		}
+		tok := z.Token()
+		marked := template && strings.Contains(tok.Data, actionMarker)
+		switch tt {
+		case html.StartTagToken, html.SelfClosingTagToken:
+			rawText = slices.Contains(rawTextElements, tok.Data) && tt == html.StartTagToken
+			if marked {
+				add(misplaced)
 			}
-			if strings.HasPrefix(src[i:], "-->") {
-				state, i = text, i+2
+			if slices.Contains(forbiddenElements, tok.Data) {
+				add("a <" + tok.Data + "> element")
 			}
-		case tag:
-			switch {
-			case action:
-				return true
-			case c == '=':
-				state = afterEq
-			case c == '>':
-				state = text
+			for _, a := range tok.Attr {
+				key := strings.ToLower(a.Key)
+				switch {
+				case template && strings.Contains(key, actionMarker):
+					add(misplaced)
+				case strings.HasPrefix(key, "on"):
+					add("an on* event handler attribute")
+				case key == "srcdoc":
+					add("an srcdoc attribute")
+				case slices.Contains(urlAttributes, key) && scriptURL(a.Val):
+					add("a javascript: or vbscript: URL")
+				}
 			}
-		case afterEq:
-			switch {
-			case c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f':
-			case c == '"' || c == '\'':
-				state, quote = quoted, c
-			case c == '>':
-				state = text
-			case action:
-				return true
-			default:
-				state = unquoted
+		case html.EndTagToken:
+			rawText = false
+		case html.CommentToken, html.DoctypeToken:
+			if marked {
+				add(misplaced)
 			}
-		case unquoted:
-			switch {
-			case action:
-				return true
-			case c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f':
-				state = tag
-			case c == '>':
-				state = text
-			}
-		case quoted:
-			if c == quote {
-				state = tag
+		case html.TextToken:
+			if rawText && marked {
+				add(misplaced)
 			}
 		}
 	}
-	return false
 }
 
-func isTagStart(c byte) bool {
-	return c == '/' || c == '!' || c == '?' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z'
+// scriptURL reports whether a URL attribute value runs script, ignoring the
+// whitespace and control characters browsers strip from a scheme.
+func scriptURL(v string) bool {
+	v = strings.Map(func(r rune) rune {
+		if r <= ' ' {
+			return -1
+		}
+		return r
+	}, strings.ToLower(v))
+	return strings.HasPrefix(v, "javascript:") || strings.HasPrefix(v, "vbscript:")
 }
 
 // StrictCSP is the policy for a page from a URL: no inline script except

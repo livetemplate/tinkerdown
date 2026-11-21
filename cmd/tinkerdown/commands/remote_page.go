@@ -6,10 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -146,8 +148,9 @@ func fetchRemotePage(p pageArg) (dir, sum string, err error) {
 // checkRemotePage refuses anything a page from a URL may not do. Its
 // frontmatter may hold only title, merge sources (with accepts), styling,
 // charts and cosmetic block and feature settings; its blocks only lvt and
-// markdown. raw is the page as fetched, scanned for unsafe markup.
-func checkRemotePage(page *tinkerdown.Page, raw string) error {
+// markdown. Its markdown output and each lvt template are read with the HTML
+// tokenizer for unsafe markup.
+func checkRemotePage(page *tinkerdown.Page) error {
 	var problems []string
 	add := func(format string, args ...any) {
 		problems = append(problems, security.CleanPageText(fmt.Sprintf(format, args...)))
@@ -184,8 +187,13 @@ func checkRemotePage(page *tinkerdown.Page, raw string) error {
 			add("server block %s: only lvt blocks are allowed", id)
 		}
 	}
-	for _, u := range security.UnsafeMarkup(raw) {
+	for _, u := range security.UnsafeHTML(page.StaticHTML) {
 		add("%s", u)
+	}
+	for _, id := range slices.Sorted(maps.Keys(page.InteractiveBlocks)) {
+		for _, u := range security.UnsafeTemplate(page.InteractiveBlocks[id].Content) {
+			add("block %s: %s", id, u)
+		}
 	}
 	if len(problems) == 0 {
 		return nil
