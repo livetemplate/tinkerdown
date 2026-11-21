@@ -15,22 +15,26 @@ import (
 
 // Config represents the tinkerdown configuration
 type Config struct {
-	Title       string                  `yaml:"title"`
-	Description string                  `yaml:"description"`
-	Type        string                  `yaml:"type"` // "tutorial" or "site"
-	Site        *SiteConfig             `yaml:"site,omitempty"`
-	Navigation  []NavSection            `yaml:"navigation,omitempty"`
-	Server      ServerConfig            `yaml:"server"`
-	Styling     StylingConfig           `yaml:"styling"`
-	Blocks      BlocksConfig            `yaml:"blocks"`
-	Features    FeaturesConfig          `yaml:"features"`
-	Ignore      []string                `yaml:"ignore"`
-	Sources     map[string]SourceConfig `yaml:"sources,omitempty"`
-	Actions     map[string]*Action      `yaml:"actions,omitempty"`
-	API         *APIConfig              `yaml:"api,omitempty"`
-	Webhooks    map[string]*Webhook     `yaml:"webhooks,omitempty"`
+	// FlagSources are stream sources from `serve --source`. They rank above
+	// page and site sources, below approved ones.
+	FlagSources map[string]SourceConfig `yaml:"-"`
+
+	Title       string                   `yaml:"title"`
+	Description string                   `yaml:"description"`
+	Type        string                   `yaml:"type"` // "tutorial" or "site"
+	Site        *SiteConfig              `yaml:"site,omitempty"`
+	Navigation  []NavSection             `yaml:"navigation,omitempty"`
+	Server      ServerConfig             `yaml:"server"`
+	Styling     StylingConfig            `yaml:"styling"`
+	Blocks      BlocksConfig             `yaml:"blocks"`
+	Features    FeaturesConfig           `yaml:"features"`
+	Ignore      []string                 `yaml:"ignore"`
+	Sources     map[string]SourceConfig  `yaml:"sources,omitempty"`
+	Actions     map[string]*Action       `yaml:"actions,omitempty"`
+	API         *APIConfig               `yaml:"api,omitempty"`
+	Webhooks    map[string]*Webhook      `yaml:"webhooks,omitempty"`
 	Outputs     map[string]*OutputConfig `yaml:"outputs,omitempty"`
-	Security    SecurityConfig          `yaml:"security,omitempty"`
+	Security    SecurityConfig           `yaml:"security,omitempty"`
 
 	// Generation, when present, declares which of this project's sources and actions
 	// an LLM is allowed to wire up when generating an app. Its presence is what makes
@@ -322,9 +326,9 @@ type SourceConfig struct {
 	AutoBind    *bool                  `yaml:"auto_bind,omitempty"`    // Set to false to exclude from auto-table matching
 
 	// For computed sources: derive data from another source
-	GroupBy   string            `yaml:"group_by,omitempty"`   // Field to group by (e.g., "category")
-	Aggregate map[string]string `yaml:"aggregate,omitempty"`  // Field → aggregation expression (e.g., "total": "sum(amount)")
-	Filter    string            `yaml:"filter,omitempty"`     // Optional filter expression (e.g., "status = active")
+	GroupBy   string            `yaml:"group_by,omitempty"`  // Field to group by (e.g., "category")
+	Aggregate map[string]string `yaml:"aggregate,omitempty"` // Field → aggregation expression (e.g., "total": "sum(amount)")
+	Filter    string            `yaml:"filter,omitempty"`    // Optional filter expression (e.g., "status = active")
 
 	// For stream and merge sources (cmd or file is the input; format applies too)
 	Inputs  []string `yaml:"inputs,omitempty"`  // For merge: the stream sources to interleave
@@ -332,6 +336,21 @@ type SourceConfig struct {
 	Backlog int      `yaml:"backlog,omitempty"` // For stream with file: lines read from the end on start (default 200)
 	Restart string   `yaml:"restart,omitempty"` // For stream with cmd: on-exit (default) or never
 	Flush   string   `yaml:"flush,omitempty"`   // For stream/merge: minimum time between pushes to one page (default 100ms)
+
+	// Accepts, on a merge with inputs ["*"], says which sources the page takes.
+	Accepts *SourceAccepts `yaml:"accepts,omitempty"`
+
+	// expanded marks a merge whose ["*"] was replaced by ExpandInputs, so an
+	// empty Inputs means "no sources yet" rather than a config mistake.
+	expanded bool
+}
+
+// SourceAccepts declares the sources a page's ["*"] merge takes. It describes
+// sources and runs nothing, so any page may declare it.
+type SourceAccepts struct {
+	Kinds []string `yaml:"kinds,omitempty"` // "cmd", "file" or both (default: both)
+	Min   int      `yaml:"min,omitempty"`   // sources needed before the page is useful
+	Hint  string   `yaml:"hint,omitempty"`  // one line saying what to pass
 }
 
 // RetryConfig configures retry behavior for a source
@@ -620,10 +639,10 @@ type SiteConfig struct {
 
 // NavSection represents a navigation section with pages
 type NavSection struct {
-	Title     string    `yaml:"title"`              // Section title (e.g., "Getting Started")
-	Path      string    `yaml:"path"`               // Section path (e.g., "getting-started")
-	Collapsed bool      `yaml:"collapsed"`          // Whether section is collapsed by default
-	Pages     []NavPage `yaml:"pages,omitempty"`    // Pages in this section
+	Title     string    `yaml:"title"`           // Section title (e.g., "Getting Started")
+	Path      string    `yaml:"path"`            // Section path (e.g., "getting-started")
+	Collapsed bool      `yaml:"collapsed"`       // Whether section is collapsed by default
+	Pages     []NavPage `yaml:"pages,omitempty"` // Pages in this section
 }
 
 // NavPage represents a single entry in navigation. It is either a leaf

@@ -28,11 +28,28 @@ func ServeCommand(args []string) error {
 	var operator string
 	var allowExec bool
 	var headless bool
+	flagSources := map[string]config.SourceConfig{}
 
 	// Parse flags
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
-		if arg == "--watch" || arg == "-w" {
+		if arg == "--help" || arg == "-h" {
+			fmt.Print(serveUsage)
+			return nil
+		} else if arg == "--source" {
+			if i+1 >= len(args) {
+				return fmt.Errorf("--source needs a value: NAME=COMMAND or NAME=file:PATH")
+			}
+			i++
+			name, src, err := parseSourceFlag(args[i])
+			if err != nil {
+				return err
+			}
+			if _, dup := flagSources[name]; dup {
+				return fmt.Errorf("--source %s is given twice", name)
+			}
+			flagSources[name] = src
+		} else if arg == "--watch" || arg == "-w" {
 			watchVal := true
 			watch = &watchVal
 		} else if arg == "--port" || arg == "-p" {
@@ -98,6 +115,17 @@ func ServeCommand(args []string) error {
 		}
 	}
 
+	// Sources from --source flags rank above page and site sources.
+	for name, src := range flagSources {
+		if src.Cmd != "" && !allowExec {
+			return fmt.Errorf("--source %s runs a command; add --allow-exec to allow it", name)
+		}
+		if err := config.ValidateStreamSource(name, src, nil); err != nil {
+			return fmt.Errorf("--source %s: %w", name, err)
+		}
+	}
+	cfg.FlagSources = flagSources
+
 	// CLI flags override config
 	if port != "" {
 		portInt, err := strconv.Atoi(port)
@@ -136,6 +164,10 @@ func ServeCommand(args []string) error {
 	// Discover pages (needed for schedules even in headless mode)
 	if err := srv.Discover(); err != nil {
 		return fmt.Errorf("failed to discover pages: %w", err)
+	}
+
+	if err := cfg.CheckFlagSources(pageSources(srv)); err != nil {
+		return err
 	}
 
 	// Print discovered pages (only in non-headless mode)
@@ -254,6 +286,48 @@ func ServeCommand(args []string) error {
 
 	return nil
 }
+
+// pageSources lists each discovered page's own sources, for CheckFlagSources.
+func pageSources(srv *server.Server) []map[string]config.SourceConfig {
+	var out []map[string]config.SourceConfig
+	for _, route := range srv.Routes() {
+		if route.Page == nil || len(route.Page.Config.Sources) == 0 {
+			continue
+		}
+		set := make(map[string]config.SourceConfig, len(route.Page.Config.Sources))
+		for name, src := range route.Page.Config.Sources {
+			set[name] = server.PageSourceConfig(src)
+		}
+		out = append(out, set)
+	}
+	return out
+}
+
+const serveUsage = `Usage: tinkerdown serve [directory] [flags]
+
+Serves the markdown pages in directory (default: current directory).
+
+Flags:
+  --source NAME=COMMAND    Follow a command's output as stream source NAME (needs --allow-exec)
+  --source NAME=file:PATH  Follow a file as stream source NAME
+  --allow-exec             Let sources run commands
+  --port N, -p N           Port to listen on (default 8080)
+  --host ADDR              Address to listen on (default localhost)
+  --config FILE, -c FILE   Config file (default: tinkerdown.yaml in directory)
+  --watch, -w              Reload pages when their files change
+  --operator NAME, -o NAME Operator identity for audit fields (default $USER)
+  --headless               Serve only the API, webhooks and schedules
+
+A page takes --source flags through a merge source with inputs ["*"], and
+shows one tab per source with a heading like: ## [All] | [*] source
+A flag with the same name as a page's source replaces it.
+
+Finding sources to follow:
+  docker ps --format '{{.Names}}'   -> --source 'NAME=docker logs -f --timestamps NAME'
+  a project's start command          -> --source 'api=cd ../api && npm run dev'
+  a log file                         -> --source 'app=file:/var/log/app.log'
+  journalctl                         -> --source 'journal=journalctl -f -o short-iso'
+`
 
 func init() {
 	log.SetFlags(0) // Remove timestamp from logs

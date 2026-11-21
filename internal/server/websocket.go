@@ -3,6 +3,7 @@ package server
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
 	"log"
@@ -217,7 +218,7 @@ func (h *WebSocketHandler) initializeSourceBlocks() {
 
 		// lvt-source block - use runtime.GenericState (no compilation needed!)
 		// Check page-level sources first (from frontmatter), then site-level (from tinkerdown.yaml)
-		sourceCfg, found := h.getEffectiveSource(sourceName)
+		sourceCfg, found := h.resolveSource(sourceName)
 		if !found {
 			log.Printf("[WS] Source %q not found (checked frontmatter and tinkerdown.yaml) for block %s", sourceName, blockID)
 			continue
@@ -256,7 +257,7 @@ func (h *WebSocketHandler) initializeSourceBlocks() {
 			}
 			if err != nil {
 				log.Printf("[WS] Failed to create runtime state for %s: %v", srcName, err)
-				return nil
+				return blockErrorFor(srcName, err)
 			}
 
 			// Configure page-level settings: custom actions, the source registry,
@@ -347,41 +348,17 @@ func (h *WebSocketHandler) getEffectiveSource(name string) (config.SourceConfig,
 		}
 	}
 
+	// Tier 2: a source from `serve --source` overrides the page and the site.
+	if h.config != nil {
+		if src, ok := h.config.FlagSources[name]; ok {
+			return src, true
+		}
+	}
+
 	// Check page-level sources first (from frontmatter)
 	if h.page != nil && h.page.Config.Sources != nil {
 		if src, ok := h.page.Config.Sources[name]; ok {
-			// Convert tinkerdown.SourceConfig to config.SourceConfig
-			return config.SourceConfig{
-				Type:        src.Type,
-				Cmd:         src.Cmd,
-				Query:       src.Query,
-				From:        src.From,
-				File:        src.File,
-				Anchor:      src.Anchor,
-				DB:          src.DB,
-				Table:       src.Table,
-				Path:        src.Path,
-				QueryFile:   src.QueryFile,
-				Variables:   src.Variables,
-				Headers:     src.Headers,
-				QueryParams: src.QueryParams,
-				ResultPath:  src.ResultPath,
-				Readonly:    src.Readonly,
-				Options:     src.Options,
-				Manual:      src.Manual,
-				Format:      src.Format,
-				Delimiter:   src.Delimiter,
-				Env:         src.Env,
-				Timeout:     src.Timeout,
-				GroupBy:     src.GroupBy,
-				Aggregate:   src.Aggregate,
-				Filter:      src.Filter,
-				Inputs:      src.Inputs,
-				Buffer:      src.Buffer,
-				Backlog:     src.Backlog,
-				Restart:     src.Restart,
-				Flush:       src.Flush,
-			}, true
+			return PageSourceConfig(src), true
 		}
 	}
 
@@ -393,6 +370,83 @@ func (h *WebSocketHandler) getEffectiveSource(name string) (config.SourceConfig,
 	}
 
 	return config.SourceConfig{}, false
+}
+
+// visibleSourceNames lists every source name getEffectiveSource can resolve on
+// this page: flag, page and site sources.
+func (h *WebSocketHandler) visibleSourceNames() []string {
+	var names []string
+	if h.page != nil {
+		for n := range h.page.Config.Sources {
+			names = append(names, n)
+		}
+	}
+	if h.config != nil {
+		for n := range h.config.FlagSources {
+			names = append(names, n)
+		}
+		for n := range h.config.Sources {
+			names = append(names, n)
+		}
+	}
+	return names
+}
+
+// resolveSource returns the effective config of a block's source, with a
+// ["*"] merge expanded. An approved merge expands through mergeInputLookup, so
+// it only takes tinkerdown.yaml sources.
+func (h *WebSocketHandler) resolveSource(name string) (config.SourceConfig, bool) {
+	src, ok := h.getEffectiveSource(name)
+	if !ok || !src.WildcardInputs() {
+		return src, ok
+	}
+	names := h.visibleSourceNames()
+	if h.config != nil && h.config.ApprovedSource(name) {
+		names = names[:0]
+		for n := range h.config.Sources {
+			names = append(names, n)
+		}
+	}
+	return config.ExpandInputs(src, names, h.mergeInputLookup(name)), true
+}
+
+// PageSourceConfig converts a page's frontmatter source to config.SourceConfig.
+func PageSourceConfig(src tinkerdown.SourceConfig) config.SourceConfig {
+	cfg := config.SourceConfig{
+		Type:        src.Type,
+		Cmd:         src.Cmd,
+		Query:       src.Query,
+		From:        src.From,
+		File:        src.File,
+		Anchor:      src.Anchor,
+		DB:          src.DB,
+		Table:       src.Table,
+		Path:        src.Path,
+		QueryFile:   src.QueryFile,
+		Variables:   src.Variables,
+		Headers:     src.Headers,
+		QueryParams: src.QueryParams,
+		ResultPath:  src.ResultPath,
+		Readonly:    src.Readonly,
+		Options:     src.Options,
+		Manual:      src.Manual,
+		Format:      src.Format,
+		Delimiter:   src.Delimiter,
+		Env:         src.Env,
+		Timeout:     src.Timeout,
+		GroupBy:     src.GroupBy,
+		Aggregate:   src.Aggregate,
+		Filter:      src.Filter,
+		Inputs:      src.Inputs,
+		Buffer:      src.Buffer,
+		Backlog:     src.Backlog,
+		Restart:     src.Restart,
+		Flush:       src.Flush,
+	}
+	if a := src.Accepts; a != nil {
+		cfg.Accepts = &config.SourceAccepts{Kinds: a.Kinds, Min: a.Min, Hint: a.Hint}
+	}
+	return cfg
 }
 
 // ServeHTTP handles WebSocket upgrade and message routing.
@@ -513,7 +567,11 @@ func (h *WebSocketHandler) initializeInstances(conn *websocket.Conn) {
 			if h.debug {
 				log.Printf("[WS] Block %s template content:\n%s", blockID, block.Content)
 			}
-			blockFS := fstest.MapFS{"block.tmpl": {Data: []byte(block.Content)}}
+			content := block.Content
+			if _, failed := state.(*blockError); failed {
+				content = blockErrorTemplate
+			}
+			blockFS := fstest.MapFS{"block.tmpl": {Data: []byte(content)}}
 			tmpl, err := livetemplate.New(blockID,
 				livetemplate.WithComponentTemplates(ComponentTemplates()...),
 				livetemplate.WithParseFS(blockFS, "block.tmpl"))
@@ -1488,4 +1546,34 @@ func (h *WebSocketHandler) followStream(instance *BlockInstance) {
 			}
 		}
 	})
+}
+
+// blockError stands in for a block whose source failed to build, so the page
+// shows why instead of waiting on "Connecting..." forever.
+type blockError struct {
+	Error string
+}
+
+func (b *blockError) HandleAction(string, map[string]interface{}) error {
+	return errors.New(b.Error)
+}
+
+func (b *blockError) Close() error { return nil }
+
+const blockErrorTemplate = `<p class="tinkerdown-block-error" role="alert">⚠ {{.Error}}</p>`
+
+// blockErrorFor builds the page's message for a failed source. Only validation
+// messages, which name the source and the setting, reach the page: other
+// errors can carry a command line, path or environment value, and anyone who
+// can open the page would see them. The server log has the full error.
+func blockErrorFor(name string, err error) *blockError {
+	var cv *config.ValidationError
+	var sv *source.ValidationError
+	switch {
+	case errors.As(err, &cv):
+		return &blockError{cv.Error()}
+	case errors.As(err, &sv):
+		return &blockError{sv.Error()}
+	}
+	return &blockError{fmt.Sprintf("source %q could not start; the server log has the details", name)}
 }

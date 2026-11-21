@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -51,5 +52,85 @@ sources:
 				t.Fatalf("error %v, want one containing %q", err, c.wantErr)
 			}
 		})
+	}
+}
+
+func TestExpandInputs(t *testing.T) {
+	sources := map[string]SourceConfig{
+		"web":   {Type: "stream", Cmd: "a"},
+		"app":   {Type: "stream", File: "a.log"},
+		"users": {Type: "json", File: "u.json"},
+	}
+	lookup := func(n string) (SourceConfig, bool) { s, ok := sources[n]; return s, ok }
+	names := []string{"web", "users", "app", "web"}
+
+	got := ExpandInputs(SourceConfig{Type: "merge", Inputs: []string{"*"}}, names, lookup)
+	if want := []string{"app", "web"}; !slices.Equal(got.Inputs, want) {
+		t.Fatalf("expanded to %v, want %v (streams only, sorted, no duplicates)", got.Inputs, want)
+	}
+	if err := ValidateStreamSource("all", got, lookup); err != nil {
+		t.Fatalf("expanded merge: %v", err)
+	}
+
+	empty := ExpandInputs(SourceConfig{Type: "merge", Inputs: []string{"*"}}, nil, lookup)
+	if err := ValidateStreamSource("all", empty, lookup); err != nil {
+		t.Fatalf("[\"*\"] with no sources yet must be valid: %v", err)
+	}
+	if err := ValidateStreamSource("all", SourceConfig{Type: "merge", Inputs: []string{}}, lookup); err == nil {
+		t.Fatal("an explicit empty inputs list must stay an error")
+	}
+	if err := ValidateStreamSource("all", SourceConfig{Type: "merge", Inputs: []string{"*"}}, lookup); err == nil {
+		t.Fatal("an unexpanded [\"*\"] must be an error")
+	}
+
+	fileOnly := SourceConfig{Type: "merge", Inputs: []string{"*"}, Accepts: &SourceAccepts{Kinds: []string{"file"}}}
+	if got := ExpandInputs(fileOnly, names, lookup); !slices.Equal(got.Inputs, []string{"app"}) {
+		t.Fatalf("kinds [file] expanded to %v, want [app]", got.Inputs)
+	}
+}
+
+func TestValidateAccepts(t *testing.T) {
+	lookup := func(string) (SourceConfig, bool) { return SourceConfig{}, false }
+	for name, src := range map[string]SourceConfig{
+		"bad kind":        {Type: "merge", Inputs: []string{"*"}, Accepts: &SourceAccepts{Kinds: []string{"http"}}},
+		"negative min":    {Type: "merge", Inputs: []string{"*"}, Accepts: &SourceAccepts{Min: -1}},
+		"without [\"*\"]": {Type: "merge", Inputs: []string{"web"}, Accepts: &SourceAccepts{}},
+	} {
+		if err := ValidateStreamSource("all", ExpandInputs(src, nil, lookup), lookup); err == nil {
+			t.Errorf("%s: want an error", name)
+		}
+	}
+}
+
+func TestCheckFlagSources(t *testing.T) {
+	wildcard := map[string]SourceConfig{"all": {Type: "merge", Inputs: []string{"*"}}}
+	fileOnly := map[string]SourceConfig{"all": {Type: "merge", Inputs: []string{"*"}, Accepts: &SourceAccepts{Kinds: []string{"file"}}}}
+	named := map[string]SourceConfig{"api": {Type: "stream", File: "x.log"}}
+	cmd := SourceConfig{Type: "stream", Cmd: "docker logs -f api"}
+
+	cases := []struct {
+		name    string
+		cfg     Config
+		pages   []map[string]SourceConfig
+		wantErr string
+	}{
+		{"taken by a [\"*\"] merge", Config{FlagSources: map[string]SourceConfig{"api": cmd}}, []map[string]SourceConfig{wildcard}, ""},
+		{"replaces a page source by name", Config{FlagSources: map[string]SourceConfig{"api": cmd}}, []map[string]SourceConfig{named}, ""},
+		{"no page takes it", Config{FlagSources: map[string]SourceConfig{"api": cmd}}, nil, "no page takes it"},
+		{"wrong kind", Config{FlagSources: map[string]SourceConfig{"api": cmd}}, []map[string]SourceConfig{fileOnly}, "accepts cmd sources"},
+		{"approved name", Config{
+			FlagSources: map[string]SourceConfig{"api": cmd},
+			Sources:     map[string]SourceConfig{"api": {Type: "stream", File: "x.log"}},
+			Generation:  &GenerationConfig{Sources: []string{"api"}},
+		}, nil, "approved source"},
+	}
+	for _, c := range cases {
+		err := c.cfg.CheckFlagSources(c.pages)
+		switch {
+		case c.wantErr == "" && err != nil:
+			t.Errorf("%s: %v", c.name, err)
+		case c.wantErr != "" && (err == nil || !strings.Contains(err.Error(), c.wantErr)):
+			t.Errorf("%s: got %v, want an error containing %q", c.name, err, c.wantErr)
+		}
 	}
 }

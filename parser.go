@@ -59,6 +59,16 @@ type SourceConfig struct {
 	Backlog int      `yaml:"backlog,omitempty"` // For file streams: lines read from the end on start
 	Restart string   `yaml:"restart,omitempty"` // For cmd streams: on-exit (default) or never
 	Flush   string   `yaml:"flush,omitempty"`   // Minimum time between pushes to one page (default 100ms)
+
+	// Accepts, on a merge with inputs ["*"], says which sources the page takes
+	Accepts *SourceAccepts `yaml:"accepts,omitempty"`
+}
+
+// SourceAccepts mirrors config.SourceAccepts for page frontmatter.
+type SourceAccepts struct {
+	Kinds []string `yaml:"kinds,omitempty"`
+	Min   int      `yaml:"min,omitempty"`
+	Hint  string   `yaml:"hint,omitempty"`
 }
 
 // StylingConfig represents styling/theme configuration.

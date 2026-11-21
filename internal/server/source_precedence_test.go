@@ -1,6 +1,13 @@
 package server
 
 import (
+	"context"
+	"fmt"
+	"net"
+	"net/http"
+	"net/http/httptest"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/livetemplate/tinkerdown"
@@ -204,5 +211,109 @@ func TestApprovedMergePinsItsInputs(t *testing.T) {
 	// A merge outside the approved set keeps the usual precedence.
 	if got, _ := h.mergeInputLookup("other")("web"); got.Cmd != pageWeb.Cmd {
 		t.Fatalf("unapproved merge resolved input web to %q, want the page's %q", got.Cmd, pageWeb.Cmd)
+	}
+}
+
+// TestApprovedWildcardMergeTakesOnlyManifestSources: an approved merge with
+// inputs ["*"] must not pick up page or flag sources, or a page could slip a
+// command into a merge the operator approved.
+func TestApprovedWildcardMergeTakesOnlyManifestSources(t *testing.T) {
+	cfg := &config.Config{
+		Sources: map[string]config.SourceConfig{
+			"web": {Type: "stream", Cmd: "docker logs -f web"},
+			"all": {Type: "merge", Inputs: []string{"*"}},
+		},
+		FlagSources: map[string]config.SourceConfig{"flagged": {Type: "stream", File: "/tmp/x.log"}},
+		Generation:  &config.GenerationConfig{Sources: []string{"all"}},
+	}
+	page := &tinkerdown.Page{Config: tinkerdown.PageConfig{Sources: map[string]tinkerdown.SourceConfig{
+		"sneaky": {Type: "stream", Cmd: "cat /etc/shadow"},
+	}}}
+	h := &WebSocketHandler{config: cfg, page: page}
+
+	got, _ := h.resolveSource("all")
+	if len(got.Inputs) != 1 || got.Inputs[0] != "web" {
+		t.Fatalf("approved [\"*\"] merge expanded to %v, want only [web]", got.Inputs)
+	}
+
+	// The same merge outside the approved set takes every stream it can see.
+	cfg.Generation = nil
+	got, _ = h.resolveSource("all")
+	if want := []string{"flagged", "sneaky", "web"}; !slices.Equal(got.Inputs, want) {
+		t.Fatalf("unapproved [\"*\"] merge expanded to %v, want %v", got.Inputs, want)
+	}
+}
+
+// TestFlagSourceOutranksPageAndSite: `serve --source` is the operator's choice
+// for this run, so it replaces a page or site source of the same name.
+func TestFlagSourceOutranksPageAndSite(t *testing.T) {
+	cfg := &config.Config{
+		Sources:     map[string]config.SourceConfig{"api": {Type: "stream", File: "site.log"}},
+		FlagSources: map[string]config.SourceConfig{"api": {Type: "stream", File: "flag.log"}},
+	}
+	page := &tinkerdown.Page{Config: tinkerdown.PageConfig{Sources: map[string]tinkerdown.SourceConfig{
+		"api": {Type: "stream", File: "page.log"},
+	}}}
+	h := &WebSocketHandler{config: cfg, page: page}
+	if got, _ := h.getEffectiveSource("api"); got.File != "flag.log" {
+		t.Fatalf("api resolved to %q, want the flag's flag.log", got.File)
+	}
+}
+
+func TestWildcardMergeHonoursAcceptsKinds(t *testing.T) {
+	cfg := &config.Config{FlagSources: map[string]config.SourceConfig{
+		"cmd": {Type: "stream", Cmd: "echo hi"},
+		"log": {Type: "stream", File: "a.log"},
+	}}
+	page := &tinkerdown.Page{Config: tinkerdown.PageConfig{Sources: map[string]tinkerdown.SourceConfig{
+		"all": {Type: "merge", Inputs: []string{"*"}, Accepts: &tinkerdown.SourceAccepts{Kinds: []string{"file"}}},
+	}}}
+	h := &WebSocketHandler{config: cfg, page: page}
+	got, _ := h.resolveSource("all")
+	if !slices.Equal(got.Inputs, []string{"log"}) || got.Accepts == nil {
+		t.Fatalf("file-only merge expanded to %v (accepts %v), want [log]", got.Inputs, got.Accepts)
+	}
+}
+
+func TestHostAllowed(t *testing.T) {
+	srv := &Server{config: &config.Config{Server: config.ServerConfig{Host: "logs.internal"}}}
+	request := func(local, host string) *http.Request {
+		r := httptest.NewRequest("GET", "/", nil)
+		r.Host = host
+		if local != "" {
+			addr, _ := net.ResolveTCPAddr("tcp", local)
+			r = r.WithContext(context.WithValue(r.Context(), http.LocalAddrContextKey, addr))
+		}
+		return r
+	}
+	cases := []struct {
+		local, host string
+		want        bool
+	}{
+		{"127.0.0.1:8080", "localhost:8080", true},
+		{"127.0.0.1:8080", "127.0.0.1:8080", true},
+		{"[::1]:8080", "[::1]:8080", true},
+		{"127.0.0.1:8080", "host.docker.internal:8080", true},
+		{"127.0.0.1:8080", "logs.internal:8080", true}, // the configured host
+		{"127.0.0.1:8080", "evil.example:8080", false}, // DNS rebinding
+		{"[::1]:8080", "evil.example", false},
+		{"192.168.1.5:8080", "anything.example", true}, // exposed on purpose with --host
+		{"", "example.com", true},                      // no network connection
+	}
+	for _, c := range cases {
+		if got := srv.hostAllowed(request(c.local, c.host)); got != c.want {
+			t.Errorf("local %s, Host %s: allowed = %v, want %v", c.local, c.host, got, c.want)
+		}
+	}
+}
+
+func TestBlockErrorShowsOnlyValidationMessages(t *testing.T) {
+	err := config.ValidateStreamSource("api", config.SourceConfig{Type: "stream", Cmd: "x", File: "y"}, nil)
+	if got := blockErrorFor("api", err).Error; !strings.Contains(got, "exactly one of cmd or file") {
+		t.Errorf("validation error shown as %q", got)
+	}
+	secret := fmt.Errorf("start %q: exit 1", "curl -H 'Authorization: token SECRET' api")
+	if got := blockErrorFor("api", secret).Error; strings.Contains(got, "SECRET") || !strings.Contains(got, "server log") {
+		t.Errorf("other error shown as %q; it must not carry the command", got)
 	}
 }

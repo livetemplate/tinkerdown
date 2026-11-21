@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"log"
 	"mime"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -417,6 +418,11 @@ func (s *Server) Routes() []*Route {
 
 // ServeHTTP implements http.Handler.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if !s.hostAllowed(r) {
+		http.Error(w, "unknown host", http.StatusMisdirectedRequest)
+		return
+	}
+
 	// Custom proxy routes match BEFORE we set our own security headers,
 	// so the upstream owns its full response surface (CSP, cookies, frame
 	// policy). Without this, our X-Frame-Options/CSP would override the
@@ -3834,4 +3840,32 @@ func (s *Server) executeWebhookAction(actionName string, params map[string]inter
 	// Create a webhook action executor
 	executor := newWebhookActionExecutor(s.config, s.rootDir)
 	return executor.execute(action, params)
+}
+
+// loopbackHosts are the names a browser uses for this machine.
+var loopbackHosts = []string{"localhost", "127.0.0.1", "::1", "host.docker.internal"}
+
+// hostAllowed guards against DNS rebinding. A website can point its own name
+// at 127.0.0.1; the browser then sends that name as Host (and as Origin for
+// WebSockets), so the same-origin check alone would let the site read a local
+// server. A request that arrived on a loopback address must therefore name
+// this machine, or the configured host. Requests from other interfaces are
+// left to the operator, who chose to expose the server with --host.
+func (s *Server) hostAllowed(r *http.Request) bool {
+	local, ok := r.Context().Value(http.LocalAddrContextKey).(net.Addr)
+	if !ok {
+		return true // not from a network connection
+	}
+	if tcp, isTCP := local.(*net.TCPAddr); !isTCP || !tcp.IP.IsLoopback() {
+		return true
+	}
+	host := r.Host
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	host = strings.Trim(host, "[]")
+	if slices.Contains(loopbackHosts, host) {
+		return true
+	}
+	return s.config != nil && s.config.Server.Host != "" && host == s.config.Server.Host
 }
