@@ -24,7 +24,7 @@ tinkerdown serve [directory | page.md | file:// URI | https:// URL] [flags]
 
 `tinkerdown serve https://…/page.md` fetches the page once at startup and prints its SHA-256. End the URL with `#sha256=HEX` to refuse a page whose content changed since you read it. The URL you type is fetched as given, even if it names a private address, since you chose it. A redirect, which the page's host controls, must go to a public `https://` address.
 
-Because the page comes from someone else, it may only declare `merge` sources, so it takes its sources from your `--source` flags. `serve` refuses a page from a URL that holds:
+Because the page comes from someone else, it may only declare `merge` sources, so it takes its sources from your `--source` flags and its commands from your `--action` flags. `serve` refuses a page from a URL that holds:
 
 - any other kind of source, any action, or a schedule
 - frontmatter beyond `title`, `sources`, `styling`, `charts`, `blocks` and `features`
@@ -45,7 +45,8 @@ To run a page that needs more, download it, review it, and serve the local copy 
 |------|-------------|---------|
 | `--source NAME=COMMAND` | Add a stream source that follows a command's output. Needs `--allow-exec`. Repeatable. | none |
 | `--source NAME=file:PATH` | Add a stream source that follows a file. Repeatable. | none |
-| `--allow-exec` | Let sources run commands | off |
+| `--action NAME=COMMAND` | Run COMMAND when a button named NAME is clicked, on any page. Needs `--allow-exec`. Repeatable. | none |
+| `--allow-exec` | Let sources and actions run commands | off |
 | `--port`, `-p` | Server port | `8080` |
 | `--host` | Server host | `localhost` |
 | `--config`, `-c` | Config file | `tinkerdown.yaml` in the directory |
@@ -73,6 +74,20 @@ tinkerdown serve --allow-exec 'https://raw.githubusercontent.com/livetemplate/on
 # Follow a container and a file on a page that takes --source flags
 tinkerdown serve --allow-exec --source 'api=docker logs -f --timestamps api' --source 'app=file:./logs/app.log'
 ```
+
+### Actions from the command line
+
+An `--action` command never has values pasted into it. Because a value reaches the command as an environment variable, the shell never reads it as code. Each `data-*` attribute of the clicked button becomes `TD_<name>`, so `<button name="stop" data-name="web">` runs the `stop` command with `TD_name=web`:
+
+```bash
+tinkerdown serve --allow-exec page.md --action 'stop=docker stop -- "$TD_name"'
+```
+
+Quote the variable: `"$TD_name"` stays one argument, while an unquoted `$TD_name` splits on spaces. The `--` keeps a value from being read as an option.
+
+A click runs nothing when a value is empty, longer than 256 bytes, starts with `-`, or holds a control character; the block shows the reason. An attribute whose name isn't 1-32 letters, digits or `_` is skipped. The command runs in the site directory with a 30-second timeout.
+
+`serve` refuses an `--action` named like a builtin action (`pause`, `delete`, `filter`, …), since the builtin would run instead, and one that would replace an action approved in `tinkerdown.yaml`. An `--action` replaces a local page's action of the same name. Webhooks and the HTTP action API can't call it.
 
 ### new
 

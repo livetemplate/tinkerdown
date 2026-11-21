@@ -28,7 +28,7 @@ func ServeCommand(args []string) error {
 	var operator string
 	var allowExec bool
 	var headless bool
-	var sourceValues []string
+	var sourceValues, actionValues []string
 
 	// Parse flags
 	for i := 0; i < len(args); i++ {
@@ -42,6 +42,12 @@ func ServeCommand(args []string) error {
 			}
 			i++
 			sourceValues = append(sourceValues, args[i])
+		} else if arg == "--action" {
+			if i+1 >= len(args) {
+				return fmt.Errorf("--action needs a value: NAME=COMMAND")
+			}
+			i++
+			actionValues = append(actionValues, args[i])
 		} else if arg == "--watch" || arg == "-w" {
 			watchVal := true
 			watch = &watchVal
@@ -136,6 +142,15 @@ func ServeCommand(args []string) error {
 		if _, err := addFlagSource(cfg.FlagSources, v, allowExec); err != nil {
 			return err
 		}
+	}
+	cfg.FlagActions = map[string]*config.Action{}
+	for _, v := range actionValues {
+		if err := addFlagAction(cfg.FlagActions, v, allowExec); err != nil {
+			return err
+		}
+	}
+	if err := checkFlagActions(cfg); err != nil {
+		return err
 	}
 
 	// CLI flags override config
@@ -346,7 +361,8 @@ the local copy.
 Flags:
   --source NAME=COMMAND    Follow a command's output as stream source NAME (needs --allow-exec)
   --source NAME=file:PATH  Follow a file as stream source NAME
-  --allow-exec             Let sources run commands
+  --action NAME=COMMAND    Run COMMAND when a page's button named NAME is clicked (needs --allow-exec)
+  --allow-exec             Let sources and actions run commands
   --port N, -p N           Port to listen on (default 8080)
   --host ADDR              Address to listen on (default localhost)
   --config FILE, -c FILE   Config file (default: tinkerdown.yaml in directory)
@@ -358,6 +374,11 @@ A page takes --source flags through a merge source with inputs ["*"], and
 shows one tab per source with a heading like: ## [All] | [*] source
 A flag with the same name as a page's source replaces it. A page can declare
 what it accepts (kinds, how many, a hint); serve refuses flags it can't use.
+
+An --action command gets the button's values as environment variables: a
+button's data-name="web" arrives as $TD_name. Quote it so it stays one
+argument: --action 'stop=docker stop -- "$TD_name"'. A value is refused when
+it is empty, over 256 bytes, starts with -, or holds a control character.
 
 With a terminal, serve asks for sources a page needs; without one it never
 prompts, so pass every source as a flag. A page's hint is the page's text, not

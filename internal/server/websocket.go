@@ -205,6 +205,8 @@ func (h *WebSocketHandler) initializeSourceBlocks() {
 		log.Printf("[WS] All server block IDs: %v", blockIDs)
 	}
 
+	// Page-level actions (converted from parser types) are the same for every block.
+	pageActions := h.getPageActions()
 	for blockID, block := range h.page.ServerBlocks {
 		if h.debug {
 			log.Printf("[WS] Processing server block: %s (metadata: %v)", blockID, block.Metadata)
@@ -243,9 +245,6 @@ func (h *WebSocketHandler) initializeSourceBlocks() {
 		for k, v := range block.Metadata {
 			blockMeta[k] = v
 		}
-
-		// Build page-level actions map (convert from parser types to config types)
-		pageActions := h.getPageActions()
 
 		factory := func() runtime.Store {
 			var state *runtime.GenericState
@@ -697,6 +696,9 @@ func (h *WebSocketHandler) handleMessage(conn *websocket.Conn, message []byte) {
 	// Handle action
 	if err := h.handleAction(instance, envelope.Action, envelope.Data); err != nil {
 		log.Printf("[WS] Error handling action: %v", err)
+		// Re-render anyway: a failed action sets the block's Error, which the
+		// page shows only on the next render.
+		h.sendUpdate(instance)
 		return
 	}
 
@@ -1356,6 +1358,27 @@ func (h *WebSocketHandler) TracksSourceFile(filePath string) bool {
 // schedules or webhooks callable from any page — a broad change nobody asked for.
 // Projects with no generation block are unaffected in either respect.
 func (h *WebSocketHandler) getPageActions() map[string]*config.Action {
+	result := h.pageAndApprovedActions()
+	if len(h.config.FlagActions) == 0 {
+		return result
+	}
+	if result == nil {
+		result = make(map[string]*config.Action, len(h.config.FlagActions))
+	}
+	// Flag actions rank above a page's own: the command line is the user's
+	// choice. They can't collide with approved actions; serve refuses that.
+	for name, action := range h.config.FlagActions {
+		if _, shadowed := result[name]; shadowed {
+			log.Printf("[WS] action %q is given with --action and replaces the page's definition", name)
+		}
+		result[name] = action
+	}
+	return result
+}
+
+// pageAndApprovedActions merges the page's frontmatter actions with the
+// site's approved ones; an approved action wins.
+func (h *WebSocketHandler) pageAndApprovedActions() map[string]*config.Action {
 	approved := h.approvedSiteActions()
 	if (h.page == nil || h.page.Config.Actions == nil) && len(approved) == 0 {
 		return nil

@@ -3,6 +3,8 @@ package runtime
 import (
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -198,9 +200,9 @@ func TestExpandTemplate(t *testing.T) {
 			want: `{"text": "Task: Buy groceries"}`,
 		},
 		{
-			name: "invalid template",
-			text: "{{.broken",
-			data: map[string]interface{}{},
+			name:    "invalid template",
+			text:    "{{.broken",
+			data:    map[string]interface{}{},
 			wantErr: true,
 		},
 	}
@@ -802,5 +804,67 @@ func TestHandleEditNumericID(t *testing.T) {
 	}
 	if s.EditingID != "7" {
 		t.Errorf("expected EditingID '7', got %q", s.EditingID)
+	}
+}
+
+// A flag action gets its values as TD_ variables: a value that looks like
+// shell code reaches the command as text, and a refused value runs nothing.
+func TestExecuteFlagAction(t *testing.T) {
+	origState := config.IsExecAllowed()
+	defer config.SetAllowExec(origState)
+	config.SetAllowExec(true)
+
+	dir := t.TempDir()
+	out := filepath.Join(dir, "out")
+	state := &GenericState{siteDir: dir}
+	action := &config.Action{Kind: "exec", Cmd: `printf '%s' "$TD_name" > out`, FromFlag: true}
+
+	for _, v := range []string{"web", "$(id)", "a b; touch pwned", "`id`"} {
+		if err := state.executeCustomAction(action, map[string]interface{}{"name": v}); err != nil {
+			t.Fatalf("value %q: %v", v, err)
+		}
+		got, _ := os.ReadFile(out)
+		if string(got) != v {
+			t.Errorf("command saw %q, want %q", got, v)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(dir, "pwned")); err == nil {
+		t.Fatal("a value ran as shell code")
+	}
+
+	os.Remove(out)
+	if err := state.executeCustomAction(action, map[string]interface{}{"name": "-rf"}); err == nil {
+		t.Fatal("a value starting with - ran")
+	}
+	if _, err := os.Stat(out); err == nil {
+		t.Fatal("the command ran for a refused value")
+	}
+	if state.Error == "" {
+		t.Error("a refused value left no block error")
+	}
+
+	config.SetAllowExec(false)
+	if err := state.executeCustomAction(action, map[string]interface{}{"name": "web"}); err == nil {
+		t.Fatal("a flag action ran without --allow-exec")
+	}
+}
+
+// On a project with a generation block, a flag action runs from a page, but
+// its name doesn't approve a same-named action that lacks the marker.
+func TestFlagActionPassesApprovalGate(t *testing.T) {
+	origState := config.IsExecAllowed()
+	defer config.SetAllowExec(origState)
+	config.SetAllowExec(true)
+
+	cfg := &config.Config{Generation: &config.GenerationConfig{Actions: []string{"other"}}}
+	state := &GenericState{siteDir: t.TempDir(), cfg: cfg, actions: map[string]*config.Action{
+		"stop": {Kind: "exec", Cmd: "true", FromFlag: true},
+		"yaml": {Kind: "exec", Cmd: "true"},
+	}}
+	if err := state.HandleAction("stop", map[string]interface{}{"name": "web"}); err != nil {
+		t.Fatalf("flag action refused: %v", err)
+	}
+	if err := state.HandleAction("yaml", nil); err == nil || !strings.Contains(err.Error(), "approved") {
+		t.Fatalf("unapproved yaml action: err = %v, want the approval gate", err)
 	}
 }

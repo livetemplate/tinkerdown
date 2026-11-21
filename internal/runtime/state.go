@@ -370,10 +370,15 @@ func (s *GenericState) HandleAction(action string, data map[string]interface{}) 
 		// never manifest actions, so they still fall through to handleDatatableAction.
 		if customAction, ok := s.actions[action]; ok {
 			// Runtime approved-surface gate: a running app — or a crafted-message
-			// caller — may only invoke an approved custom action.
-			if err := s.cfg.EnforceApprovedAction(action); err != nil {
-				s.Error = err.Error()
-				return err
+			// caller — may only invoke an approved custom action. An action from
+			// `serve --action` was approved on the command line; the marker on the
+			// action decides it, so a webhook naming a same-named yaml action
+			// still meets the gate.
+			if !customAction.FromFlag {
+				if err := s.cfg.EnforceApprovedAction(action); err != nil {
+					s.Error = err.Error()
+					return err
+				}
 			}
 			return s.executeCustomAction(customAction, data)
 		}

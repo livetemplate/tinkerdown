@@ -56,6 +56,10 @@ type Config struct {
 	// FlagSources are stream sources from `serve --source`. They rank above
 	// page and site sources, below approved ones.
 	FlagSources map[string]SourceConfig `yaml:"-"`
+	// FlagActions are exec actions from `serve --action`. Every page can call
+	// them, and only pages reach them: webhooks and the HTTP action API read
+	// Actions.
+	FlagActions map[string]*Action `yaml:"-"`
 }
 
 // RouteEntry binds a URL pattern to a destination. A pattern ending in
@@ -502,6 +506,11 @@ type Action struct {
 	Cmd        string              `yaml:"cmd,omitempty"`        // For exec: command to run
 	Params     map[string]ParamDef `yaml:"params,omitempty"`     // Parameter definitions
 	Confirm    string              `yaml:"confirm,omitempty"`    // Confirmation message (triggers dialog)
+
+	// FromFlag marks an action from `serve --action`: it gets its values as
+	// TD_<name> environment variables, never pasted into Cmd. Only the
+	// command line sets it.
+	FromFlag bool `yaml:"-" json:"-"`
 }
 
 // ParamDef defines a parameter for an action
