@@ -333,11 +333,17 @@ func (h *WebSocketHandler) initializeSourceBlocks() {
 // never approved — passing any check that reasons about names alone. Pinning makes an
 // approved name mean one thing regardless of what the page says.
 func (h *WebSocketHandler) getEffectiveSource(name string) (config.SourceConfig, bool) {
+	return effectiveSource(h.config, h.page, name)
+}
+
+// effectiveSource resolves name on page with the precedence getEffectiveSource
+// documents.
+func effectiveSource(cfg *config.Config, page *tinkerdown.Page, name string) (config.SourceConfig, bool) {
 	// Tier 1: an approved source is pinned to its manifest definition.
-	if h.config.ApprovedSource(name) {
-		if src, ok := h.config.Sources[name]; ok {
-			if h.page != nil && h.page.Config.Sources != nil {
-				if _, shadowed := h.page.Config.Sources[name]; shadowed {
+	if cfg.ApprovedSource(name) {
+		if src, ok := cfg.Sources[name]; ok {
+			if page != nil && page.Config.Sources != nil {
+				if _, shadowed := page.Config.Sources[name]; shadowed {
 					// Surfaced rather than silently dropped: a generating agent that
 					// tries this needs to see why its definition had no effect.
 					log.Printf("[WS] source %q is approved in tinkerdown.yaml and cannot be "+
@@ -349,22 +355,22 @@ func (h *WebSocketHandler) getEffectiveSource(name string) (config.SourceConfig,
 	}
 
 	// Tier 2: a source from `serve --source` overrides the page and the site.
-	if h.config != nil {
-		if src, ok := h.config.FlagSources[name]; ok {
+	if cfg != nil {
+		if src, ok := cfg.FlagSources[name]; ok {
 			return src, true
 		}
 	}
 
 	// Check page-level sources first (from frontmatter)
-	if h.page != nil && h.page.Config.Sources != nil {
-		if src, ok := h.page.Config.Sources[name]; ok {
+	if page != nil && page.Config.Sources != nil {
+		if src, ok := page.Config.Sources[name]; ok {
 			return PageSourceConfig(src), true
 		}
 	}
 
 	// Fall back to site-level sources (from tinkerdown.yaml)
-	if h.config != nil && h.config.Sources != nil {
-		if src, ok := h.config.Sources[name]; ok {
+	if cfg != nil && cfg.Sources != nil {
+		if src, ok := cfg.Sources[name]; ok {
 			return src, true
 		}
 	}
@@ -372,20 +378,20 @@ func (h *WebSocketHandler) getEffectiveSource(name string) (config.SourceConfig,
 	return config.SourceConfig{}, false
 }
 
-// visibleSourceNames lists every source name getEffectiveSource can resolve on
-// this page: flag, page and site sources.
-func (h *WebSocketHandler) visibleSourceNames() []string {
+// visibleSourceNames lists every source name effectiveSource can resolve on
+// page: flag, page and site sources.
+func visibleSourceNames(cfg *config.Config, page *tinkerdown.Page) []string {
 	var names []string
-	if h.page != nil {
-		for n := range h.page.Config.Sources {
+	if page != nil {
+		for n := range page.Config.Sources {
 			names = append(names, n)
 		}
 	}
-	if h.config != nil {
-		for n := range h.config.FlagSources {
+	if cfg != nil {
+		for n := range cfg.FlagSources {
 			names = append(names, n)
 		}
-		for n := range h.config.Sources {
+		for n := range cfg.Sources {
 			names = append(names, n)
 		}
 	}
@@ -396,18 +402,23 @@ func (h *WebSocketHandler) visibleSourceNames() []string {
 // ["*"] merge expanded. An approved merge expands through mergeInputLookup, so
 // it only takes tinkerdown.yaml sources.
 func (h *WebSocketHandler) resolveSource(name string) (config.SourceConfig, bool) {
-	src, ok := h.getEffectiveSource(name)
+	return resolveSource(h.config, h.page, name)
+}
+
+// resolveSource is effectiveSource with a ["*"] merge expanded.
+func resolveSource(cfg *config.Config, page *tinkerdown.Page, name string) (config.SourceConfig, bool) {
+	src, ok := effectiveSource(cfg, page, name)
 	if !ok || !src.WildcardInputs() {
 		return src, ok
 	}
-	names := h.visibleSourceNames()
-	if h.config != nil && h.config.ApprovedSource(name) {
+	names := visibleSourceNames(cfg, page)
+	if cfg != nil && cfg.ApprovedSource(name) {
 		names = names[:0]
-		for n := range h.config.Sources {
+		for n := range cfg.Sources {
 			names = append(names, n)
 		}
 	}
-	return config.ExpandInputs(src, names, h.mergeInputLookup(name)), true
+	return config.ExpandInputs(src, names, mergeInputLookup(cfg, page, name)), true
 }
 
 // PageSourceConfig converts a page's frontmatter source to config.SourceConfig.
@@ -1489,11 +1500,17 @@ func createSourceForAction(name string, cfg config.SourceConfig, siteDir, curren
 // manifest too; otherwise a page could redefine an input and change what the
 // approved source runs. Other merges use the page's usual source precedence.
 func (h *WebSocketHandler) mergeInputLookup(merge string) func(string) (config.SourceConfig, bool) {
-	if h.config == nil || !h.config.ApprovedSource(merge) {
-		return h.getEffectiveSource
+	return mergeInputLookup(h.config, h.page, merge)
+}
+
+// mergeInputLookup resolves a merge's inputs. An approved merge resolves them
+// from tinkerdown.yaml only, so a page can't change what it runs.
+func mergeInputLookup(cfg *config.Config, page *tinkerdown.Page, merge string) func(string) (config.SourceConfig, bool) {
+	if cfg == nil || !cfg.ApprovedSource(merge) {
+		return func(name string) (config.SourceConfig, bool) { return effectiveSource(cfg, page, name) }
 	}
 	return func(name string) (config.SourceConfig, bool) {
-		src, ok := h.config.Sources[name]
+		src, ok := cfg.Sources[name]
 		return src, ok
 	}
 }

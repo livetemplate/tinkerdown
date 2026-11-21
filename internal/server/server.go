@@ -3286,7 +3286,9 @@ func renderSourceMeta(page *tinkerdown.Page) string {
 
 // renderContent renders the page content with code blocks
 func (s *Server) renderContent(page *tinkerdown.Page) string {
-	content := page.StaticHTML
+	content := tinkerdown.ExpandSourceTabs(page.StaticHTML, func(blockID string) []string {
+		return s.mergeInputs(page, blockID)
+	})
 
 	// TODO: Enhance markdown parser to add data attributes to code blocks
 	// For now, the client will need to discover blocks by parsing the HTML
@@ -3868,4 +3870,23 @@ func (s *Server) hostAllowed(r *http.Request) bool {
 		return true
 	}
 	return s.config != nil && s.config.Server.Host != "" && host == s.config.Server.Host
+}
+
+// mergeInputs returns the expanded inputs of the merge source an interactive
+// block shows, or nothing when its source isn't a merge. Flag sources are
+// known only once serve has started, so this runs per request.
+func (s *Server) mergeInputs(page *tinkerdown.Page, blockID string) []string {
+	ib, ok := page.InteractiveBlocks[blockID]
+	if !ok {
+		return nil
+	}
+	sb, ok := page.ServerBlocks[ib.StateRef]
+	if !ok {
+		return nil
+	}
+	src, ok := resolveSource(s.config, page, sb.Metadata["lvt-source"])
+	if !ok || src.Type != "merge" {
+		return nil
+	}
+	return src.Inputs
 }
