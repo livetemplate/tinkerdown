@@ -137,7 +137,7 @@ f.fields.Test          Filter form fields take paths
 - Audit: every caller of `hub.Merge` and `getFieldValue`.
 - Implementation: per the tinkerdown Files list.
 - Acceptance: `/simplify`, the stream, runtime, validation and e2e criteria, docs, the full suite.
-- Learn: the onefile e2e found two gaps. A row without parsed fields (plain text, or a `system` row such as a restart) had `fields: nil`, and a template reading `.fields.Action` failed to render every update after it; rows now always carry a `fields` map. And `go test` reruns (a restart, or `watchexec`) appended each run's output to the last, so `collect_reset: PATH=VALUE` starts a key's text over; the page sets `fields.Action=run`.
+- Learn: the onefile e2e found two gaps. A row without parsed fields (plain text, or a `system` row such as a restart) had `fields: nil`, and a template reading `.fields.Action` failed to render every update after it; rows now always carry a `fields` map. And `go test` reruns (a restart, or `watchexec`) appended each run's output to the last, so `collect_reset: PATH=VALUE` starts a key's text over; the page sets `fields.Action=run|start`, since a package row has a `start` but no `run`.
 
 ### Phase 2: the tests app
 - Audit: A3. Re-read the Contract against what shipped.
