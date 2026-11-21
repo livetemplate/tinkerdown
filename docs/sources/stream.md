@@ -30,6 +30,7 @@ A command needs `tinkerdown serve --allow-exec`, as an `exec` source does. A fil
 | `key` | merge | Field paths (`NAME` or `fields.NAME`) that make the merge keyed: one row per distinct key, updated in place. See [One row per key](#one-row-per-key). |
 | `collect` | merge | With `key`: a field path whose text is gathered across a key's rows into `collected`. |
 | `collect_reset` | merge | With `collect`: `PATH=VALUE`, where VALUE may list alternatives as `a\|b`. A row that matches starts its key's `collected` over, such as `fields.Action=run\|start` for a test's or package's next run. |
+| `drop` | merge | With `key`: `PATH=VALUE`, where VALUE may list alternatives as `a\|b`. A row that matches removes its key's row and isn't stored, such as `fields.state=removed` for a removed container. |
 | `accepts` | merge | With `inputs: ["*"]`: the sources the page takes. `kinds` lists `cmd`, `file` or both (default: both), `min` is how many it needs, and `hint` is one line saying what to pass. |
 | `format` | stream | How to parse each line: `auto` (default), `json`, `logfmt` or `lines`. |
 | `env` | stream | Extra environment variables for `cmd`. `$VAR` references are expanded. |
@@ -93,6 +94,8 @@ A row whose key matches an earlier one replaces it in place, and keeps the earli
 </li>
 {{end}}
 ```
+
+Some keys end for good, such as a container that was removed. `drop: fields.state=removed` takes a matching row as the end of its key, so the key's row leaves the list and the page gets a remove for it. A later row for the same key starts a new row at the end of the list.
 
 ## Row fields
 

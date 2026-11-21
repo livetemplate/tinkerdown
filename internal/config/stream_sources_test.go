@@ -104,9 +104,13 @@ func TestValidateAccepts(t *testing.T) {
 
 func TestValidateKeyAndCollect(t *testing.T) {
 	lookup := func(string) (SourceConfig, bool) { return SourceConfig{Type: "stream", File: "a.log"}, true }
-	ok := SourceConfig{Type: "merge", Inputs: []string{"a"}, Key: []string{"fields.Package", "fields.Test"}, Collect: "fields.Output", CollectReset: "fields.Action=run"}
-	if err := ValidateStreamSource("t", ok, lookup); err != nil {
-		t.Fatalf("valid keyed merge: %v", err)
+	for _, ok := range []SourceConfig{
+		{Type: "merge", Inputs: []string{"a"}, Key: []string{"fields.Package", "fields.Test"}, Collect: "fields.Output", CollectReset: "fields.Action=run"},
+		{Type: "merge", Inputs: []string{"a"}, Key: []string{"fields.name"}, Drop: "fields.state=removed|dead"},
+	} {
+		if err := ValidateStreamSource("t", ok, lookup); err != nil {
+			t.Fatalf("valid keyed merge: %v", err)
+		}
 	}
 	for name, src := range map[string]SourceConfig{
 		"key on a stream":   {Type: "stream", File: "a.log", Key: []string{"msg"}},
@@ -115,6 +119,12 @@ func TestValidateKeyAndCollect(t *testing.T) {
 		"other nested root": {Type: "merge", Inputs: []string{"a"}, Key: []string{"meta.id"}},
 		"reset without =":   {Type: "merge", Inputs: []string{"a"}, Key: []string{"x"}, Collect: "y", CollectReset: "fields.Action"},
 		"reset, no collect": {Type: "merge", Inputs: []string{"a"}, Key: []string{"x"}, CollectReset: "fields.Action=run"},
+		"drop on a stream":  {Type: "stream", File: "a.log", Drop: "fields.state=removed"},
+		"reset on a stream": {Type: "stream", File: "a.log", CollectReset: "fields.Action=run"},
+		"drop, no key":      {Type: "merge", Inputs: []string{"a"}, Drop: "fields.state=removed"},
+		"drop without =":    {Type: "merge", Inputs: []string{"a"}, Key: []string{"x"}, Drop: "fields.state"},
+		"drop, empty value": {Type: "merge", Inputs: []string{"a"}, Key: []string{"x"}, Drop: "fields.state="},
+		"drop, bad path":    {Type: "merge", Inputs: []string{"a"}, Key: []string{"x"}, Drop: "a.b.c=removed"},
 	} {
 		if err := ValidateStreamSource("t", src, lookup); err == nil {
 			t.Errorf("%s: want an error", name)
@@ -123,8 +133,8 @@ func TestValidateKeyAndCollect(t *testing.T) {
 }
 
 func TestKeySpecFromConfig(t *testing.T) {
-	k := SourceConfig{Key: []string{"fields.Test"}, Collect: "fields.Output", CollectReset: "fields.Action=run"}.KeySpec()
-	if k.ResetPath != "fields.Action" || k.ResetValue != "run" || k.Collect != "fields.Output" || len(k.Paths) != 1 {
+	k := SourceConfig{Key: []string{"fields.Test"}, Collect: "fields.Output", CollectReset: "fields.Action=run", Drop: "fields.Action=skip|gone"}.KeySpec()
+	if k.Reset.String() != "fields.Action=run" || k.Drop.String() != "fields.Action=skip|gone" || k.Collect != "fields.Output" || len(k.Paths) != 1 {
 		t.Fatalf("KeySpec = %+v", k)
 	}
 }

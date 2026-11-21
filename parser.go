@@ -68,6 +68,7 @@ type SourceConfig struct {
 	Key          []string `yaml:"key,omitempty"`
 	Collect      string   `yaml:"collect,omitempty"`
 	CollectReset string   `yaml:"collect_reset,omitempty"`
+	Drop         string   `yaml:"drop,omitempty"`
 }
 
 // SourceAccepts mirrors config.SourceAccepts for page frontmatter.

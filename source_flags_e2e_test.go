@@ -204,7 +204,7 @@ func TestKeyedMerge_E2E(t *testing.T) {
 	dir := t.TempDir()
 	events := filepath.Join(dir, "events.jsonl")
 	os.WriteFile(events, []byte(`{"Action":"run","Package":"api","Test":"TestA"}`+"\n"), 0o644)
-	page := "---\ntitle: Tests\nsources:\n  tests:\n    type: merge\n    inputs: [\"*\"]\n    key: [fields.Package, fields.Test]\n    collect: fields.Output\n---\n\n## [All] | [Failed] fields.Action = fail\n\n```lvt\n" +
+	page := "---\ntitle: Tests\nsources:\n  tests:\n    type: merge\n    inputs: [\"*\"]\n    key: [fields.Package, fields.Test]\n    collect: fields.Output\n    drop: fields.Action=skip|gone\n---\n\n## [All] | [Failed] fields.Action = fail\n\n```lvt\n" +
 		`<ol lvt-source="tests" data-testid="tests">{{range .Data}}<li data-key="{{.key}}" class="a-{{.fields.Action}}"><b>{{.fields.Test}}</b> <i>{{.fields.Action}}</i><pre>{{.collected}}</pre></li>{{end}}</ol>` + "\n```\n"
 	os.WriteFile(filepath.Join(dir, "index.md"), []byte(page), 0o644)
 
@@ -280,4 +280,24 @@ func TestKeyedMerge_E2E(t *testing.T) {
 		t.Fatal(err)
 	}
 	wait("only the failing test", `(() => { const r = document.querySelectorAll("ol li"); return r.length === 1 && r[0].classList.contains("a-fail"); })()`)
+
+	// A drop row removes its key's row: the page gets a remove op, not a new row.
+	if err := chromedp.Run(ctx, chromedp.Click(`button[role="tab"][data-filter=""]`, chromedp.ByQuery)); err != nil {
+		dump()
+		t.Fatal(err)
+	}
+	wait("both tests again", `document.querySelectorAll("ol li").length === 2`)
+	before = len(logs.frames())
+	appendEvents(`{"Action":"gone","Package":"api","Test":"TestA"}`)
+	wait("TestA dropped", `(() => { const r = [...document.querySelectorAll("ol li b")].map(b => b.textContent); return r.length === 1 && r[0] === "TestB"; })()`)
+	removed := false
+	for _, f := range logs.frames()[before:] {
+		if strings.Contains(f, `["r",`) {
+			removed = true
+		}
+	}
+	if !removed {
+		dump()
+		t.Fatal(`no ["r", ...] op: the dropped row was not removed in place`)
+	}
 }
