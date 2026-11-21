@@ -20,6 +20,9 @@ import (
 var forbiddenElements = []string{
 	"script", "meta", "base", "link", "iframe", "frame", "frameset",
 	"object", "embed", "applet", "portal",
+	// SVG and MathML change how the browser parses what's inside them (a
+	// <style> there isn't raw text), which the tokenizer doesn't follow.
+	"svg", "math",
 }
 
 // rawTextElements hold text the tokenizer doesn't parse as markup. A
@@ -109,6 +112,11 @@ func scan(doc string, template bool) []string {
 		case html.TextToken:
 			if rawText && marked {
 				add(misplaced)
+			}
+			if rawText && strings.Contains(tok.Data, "<") {
+				// The tokenizer skips markup in raw text; refuse any rather
+				// than trust that every parser agrees where it ends.
+				add("markup inside a raw-text element such as <style> or <textarea>")
 			}
 		}
 	}

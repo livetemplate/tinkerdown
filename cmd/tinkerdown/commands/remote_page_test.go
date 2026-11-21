@@ -117,6 +117,8 @@ func TestCheckRemotePage(t *testing.T) {
 		"an event handler":                "# X\n\n<img src=x onerror=\"alert(1)\">\n",
 		"a javascript URL":                "# X\n\n<a href=\"javascript:alert(1)\">x</a>\n",
 		"a meta refresh":                  "# X\n\n<meta http-equiv=\"refresh\" content=\"0;url=https://evil.example\">\n",
+		"a description":                   "---\ndescription: x\n---\n# X\n",
+		"a source repo":                   "---\nsource_repo: https://github.com/a/b\n---\n# X\n",
 		"a template action in a tag name": "---\nsources:\n  all:\n    type: merge\n    inputs: [\"*\"]\n---\n\n```lvt\n<p lvt-source=\"all\"><{{\"meta\"}} http-equiv=\"refresh\"></p>\n```\n",
 		"a template action in a raw-text element": "---\nsources:\n  all:\n    type: merge\n    inputs: [\"*\"]\n---\n\n```lvt\n<div lvt-source=\"all\"><textarea>{{range .Data}}{{.msg}}{{end}}</textarea></div>\n```\n",
 	}

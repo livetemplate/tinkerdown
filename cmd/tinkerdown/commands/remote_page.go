@@ -167,6 +167,18 @@ func checkRemotePage(page *tinkerdown.Page) error {
 			add("source %s: flush %s is under %s", name, src.Flush, minRemoteFlush)
 		}
 	}
+	for key, set := range map[string]bool{
+		"description":   page.Description != "",
+		"image":         page.Image != "",
+		"source_repo":   page.SourceRepo != "",
+		"source_path":   page.SourcePath != "",
+		"source_ref":    page.SourceRef != "",
+		"source_commit": page.SourceCommit != "",
+	} {
+		if set {
+			add("frontmatter %s: only title, sources, styling, charts, blocks and features are allowed", key)
+		}
+	}
 	for name := range page.Config.Actions {
 		add("action %s: actions are not allowed", name)
 	}

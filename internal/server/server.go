@@ -1081,7 +1081,7 @@ func (s *Server) renderPage(page *tinkerdown.Page, currentPath string, host stri
 	if editURL := buildEditURL(siteRepo, page.SourceRepo, page.SourcePath, pageRelPath); editURL != "" {
 		editLinkHTML = fmt.Sprintf(
 			`<div class="page-edit-link"><a href="%s" target="_blank" rel="noopener">Edit this page on GitHub</a></div>`,
-			editURL,
+			html.EscapeString(editURL),
 		)
 	}
 	sourceMetaHTML := renderSourceMeta(page)
@@ -3213,7 +3213,7 @@ func (s *Server) renderPage(page *tinkerdown.Page, currentPath string, host stri
     %s
 %s
 </body>
-</html>`, wsURL, s.config.Server.Debug, showSidebar, page.Title, seoTags, stylingOverrideCSS, prismIncludeCSS, siteCSS, sidebar, contentWithNav, defaultTheme, prismIncludeJS, mermaidScript, chartScript)
+</html>`, wsURL, s.config.Server.Debug, showSidebar, html.EscapeString(page.Title), seoTags, stylingOverrideCSS, prismIncludeCSS, siteCSS, sidebar, contentWithNav, defaultTheme, prismIncludeJS, mermaidScript, chartScript)
 
 	return html
 }
@@ -3289,7 +3289,7 @@ func (s *Server) renderLandingShell(page *tinkerdown.Page, currentPath, host, ws
         document.addEventListener('DOMContentLoaded', function() { Prism.highlightAll(); });
     </script>
 </body>
-</html>`, wsURL, s.config.Server.Debug, page.Title, seoTags, prismIncludeCSS, siteCSS, customCSS, content, defaultTheme, defaultTheme, prismIncludeJS)
+</html>`, wsURL, s.config.Server.Debug, html.EscapeString(page.Title), seoTags, prismIncludeCSS, siteCSS, customCSS, content, defaultTheme, defaultTheme, prismIncludeJS)
 }
 
 func renderSourceMeta(page *tinkerdown.Page) string {

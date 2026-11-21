@@ -53,3 +53,16 @@ func TestUnsafeHTML(t *testing.T) {
 		}
 	}
 }
+
+func TestUnsafeHTMLForeignContent(t *testing.T) {
+	for _, doc := range []string{
+		`<svg><style><img src=x onerror="alert(1)"></style></svg>`,
+		`<math><mi>x</mi></math>`,
+		`<style></style><img src=x onerror="a()"></style>`,
+		`<textarea><img src=x></textarea>`,
+	} {
+		if len(UnsafeHTML(doc)) == 0 {
+			t.Errorf("%s: want a refusal", doc)
+		}
+	}
+}

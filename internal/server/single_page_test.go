@@ -52,3 +52,18 @@ func TestServeSinglePage(t *testing.T) {
 		}
 	}
 }
+
+// A page's title goes into <title>; it must not open markup there.
+func TestRenderedTitleIsEscaped(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "index.md"), []byte("---\ntitle: \"</title><script>alert(1)</script>\"\n---\n# Hi\n"), 0o644)
+	srv := NewWithConfig(dir, config.DefaultConfig())
+	if err := srv.Discover(); err != nil {
+		t.Fatal(err)
+	}
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, httptest.NewRequest("GET", "/", nil))
+	if body := rec.Body.String(); strings.Contains(body, "<script>alert(1)") || !strings.Contains(body, "&lt;/title&gt;") {
+		t.Fatalf("title not escaped:\n%.600s", body)
+	}
+}
