@@ -8,6 +8,7 @@ The log viewer's `index.md` ships demo sources, because a tinkerdown page can't 
 
 - **`--source` flags:** `tinkerdown serve` takes stream sources on the command line.
 - **`inputs: ["*"]`:** a merge source takes every stream source the page can see.
+- **`accepts`:** the page declares what sources it takes (kinds, how many, a hint), and `serve` checks flags against it.
 - **`[*] field` tabs:** a tabs heading gets one tab per input of the merge below it.
 - **A serve prompt:** when a page needs sources and has none, `serve` asks for them in a terminal.
 - **Pages from a URL:** `tinkerdown serve <url>` downloads one page and serves it; `serve <file.md>` or `serve file:///path/page.md` serves one local page. A page from a URL can never run commands, read files or send data elsewhere.
@@ -57,7 +58,7 @@ A terminal run with no sources:
 
 ```
 $ tinkerdown serve --allow-exec .
-index.md follows logs, but no stream sources are set.
+index.md needs at least 1 source: Logs to follow: a container, a dev server or a log file.
 Add one as name=command or name=file:path. Leave empty to finish.
 source> api=docker logs -f --timestamps api
 source> app=file:./logs/app.log
@@ -140,6 +141,11 @@ A block whose source is invalid shows the error in place of its content:
 - A merge whose `["*"]` expands to nothing is valid. Its block has no rows and `Inputs` is empty, and the page shows its own empty state. An explicit empty `inputs: []` stays an error.
   alternative: refuse to serve
   because: a page with no sources yet should still open and say what to do
+- A `["*"]` merge may declare `accepts`, which says what sources the page takes: `kinds` (`cmd`, `file`, or both; default both), `min` (default 0) and `hint` (one line saying what to pass). `serve` refuses a `--source` whose kind the page doesn't accept, and a flag no page would take (likely a typo). `min` and `hint` drive the prompt, the non-terminal message and the empty state (`.Accepts`).
+  alternative: no declaration; any flag feeds any `["*"]` merge
+  because: the page knows what it can show; checking flags against it catches mistakes before the browser opens, and tells an agent what to pass
+- `accepts` is allowed on a page from a URL, since it describes sources without running anything. A remote page can say `kinds: [file]` to promise it never needs a command.
+  alternative: none considered
 - `GenericState` gains `Inputs []string`, the expanded input names of a merge block, for templates.
   alternative: none considered
 - A tabs heading item `[*] field` expands to one tab per input of the lvt block's merge source, named after the input, with filter `field = input`. The parser records it as a dynamic tab group, and the server expands it when serving the page, after flags are known.
@@ -184,6 +190,7 @@ The operator (whoever runs `tinkerdown serve`) is trusted: their flags and local
 | T6 | A huge or slow response | 1 MiB cap and a fetch timeout |
 | T7 | Flag or page sources reach an approved merge | `["*"]` expands through `mergeInputLookup` |
 | T8 | A coding agent works around a refusal | there is no flag to pass; running the page means downloading it, which the refusal tells the agent to review with the user |
+| T9 | A mistyped or unexpected `--source` feeds a page silently | flags are checked against each page's `accepts`; unused flags are refused |
 
 Out of scope:
 - **Links a viewer clicks:** a link in the page's template can carry log text to another site when a viewer clicks it. The CSP can't block navigation, so this is a residual risk, and the docs name it.
@@ -198,7 +205,7 @@ tinkerdown (worktree `.worktrees/source-flags`):
 - `cmd/tinkerdown/main.go`: the top-level usage line for `serve` mentions `--source`.
 - `cmd/tinkerdown/commands/source_flags.go` new?: `parseSourceFlag`, the prompt loop and `printReuse`, with tests.
 - `internal/config/config.go`: hold flag sources apart from site sources (`FlagSources`).
-- `internal/config/stream_sources.go`: `["*"]` in `ValidateStreamSource`; `ExpandMergeInputs(name, src, visible)`.
+- `internal/config/stream_sources.go`: `["*"]` in `ValidateStreamSource`; `ExpandMergeInputs(name, src, visible)`; `Accepts` and the flag check.
 - `internal/server/websocket.go`: flag tier in `getEffectiveSource`; `["*"]` expansion through `mergeInputLookup`; send failed blocks with `.Error`.
 - `internal/source/stream.go`: build a merge from the expanded inputs.
 - `internal/runtime/state.go`: `Inputs` on `GenericState`.
@@ -213,7 +220,7 @@ tinkerdown (worktree `.worktrees/source-flags`):
 
 logviewer:
 
-- `index.md`: no sources except `all: {type: merge, inputs: ["*"]}`; heading `## [All] | [*] source`; an empty state for `{{if not .Inputs}}`.
+- `index.md`: no sources except `all: {type: merge, inputs: ["*"], accepts: {min: 1, hint: "Logs to follow: a container, a dev server or a log file"}}`; heading `## [All] | [*] source`; an empty state for `{{if not .Inputs}}`.
 - `scripts/demo-logs.sh` and `logs/app.log` move to `e2e/testdata/`; the e2e test passes them as `--source` flags.
 - `README.md` "Run it": the one-command run from the raw GitHub URL; "Add your own logs": `--source`, no editing `index.md`. `AGENTS.md` shrinks to: install, ask the user which logs, run `tinkerdown serve --help`, then serve with `--source`.
 
@@ -237,6 +244,7 @@ Assumptions (A) are checked before building, risks (R) are what we'd act on, and
 - [ ] `/simplify` has run on each phase's diff.
 - [ ] `go test ./cmd/tinkerdown/commands/...` covers `parseSourceFlag` (`a=b=c` keeps `b=c`; `file:` prefix; a missing name is refused), a command flag without `--allow-exec` refused, and a flag naming an approved source refused.
 - [ ] `go test ./internal/config/...` covers `["*"]` expanding sorted, `["*"]` expanding to nothing being valid, and `inputs: []` still refused.
+- [ ] `accepts`: a `cmd` flag is refused by a page with `kinds: [file]`; a flag no page takes is refused; `min` and `hint` appear in the prompt and the non-terminal message; a page from a URL with `accepts` is allowed.
 - [ ] `TestApprovedMergePinsItsInputs` gains a `["*"]` case: an approved merge sees no page or flag sources.
 - [ ] A precedence test: a flag source beats a page source of the same name.
 - [ ] `parser_test.go`: `## [All] | [*] source` records a dynamic tab group.
@@ -275,6 +283,10 @@ serve FILE.md                serve one local page
 serve file:///PATH/FILE.md   the same as serve /PATH/FILE.md
 page from a URL              may declare merge sources only; no actions, no raw <script>
 inputs: ["*"]                every stream source the merge can see, sorted by name
+accepts:                     on a ["*"] merge; allowed on a page from a URL
+  kinds: [cmd, file]         source kinds the page takes (default: both)
+  min: 1                     sources needed before the page is useful (default: 0)
+  hint: "..."                one line shown in the prompt, the message and .Accepts.Hint
 ## [All] | [*] FIELD         one tab per merge input: label INPUT, filter "FIELD = INPUT"
 .Inputs                      []string, a merge block's expanded inputs
 ```
@@ -285,8 +297,8 @@ Precedence, highest first: approved (`tinkerdown.yaml` with `generation.sources`
 
 ### Phase 1: flags and `["*"]`
 - Audit: A2. Trace `getEffectiveSource`, `mergeInputLookup` and `NewStreamSource` for where expansion belongs.
-- Implementation: `--source` parsing and checks, the flag tier, `ExpandMergeInputs`, `Inputs`, block errors.
-- Acceptance: `/simplify`, then the commands, config, precedence and approved-merge criteria.
+- Implementation: `--source` parsing and checks, the flag tier, `ExpandMergeInputs`, `Inputs`, `accepts` and the flag check, block errors.
+- Acceptance: `/simplify`, then the commands, config, `accepts`, precedence and approved-merge criteria.
 
 ### Phase 2: `[*]` tabs
 - Audit: A1. Find where page HTML is produced per request, and how `--watch` reparses.
