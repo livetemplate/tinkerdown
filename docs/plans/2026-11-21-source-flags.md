@@ -1,6 +1,6 @@
 # Plan: one-command apps — sources from flags, pages from a URL
 
-State — Done: nothing. Next: plan signoff, then Phase 1.
+State — Done: Phases 1–3 (`20a3b27`, `5505372`, `64c7a5e`, simplify `b2993cf`). Next: PR review for Phases 1–3, then Phase 4.
 
 ## Context
 
@@ -256,19 +256,19 @@ Assumptions (A) are checked before building, risks (R) are what we'd act on, and
 
 ## Acceptance criteria
 
-- [ ] `/simplify` has run on each phase's diff.
-- [ ] `go test ./cmd/tinkerdown/commands/...` covers `parseSourceFlag` (`a=b=c` keeps `b=c`; `file:` prefix; a missing name is refused), a command flag without `--allow-exec` refused, and a flag naming an approved source refused.
-- [ ] `go test ./internal/config/...` covers `["*"]` expanding sorted, `["*"]` expanding to nothing being valid, and `inputs: []` still refused.
-- [ ] `accepts`: a `cmd` flag is refused by a page with `kinds: [file]`; a flag no page takes is refused; `min` and `hint` appear in the prompt and the non-terminal message; a page from a URL with `accepts` is allowed.
-- [ ] `TestApprovedMergePinsItsInputs` gains a `["*"]` case: an approved merge sees no page or flag sources.
-- [ ] A precedence test: a flag source beats a page source of the same name.
-- [ ] `parser_test.go`: `## [All] | [*] source` records a dynamic tab group.
-- [ ] `TestStreamSource_E2E` (chromedp, Docker Chrome) gains subtests:
+- [ ] `/simplify` has run on each phase's diff. Phases 1–3 ✅ (one run over the three, fixes in `b2993cf`)
+- [x] `go test ./cmd/tinkerdown/commands/...` covers `parseSourceFlag` (`a=b=c` keeps `b=c`; `file:` prefix; a missing name is refused), a command flag without `--allow-exec` refused, and a flag naming an approved source refused. ✅ (`TestParseSourceFlag`, `TestServeRefusesBadSourceFlags`, `TestCheckFlagSources`)
+- [x] `go test ./internal/config/...` covers `["*"]` expanding sorted, `["*"]` expanding to nothing being valid, and `inputs: []` still refused. ✅ (`TestExpandInputs`)
+- [ ] `accepts`: a `cmd` flag is refused by a page with `kinds: [file]`; a flag no page takes is refused; `min` and `hint` appear in the prompt and the non-terminal message; a page from a URL with `accepts` is allowed. All but the URL case ✅ (`TestServeRefusesBadSourceFlags`, `TestDescribeNeedsCleansPageText`); the URL case lands with Phase 4.
+- [x] `TestApprovedMergePinsItsInputs` gains a `["*"]` case: an approved merge sees no page or flag sources. ✅ (as `TestApprovedWildcardMergeTakesOnlyManifestSources`)
+- [x] A precedence test: a flag source beats a page source of the same name. ✅ (`TestFlagSourceOutranksPageAndSite`)
+- [x] `parser_test.go`: `## [All] | [*] source` records a dynamic tab group. ✅ (`TestSourceTabsExpandPerInput`, `TestSourceTabsGoLast` in `parser_tabs_test.go`)
+- [x] Browser e2e (chromedp, Docker Chrome) subtests, in `TestSourceFlags_E2E` ✅:
   - a page with `inputs: ["*"]` served with two `--source` flags shows a tab per source, and each tab filters to it
   - with no sources, the page shows its empty state
   - an invalid source shows its error in the block
-- [ ] `tinkerdown serve --help` prints the usage above and exits 0 without listening (a test in `cmd/tinkerdown/commands/cli_test.go`); every example in it is checked to parse with `parseSourceFlag`.
-- [ ] The prompt: a test drives it through a pseudo-terminal and checks the printed reuse line; a run with stdin not a terminal doesn't block.
+- [x] `tinkerdown serve --help` prints the usage above and exits 0 without listening (a test in `cmd/tinkerdown/commands/cli_test.go`); every example in it is checked to parse with `parseSourceFlag`. ✅ (`TestServeHelpExitsWithoutServing`, in `source_flags_test.go`)
+- [x] The prompt: a test drives it and checks the printed reuse line; a run with stdin not a terminal doesn't block. ✅ (`TestPromptSources` feeds a reader, not a pseudo-terminal; `TestServeWithoutTerminalDoesNotPrompt`)
 - [ ] Pages from a URL, tested against an `httptest` server in `cmd/tinkerdown/commands`:
   - a merge-only page serves
   - a page with an `exec`, `stream` or file-reading source, an action, a schedule, an include, a `server` or `embed-lvt` block, an `on*` attribute, a `javascript:` URL, or a `<script>`, `<meta>` or `<base>` element is refused, and the same file served locally runs
@@ -277,9 +277,9 @@ Assumptions (A) are checked before building, risks (R) are what we'd act on, and
   - a `#sha256=` mismatch, a body over 1 MiB and a non-localhost `http://` URL are refused
   - no `tinkerdown.yaml` is read without `--config`
 - [ ] `TestStreamSource_E2E` gains a subtest serving its page from an `httptest` URL with `--source` flags, in Docker Chrome. The page's template includes `<img src="http://<other host>/?{{.msg}}">`, and the other host receives no request.
-- [ ] With the server on `127.0.0.1`, an HTTP request and a WebSocket upgrade with `Host: evil.example` are refused, and `Host: localhost:PORT` is accepted.
-- [ ] A failed block's page error contains no command text; the server log has it.
-- [ ] `parseSourceFlag` refuses names outside `[A-Za-z0-9_-]{1,32}`; the reuse line round-trips through `sh -c` for a command holding a single quote.
+- [x] With the server on `127.0.0.1`, a request with `Host: evil.example` is refused, and `Host: localhost:PORT` is accepted. ✅ (`TestHostAllowed`; the check is in `ServeHTTP`, before the WebSocket upgrade)
+- [x] A failed block's page error contains no command text; the server log has it. ✅ (`TestBlockErrorShowsOnlyValidationMessages`)
+- [x] `parseSourceFlag` refuses names outside `[A-Za-z0-9_-]{1,32}`; the reuse line round-trips through `sh -c` for a command holding a single quote. ✅ (`TestParseSourceFlag`, `TestShellQuoteRoundTrips`, `TestPromptSources`)
 - [ ] `serve page.md` and `serve file:///abs/page.md` serve that page at `/` and no other file in its directory; a `file://` URI with a host other than empty or `localhost` is refused.
 - [ ] logviewer: `cd e2e && go test ./...` passes with the demo passed as flags, and `index.md` has no `cmd` or `file`.
 - [ ] Full tinkerdown suite green; pre-commit passes; `prereview check` clean on changed docs.
@@ -321,16 +321,19 @@ Precedence, highest first: approved (`tinkerdown.yaml` with `generation.sources`
 - Audit: A2. Trace `getEffectiveSource`, `mergeInputLookup` and `NewStreamSource` for where expansion belongs.
 - Implementation: the `Host` allow-list, `--source` parsing and checks, the flag tier, `ExpandMergeInputs`, `Inputs`, `accepts` and the flag check, block errors.
 - Acceptance: `/simplify`, then the commands, config, `accepts`, precedence and approved-merge criteria.
+- Learn: A2 was false: a failed block got a nil state and hung at "Connecting...". The `Host` check keys on the connection's local address (`http.LocalAddrContextKey`), not the configured host: tests and `--host 0.0.0.0` reached over loopback both needed that. Whether a flag is used is decided from `ResolveSource`, since raw source lists counted an approved `["*"]` merge as taking flags it never resolves. `ExpandInputs` marks its result `Wildcard`, an exported field, instead of a hidden one.
 
 ### Phase 2: `[*]` tabs
 - Audit: A1. Find where page HTML is produced per request, and how `--watch` reparses.
 - Implementation: dynamic tab group in `parser.go`, expansion in the server.
 - Acceptance: `/simplify`, the parser test and the e2e tab subtest.
+- Learn: A1 holds: `renderContent` runs per request, so `ExpandSourceTabs` rewrites the placeholder there, with a fast path for pages without one. The `[*]` tabs always go after the fixed ones, so indexes stay unique. They bind to the first lvt block container, as the client's tabs do. The e2e subtests went into a new `TestSourceFlags_E2E`, not `TestStreamSource_E2E`.
 
 ### Phase 3: the prompt
 - Audit: A3. Confirm `Discover` runs before listening.
 - Implementation: terminal check, prompt loop, reuse line, non-terminal message, `serve --help`.
 - Acceptance: `/simplify`, the prompt criterion, the e2e empty-state subtest, docs and CHANGELOG, the full suite.
+- Learn: A3 holds. `golang.org/x/term` stays: `/dev/null`, which agents and CI often give as stdin, is a character device, so a mode check would prompt there. `docs/reference/cli.md` listed serve flags that don't exist (`--production`, `--debug`); fixed with the `--source` docs.
 
 ### Phase 4: pages from a URL
 - Audit: A4. Check how `Discover`, routing and the watcher assume a directory.
