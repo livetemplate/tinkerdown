@@ -22,7 +22,7 @@ tinkerdown serve [directory | page.md | file:// URI | https:// URL] [flags]
 
 ### Pages from a URL
 
-`tinkerdown serve https://…/page.md` fetches the page once at startup and prints its SHA-256. End the URL with `#sha256=HEX` to refuse a page whose content changed since you read it.
+`tinkerdown serve https://…/page.md` fetches the page once at startup and prints its SHA-256. End the URL with `#sha256=HEX` to refuse a page whose content changed since you read it. The URL you type is fetched as given, even if it names a private address, since you chose it. A redirect, which the page's host controls, must go to a public `https://` address.
 
 Because the page comes from someone else, it may only declare `merge` sources, so it takes its sources from your `--source` flags. `serve` refuses a page from a URL that holds:
 

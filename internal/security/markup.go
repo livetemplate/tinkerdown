@@ -31,7 +31,10 @@ var rawTextElements = []string{
 	"style", "textarea", "title", "xmp", "noembed", "noframes", "noscript", "plaintext",
 }
 
-// urlAttributes can navigate or load when they hold a javascript: URL.
+// urlAttributes can navigate or load when they hold a javascript: URL. A
+// template action in one (href="{{.url}}") becomes the marker, so its value
+// is checked only at render time: html/template rewrites unsafe URLs, and the
+// strict CSP (no 'unsafe-inline') blocks javascript: navigation. Keep both.
 var urlAttributes = []string{"href", "src", "action", "formaction", "xlink:href", "poster", "data", "background"}
 
 // actionMarker stands in for each template action when a template is

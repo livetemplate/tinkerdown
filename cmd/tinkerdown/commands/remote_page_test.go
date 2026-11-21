@@ -30,8 +30,9 @@ func TestParsePageArg(t *testing.T) {
 		{in: "file://evil.example" + page, wantErr: "must name this machine"},
 		{in: filepath.Join(dir, "notes.txt"), wantErr: "directory or a .md file"},
 		{in: "https://example.com/a/index.md", url: "https://example.com/a/index.md"},
-		{in: "https://example.com/i.md#sha256=ABC", url: "https://example.com/i.md", pin: "abc"},
+		{in: "https://example.com/i.md#sha256=" + strings.Repeat("AB", 32), url: "https://example.com/i.md", pin: strings.Repeat("ab", 32)},
 		{in: "https://example.com/i.md#top", wantErr: "#sha256=HEX"},
+		{in: "https://example.com/i.md#sha256=xyz", wantErr: "64 hex characters"},
 		{in: "http://localhost:9000/i.md", url: "http://localhost:9000/i.md"},
 		{in: "http://example.com/i.md", wantErr: "use https"},
 	}
@@ -56,6 +57,9 @@ func TestFetchRemotePage(t *testing.T) {
 	mux.HandleFunc("/huge.md", func(w http.ResponseWriter, r *http.Request) { w.Write(make([]byte, maxRemotePage+1)) })
 	mux.HandleFunc("/to-http", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "http://example.com/page.md", http.StatusFound)
+	})
+	mux.HandleFunc("/loop", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/loop", http.StatusFound)
 	})
 	mux.HandleFunc("/to-private", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "https://169.254.169.254/latest/meta-data", http.StatusFound)
@@ -84,6 +88,7 @@ func TestFetchRemotePage(t *testing.T) {
 		"over 1 MiB":                    {url: ts.URL + "/huge.md"},
 		"redirect to http":              {url: ts.URL + "/to-http"},
 		"redirect to a private address": {url: ts.URL + "/to-private"},
+		"more than 3 redirects":         {url: ts.URL + "/loop"},
 		"not found":                     {url: ts.URL + "/missing.md"},
 	} {
 		if dir, _, err := fetchRemotePage(p); err == nil {
@@ -132,7 +137,7 @@ func TestCheckRemotePage(t *testing.T) {
 }
 
 func TestRemoteMessagesHideCredentials(t *testing.T) {
-	p, err := parsePageArg("https://user:s3cret@example.invalid/page.md#sha256=abc")
+	p, err := parsePageArg("https://user:s3cret@example.invalid/page.md#sha256=" + strings.Repeat("ab", 32))
 	if err != nil {
 		t.Fatal(err)
 	}

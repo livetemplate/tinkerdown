@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -54,6 +55,9 @@ func parsePageArg(arg string) (pageArg, error) {
 		if u.Fragment != "" && pin == u.Fragment {
 			return pageArg{}, fmt.Errorf("page URL %s: the only fragment allowed is #sha256=HEX", u.Redacted())
 		}
+		if pin != "" && !sha256Hex.MatchString(pin) {
+			return pageArg{}, fmt.Errorf("page URL %s: #sha256= needs 64 hex characters", u.Redacted())
+		}
 		u.Fragment = ""
 		shown := *u
 		shown.User = nil
@@ -87,6 +91,8 @@ func parsePageArg(arg string) (pageArg, error) {
 	return pageArg{dir: filepath.Dir(arg), single: filepath.Base(arg)}, nil
 }
 
+var sha256Hex = regexp.MustCompile(`^[0-9a-fA-F]{64}$`)
+
 func isLocalHost(h string) bool {
 	return h == "localhost" || h == "127.0.0.1" || h == "::1"
 }
@@ -94,6 +100,11 @@ func isLocalHost(h string) bool {
 // fetchRemotePage downloads a page into a new private directory as page.md
 // and returns the directory and the content's sha256. The name never comes
 // from the URL, so a path in it can't escape the directory.
+//
+// The URL the operator typed is fetched as given, private addresses
+// included, since they chose it. Each redirect must be https and pass
+// security.ValidateHTTPURL, so a page host can't bounce the fetch into the
+// operator's network.
 func fetchRemotePage(p pageArg) (dir, sum string, err error) {
 	client := &http.Client{
 		Timeout: remoteFetchTimeout,
