@@ -11,6 +11,8 @@ Earlier releases (v0.1.x) are documented in the
 
 ## [Unreleased]
 
+## [v0.6.0] - 2026-11-21
+
 ### Added
 
 - **Keyed merges: one row per key, updated in place.** A merge with
