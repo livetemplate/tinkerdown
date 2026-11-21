@@ -22,12 +22,20 @@ tinkerdown serve [directory] [flags]
 
 | Flag | Description | Default |
 |------|-------------|---------|
+| `--source NAME=COMMAND` | Add a stream source that follows a command's output. Needs `--allow-exec`. Repeatable. | none |
+| `--source NAME=file:PATH` | Add a stream source that follows a file. Repeatable. | none |
+| `--allow-exec` | Let sources run commands | off |
 | `--port`, `-p` | Server port | `8080` |
 | `--host` | Server host | `localhost` |
-| `--production` | Production mode | `false` |
-| `--debug` | Enable debug logging | `false` |
-| `--verbose` | Enable verbose logging | `false` |
-| `--log-format` | Log format (text, json) | `text` |
+| `--config`, `-c` | Config file | `tinkerdown.yaml` in the directory |
+| `--watch`, `-w` | Reload pages when their files change | off |
+| `--operator`, `-o` | Operator identity for audit fields | `$USER` |
+| `--headless` | Serve only the API, webhooks and schedules | off |
+| `--help`, `-h` | Print serve's usage and exit | |
+
+A `--source` flag reaches a page through a merge source with `inputs: ["*"]`, or by replacing a page source with the same name. `serve` refuses a flag no page uses, and a flag of a kind the page's `accepts` leaves out. See [stream sources](../sources/stream.md#sources-from-the-command-line).
+
+When a page needs sources and has none, `serve` asks for them if it runs in a terminal, then prints the `--source` flags to reuse. Without a terminal it never waits: it prints what to pass and serves the page's empty state.
 
 **Examples:**
 
@@ -38,11 +46,8 @@ tinkerdown serve
 # Specify port
 tinkerdown serve --port 3000
 
-# Production mode
-tinkerdown serve --production
-
-# Debug mode
-tinkerdown serve --debug
+# Follow a container and a file on a page that takes --source flags
+tinkerdown serve --allow-exec --source 'api=docker logs -f --timestamps api' --source 'app=file:./logs/app.log'
 ```
 
 ### new

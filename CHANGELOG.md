@@ -13,6 +13,16 @@ Earlier releases (v0.1.x) are documented in the
 
 ### Added
 
+- **`tinkerdown serve --source` adds stream sources from the command line.**
+  `--source NAME=COMMAND` follows a command (with `--allow-exec`) and
+  `--source NAME=file:PATH` follows a file. A merge with `inputs: ["*"]`
+  takes every stream source, `accepts` declares what a page takes, and a
+  tabs heading with `[*] source` shows one tab per source. When a page needs
+  sources and has none, `serve` asks for them in a terminal. See
+  [docs/sources/stream.md](docs/sources/stream.md#sources-from-the-command-line).
+- **`tinkerdown serve --help`** prints serve's own usage. It used to start
+  serving the current directory.
+
 - **`stream` and `merge` sources follow logs and other live output.** A
   `stream` source runs a long-lived command (`cmd:`, with `--allow-exec`) or
   follows a file (`file:`), and the page shows each new line as it arrives.
@@ -27,6 +37,12 @@ Earlier releases (v0.1.x) are documented in the
   combines with the selected tab.
 
 ### Fixed
+
+- **A block whose source fails to build shows the error** instead of
+  "Connecting..." forever. Only validation messages reach the page; the server
+  log has the full error.
+- **A server on a loopback address refuses requests for other host names**,
+  so a website can't use DNS rebinding to read a local tinkerdown page.
 
 - **`lvt-on:input`, `lvt-mod:debounce` and `lvt-mod:throttle` now work in
   blocks,** as `lvt-attributes.md` documents. `lvt-on:change` now also sends

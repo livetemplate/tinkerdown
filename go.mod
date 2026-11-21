@@ -16,6 +16,7 @@ require (
 	github.com/wailsapp/wails/v2 v2.11.0
 	github.com/yuin/goldmark v1.7.13
 	golang.org/x/net v0.49.0
+	golang.org/x/term v0.39.0
 	golang.org/x/time v0.14.0
 	gopkg.in/yaml.v3 v3.0.1
 	modernc.org/sqlite v1.43.0

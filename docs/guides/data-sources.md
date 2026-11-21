@@ -106,6 +106,12 @@ A heading written as tabs filters the block below it. Each tab after the first c
 ## [All] | [Errors] level = error | [Web] source = web
 ```
 
+`[*] FIELD` adds one tab per input of the merge source below, named after the input and filtering on `FIELD = input`. It suits a merge with `inputs: ["*"]`, whose inputs are known only when the page is served. Put it last:
+
+```markdown
+## [All] | [*] source
+```
+
 A `Filter` form adds field filters. Each field named `f.<field>` keeps rows whose `<field>` contains the typed text, ignoring case. An empty field removes its filter:
 
 ```html

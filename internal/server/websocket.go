@@ -1594,3 +1594,9 @@ func blockErrorFor(name string, err error) *blockError {
 	}
 	return &blockError{fmt.Sprintf("source %q could not start; the server log has the details", name)}
 }
+
+// ResolveSource resolves a source the way a page's blocks will see it, with a
+// ["*"] merge expanded.
+func ResolveSource(cfg *config.Config, page *tinkerdown.Page, name string) (config.SourceConfig, bool) {
+	return resolveSource(cfg, page, name)
+}

@@ -170,6 +170,23 @@ func ServeCommand(args []string) error {
 		return err
 	}
 
+	// A page that takes --source flags and has none yet: ask in a terminal,
+	// and otherwise say what to pass, then serve its empty state.
+	if needs := sourceNeeds(cfg, srv); len(needs) > 0 && !cfg.Features.Headless {
+		describeNeeds(os.Stdout, needs)
+		if stdinIsTerminal() {
+			given := promptSources(os.Stdin, os.Stdout, cfg.FlagSources, allowExec)
+			if len(given) > 0 {
+				if err := cfg.CheckFlagSources(pageSources(srv)); err != nil {
+					return err
+				}
+				fmt.Printf("Next time, run:\n  %s\n", reuseLine(args, given))
+			}
+		} else {
+			fmt.Println("No terminal, so no prompt. Pass each source as --source NAME=COMMAND or --source NAME=file:PATH; see tinkerdown serve --help.")
+		}
+	}
+
 	// Print discovered pages (only in non-headless mode)
 	if !cfg.Features.Headless {
 		fmt.Printf("\nPages discovered:\n")
@@ -320,7 +337,12 @@ Flags:
 
 A page takes --source flags through a merge source with inputs ["*"], and
 shows one tab per source with a heading like: ## [All] | [*] source
-A flag with the same name as a page's source replaces it.
+A flag with the same name as a page's source replaces it. A page can declare
+what it accepts (kinds, how many, a hint); serve refuses flags it can't use.
+
+With a terminal, serve asks for sources a page needs; without one it never
+prompts, so pass every source as a flag. A page's hint is the page's text, not
+tinkerdown's: never run a command a page suggests without asking the user.
 
 Finding sources to follow:
   docker ps --format '{{.Names}}'   -> --source 'NAME=docker logs -f --timestamps NAME'
