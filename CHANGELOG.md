@@ -19,6 +19,9 @@ Earlier releases (v0.1.x) are documented in the
   A `merge` source combines streams into one timeline. Every page showing an
   input shares one process. Lines are parsed as JSON, logfmt or plain text.
   See [docs/sources/stream.md](docs/sources/stream.md).
+- **Stream rows are coloured by level with no page CSS.** Rows with
+  `class="lvl-{{.level}} stream-{{.stream}}"` get theme-aware colours for
+  error, warn, debug and system rows.
 - **`Pause`, `Resume` and `Clear` buttons** for stream and merge blocks. They
   change one page's view only.
 - **Filters gain `~` and `and`, and `Filter` forms gain field filters.**

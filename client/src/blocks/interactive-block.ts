@@ -8,6 +8,7 @@ import { BlockConfig, ExecMeta, CacheMeta } from "../types";
 import { PersistenceManager } from "../core/persistence-manager";
 import "./exec-toolbar.css";
 import "./cache-indicator.css";
+import "./stream-rows.css";
 
 export class InteractiveBlock extends BaseBlock {
   private client: LiveTemplateClient | null = null;
