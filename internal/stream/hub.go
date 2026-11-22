@@ -142,6 +142,8 @@ type KeySpec struct {
 	// Drop removes a key's row when a row matches, such as a removed
 	// container. The matching row is not stored.
 	Drop Match
+	// Sort orders the rows by a field instead of first-seen order.
+	Sort Order
 }
 
 // Merge returns the buffer that interleaves inputs in seq order, creating it
@@ -152,7 +154,7 @@ func (h *Hub) Merge(name string, inputs []*Buffer, size int, key KeySpec) (*Buff
 	if size <= 0 {
 		size = DefaultBufferSize
 	}
-	parts := []string{name, fmt.Sprint(size), strings.Join(key.Paths, ","), key.Collect, key.Reset.String(), key.Drop.String()}
+	parts := []string{name, fmt.Sprint(size), strings.Join(key.Paths, ","), key.Collect, key.Reset.String(), key.Drop.String(), key.Sort.String()}
 	for _, in := range inputs {
 		if in.merge {
 			return nil, fmt.Errorf("merge %q: input %q is itself a merge", name, in.name)

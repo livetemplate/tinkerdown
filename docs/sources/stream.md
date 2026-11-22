@@ -31,6 +31,7 @@ A command needs `tinkerdown serve --allow-exec`, as an `exec` source does. A fil
 | `collect` | merge | With `key`: a field path whose text is gathered across a key's rows into `collected`. |
 | `collect_reset` | merge | With `collect`: `PATH=VALUE`, where VALUE may list alternatives as `a\|b`. A row that matches starts its key's `collected` over, such as `fields.Action=run\|start` for a test's or package's next run. |
 | `drop` | merge | With `key`: `PATH=VALUE`, where VALUE may list alternatives as `a\|b` (a value can't contain `\|`, and a number matches as it prints). A row that matches removes its key's row and isn't stored, such as `fields.state=removed` for a removed container. |
+| `sort` | merge | With `key`: a field, or `-` and a field for descending, such as `-fields.createdAt`. Rows show in that field's order instead of first-seen order. |
 | `params` | merge | Values taken from the page URL's query, each with `in: MERGE.PATH`. See [Values from the page URL](#values-from-the-page-url). |
 | `accepts` | merge | With `inputs: ["*"]`: the sources the page takes. `kinds` lists `cmd`, `file` or both (default: both), `min` is how many it needs, and `hint` is one line saying what to pass. |
 | `format` | stream | How to parse each line: `auto` (default), `json`, `logfmt` or `lines`. |
@@ -97,6 +98,8 @@ A row whose key matches an earlier one replaces it in place, and keeps the earli
 ```
 
 Some keys end for good, such as a container that was removed. `drop: fields.state=removed` takes a matching row as the end of its key, so the key's row leaves the list and the page gets a remove for it. A later row for the same key starts a new row at the end of the list.
+
+By default a keyed merge shows keys in the order it first saw them. `sort: -fields.createdAt` orders them by a field instead, newest first; without the `-` it's ascending. Numbers compare as numbers, and so does text that reads as a number (logfmt values are text), the same way a filter compares them. Numbers come before other text, which compares as text, so ISO times sort correctly. A row without the field goes last in either direction, and rows with equal values keep the order they arrived in. A new row reaches the page as an insert at its place, and a row whose value changes moves, so a list sorted by a creation time only ever grows at the top.
 
 ## Values from the page URL
 

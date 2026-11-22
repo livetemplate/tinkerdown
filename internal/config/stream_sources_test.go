@@ -107,6 +107,8 @@ func TestValidateKeyAndCollect(t *testing.T) {
 	for _, ok := range []SourceConfig{
 		{Type: "merge", Inputs: []string{"a"}, Key: []string{"fields.Package", "fields.Test"}, Collect: "fields.Output", CollectReset: "fields.Action=run"},
 		{Type: "merge", Inputs: []string{"a"}, Key: []string{"fields.name"}, Drop: "fields.state=removed|dead"},
+		{Type: "merge", Inputs: []string{"a"}, Key: []string{"fields.id"}, Sort: "-fields.createdAt"},
+		{Type: "merge", Inputs: []string{"a"}, Key: []string{"fields.id"}, Sort: "seq"},
 	} {
 		if err := ValidateStreamSource("t", ok, lookup); err != nil {
 			t.Fatalf("valid keyed merge: %v", err)
@@ -125,6 +127,11 @@ func TestValidateKeyAndCollect(t *testing.T) {
 		"drop without =":    {Type: "merge", Inputs: []string{"a"}, Key: []string{"x"}, Drop: "fields.state"},
 		"drop, empty value": {Type: "merge", Inputs: []string{"a"}, Key: []string{"x"}, Drop: "fields.state="},
 		"drop, bad path":    {Type: "merge", Inputs: []string{"a"}, Key: []string{"x"}, Drop: "a.b.c=removed"},
+		"sort, no key":      {Type: "merge", Inputs: []string{"a"}, Sort: "-fields.createdAt"},
+		"sort on a stream":  {Type: "stream", File: "a.log", Sort: "seq"},
+		"sort, bad path":    {Type: "merge", Inputs: []string{"a"}, Key: []string{"x"}, Sort: "-a.b.c"},
+		"sort, only -":      {Type: "merge", Inputs: []string{"a"}, Key: []string{"x"}, Sort: "-"},
+		"sort, double -":    {Type: "merge", Inputs: []string{"a"}, Key: []string{"x"}, Sort: "--fields.t"},
 	} {
 		if err := ValidateStreamSource("t", src, lookup); err == nil {
 			t.Errorf("%s: want an error", name)
@@ -133,8 +140,8 @@ func TestValidateKeyAndCollect(t *testing.T) {
 }
 
 func TestKeySpecFromConfig(t *testing.T) {
-	k := SourceConfig{Key: []string{"fields.Test"}, Collect: "fields.Output", CollectReset: "fields.Action=run", Drop: "fields.Action=skip|gone"}.KeySpec()
-	if k.Reset.String() != "fields.Action=run" || k.Drop.String() != "fields.Action=skip|gone" || k.Collect != "fields.Output" || len(k.Paths) != 1 {
+	k := SourceConfig{Key: []string{"fields.Test"}, Collect: "fields.Output", CollectReset: "fields.Action=run", Drop: "fields.Action=skip|gone", Sort: "-fields.Elapsed"}.KeySpec()
+	if k.Reset.String() != "fields.Action=run" || k.Drop.String() != "fields.Action=skip|gone" || k.Sort.String() != "-fields.Elapsed" || k.Collect != "fields.Output" || len(k.Paths) != 1 {
 		t.Fatalf("KeySpec = %+v", k)
 	}
 }

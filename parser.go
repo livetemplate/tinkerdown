@@ -69,6 +69,7 @@ type SourceConfig struct {
 	Collect      string                 `yaml:"collect,omitempty"`
 	CollectReset string                 `yaml:"collect_reset,omitempty"`
 	Drop         string                 `yaml:"drop,omitempty"`
+	Sort         string                 `yaml:"sort,omitempty"`
 	Params       map[string]SourceParam `yaml:"params,omitempty"`
 }
 

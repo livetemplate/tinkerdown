@@ -149,6 +149,8 @@ func validateKey(name string, src SourceConfig) error {
 		return invalid("merge source %q: collect_reset %q must be PATH=VALUE, with collect set", name, src.CollectReset)
 	case src.Drop != "" && (len(src.Key) == 0 || !validMatch(src.Drop)):
 		return invalid("merge source %q: drop %q must be PATH=VALUE, with key set", name, src.Drop)
+	case src.Sort != "" && (len(src.Key) == 0 || !validSort(src.Sort)):
+		return invalid("merge source %q: sort %q must be a field (NAME or fields.NAME, with - for descending), with key set", name, src.Sort)
 	case src.Collect != "" && len(src.Key) == 0:
 		return invalid("merge source %q: collect needs key", name)
 	case src.Collect != "" && !fieldPath.MatchString(src.Collect):
@@ -163,9 +165,15 @@ func validMatch(s string) bool {
 	return ok && fieldPath.MatchString(m.Path)
 }
 
+// validSort reports whether s is a field path, with an optional leading -.
+func validSort(s string) bool {
+	o, ok := stream.ParseOrder(s)
+	return ok && fieldPath.MatchString(o.Path)
+}
+
 // mergeOnly reports whether src sets an option that only a merge uses.
 func mergeOnly(src SourceConfig) bool {
-	return len(src.Key) > 0 || src.Collect != "" || src.CollectReset != "" || src.Drop != "" || len(src.Params) > 0
+	return len(src.Key) > 0 || src.Collect != "" || src.CollectReset != "" || src.Drop != "" || src.Sort != "" || len(src.Params) > 0
 }
 
 // validateParams checks a merge's params: each name is a TD_ name, and each
@@ -244,10 +252,12 @@ func (s SourceConfig) FlushInterval() (time.Duration, error) {
 	return d, nil
 }
 
-// KeySpec maps a merge's key, collect, collect_reset and drop onto the hub's.
+// KeySpec maps a merge's key, collect, collect_reset, drop and sort onto the
+// hub's.
 func (s SourceConfig) KeySpec() stream.KeySpec {
 	k := stream.KeySpec{Paths: s.Key, Collect: s.Collect}
 	k.Reset, _ = stream.ParseMatch(s.CollectReset)
 	k.Drop, _ = stream.ParseMatch(s.Drop)
+	k.Sort, _ = stream.ParseOrder(s.Sort)
 	return k
 }

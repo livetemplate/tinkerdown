@@ -618,3 +618,132 @@ func TestInputEnvGetsOwnBuffer(t *testing.T) {
 		t.Fatalf("buffers: a=%p b=%p a again=%p; want a per value, shared for equal values", a, b, a2)
 	}
 }
+
+func TestKeyedSort(t *testing.T) {
+	h := NewHub()
+	defer h.Close()
+	in := newBuffer(h, "ksort", "runs", 10)
+	order, _ := ParseOrder("-fields.t")
+	m, _ := h.Merge("runs", []*Buffer{in}, 10, KeySpec{Paths: []string{"fields.id"}, Sort: order})
+	run := func(id string, t interface{}) Row {
+		f := map[string]interface{}{"id": id}
+		if t != nil {
+			f["t"] = t
+		}
+		return Row{"fields": f}
+	}
+	ids := func() string { return keyedIDs(m.Snapshot()) }
+	h.publish(in, "stdout", run("a", "2"), run("b", "1"), run("c", "3"))
+	if got := ids(); got != "c,a,b" {
+		t.Fatalf("newest first: %s", got)
+	}
+	h.publish(in, "stdout", run("d", "5"), run("e", "3"), run("x", nil))
+	if got := ids(); got != "d,c,e,a,b,x" {
+		t.Fatalf("a new row first, a tie after the earlier row, a missing value last: %s", got)
+	}
+	h.publish(in, "stdout", run("a", "2"), run("b", "9"))
+	if got := ids(); got != "b,d,c,e,a,x" {
+		t.Fatalf("an unchanged value stays, a changed one moves: %s", got)
+	}
+	// The index follows the moves: updating rows lands on the right ones.
+	h.publish(in, "stdout", run("e", "0"), run("c", "3"))
+	if got := ids(); got != "b,d,c,a,e,x" {
+		t.Fatalf("after more moves: %s", got)
+	}
+}
+
+func TestKeyedSortNumbersAndEviction(t *testing.T) {
+	h := NewHub()
+	defer h.Close()
+	in := newBuffer(h, "ksortn", "jobs", 10)
+	order, _ := ParseOrder("fields.n")
+	m, _ := h.Merge("jobs", []*Buffer{in}, 3, KeySpec{Paths: []string{"fields.id"}, Sort: order})
+	job := func(id string, n float64) Row { return Row{"fields": map[string]interface{}{"id": id, "n": n}} }
+	ids := func() string { return keyedIDs(m.Snapshot()) }
+	h.publish(in, "stdout", job("ten", 10), job("nine", 9), job("hundred", 100))
+	if got := ids(); got != "nine,ten,hundred" {
+		t.Fatalf("numbers compare as numbers: %s", got)
+	}
+	// Full: the least recently updated key (ten, after nine and hundred are
+	// refreshed) makes room, and the order holds.
+	h.publish(in, "stdout", job("nine", 9), job("hundred", 100), job("one", 1))
+	if got := ids(); got != "one,nine,hundred" {
+		t.Fatalf("after eviction: %s", got)
+	}
+	h.publish(in, "stdout", job("nine", 50))
+	if got := ids(); got != "one,nine,hundred" {
+		t.Fatalf("a move within the same place: %s", got)
+	}
+	h.publish(in, "stdout", job("one", 500))
+	if got := ids(); got != "nine,hundred,one" {
+		t.Fatalf("a move to the end: %s", got)
+	}
+}
+
+// keyedIDs lists the rows' fields.id, in order.
+func keyedIDs(rows []Row) string {
+	var out []string
+	for _, r := range rows {
+		out = append(out, FieldPath(r, "fields.id").(string))
+	}
+	return strings.Join(out, ",")
+}
+
+// Numeric text, as logfmt gives, sorts as numbers, the way a where-clause
+// filter compares it; numbers come before other text.
+func TestKeyedSortNumericText(t *testing.T) {
+	h := NewHub()
+	defer h.Close()
+	in := newBuffer(h, "ksortt", "jobs", 10)
+	order, _ := ParseOrder("fields.ms")
+	m, _ := h.Merge("jobs", []*Buffer{in}, 10, KeySpec{Paths: []string{"fields.id"}, Sort: order})
+	job := func(id string, ms interface{}) Row { return Row{"fields": map[string]interface{}{"id": id, "ms": ms}} }
+	h.publish(in, "stdout", job("ten", "10"), job("nine", "9"), job("slow", "n/a"), job("five", 5.0), job("fast", "fast"),
+		job("inf", "inf"), job("hex", "0x10"), job("year", "2026"), job("iso", "2026-11-22T10:00:00Z"))
+	if got := keyedIDs(m.Snapshot()); got != "five,nine,ten,year,hex,iso,fast,inf,slow" {
+		t.Fatalf("plain numbers first, then text (inf and hex are text, a year before an ISO time): %s", got)
+	}
+}
+
+// A row whose sort field changes in the same update as its collected text
+// moves and keeps that text.
+func TestKeyedSortMoveKeepsCollected(t *testing.T) {
+	h := NewHub()
+	defer h.Close()
+	in := newBuffer(h, "ksortc", "jobs", 10)
+	order, _ := ParseOrder("-fields.t")
+	m, _ := h.Merge("jobs", []*Buffer{in}, 10, KeySpec{Paths: []string{"fields.id"}, Collect: "fields.out", Sort: order})
+	job := func(id, t, out string) Row {
+		return Row{"fields": map[string]interface{}{"id": id, "t": t, "out": out}}
+	}
+	h.publish(in, "stdout", job("a", "1", "one "), job("b", "2", "x"))
+	h.publish(in, "stdout", job("a", "3", "two"))
+	rows := m.Snapshot()
+	if got := keyedIDs(rows); got != "a,b" {
+		t.Fatalf("a moved first: %s", got)
+	}
+	if got := rows[0]["collected"]; got != "one two" {
+		t.Fatalf("a's collected = %q, want both outputs", got)
+	}
+}
+
+func TestParseOrder(t *testing.T) {
+	for _, c := range []struct {
+		in   string
+		want Order
+		ok   bool
+	}{
+		{"fields.createdAt", Order{Path: "fields.createdAt"}, true},
+		{"-fields.createdAt", Order{Path: "fields.createdAt", Desc: true}, true},
+		{"-", Order{}, false},
+		{"", Order{}, false},
+	} {
+		got, ok := ParseOrder(c.in)
+		if got != c.want || ok != c.ok {
+			t.Errorf("ParseOrder(%q) = %+v, %v; want %+v, %v", c.in, got, ok, c.want, c.ok)
+		}
+		if ok && got.String() != c.in {
+			t.Errorf("Order(%q).String() = %q", c.in, got.String())
+		}
+	}
+}

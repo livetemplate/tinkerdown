@@ -266,13 +266,7 @@ func TestKeyedMerge_E2E(t *testing.T) {
 	if order != "TestA,TestB" {
 		t.Fatalf("rows = %s, want TestA first (first seen), then TestB", order)
 	}
-	updated := false
-	for _, f := range logs.frames()[before:] {
-		if strings.Contains(f, `["u",`) {
-			updated = true
-		}
-	}
-	if !updated {
+	if !sawOp(logs.frames()[before:], "u") {
 		dump()
 		t.Fatal(`no ["u", ...] op: the keyed row was not updated in place`)
 	}
@@ -292,13 +286,7 @@ func TestKeyedMerge_E2E(t *testing.T) {
 	before = len(logs.frames())
 	appendEvents(`{"Action":"gone","Package":"api","Test":"TestA"}`)
 	wait("TestA dropped", `(() => { const r = [...document.querySelectorAll("ol li b")].map(b => b.textContent); return r.length === 1 && r[0] === "TestB"; })()`)
-	removed := false
-	for _, f := range logs.frames()[before:] {
-		if strings.Contains(f, `["r",`) {
-			removed = true
-		}
-	}
-	if !removed {
+	if !sawOp(logs.frames()[before:], "r") {
 		dump()
 		t.Fatal(`no ["r", ...] op: the dropped row was not removed in place`)
 	}
@@ -563,4 +551,87 @@ func TestParamsMerge_E2E(t *testing.T) {
 	if n := running(); n > before {
 		t.Fatalf("a refused value started a command (%d -> %d)", before, n)
 	}
+}
+
+// sawOp reports whether any WebSocket frame carries a range op such as "p".
+func sawOp(frames []string, op string) bool {
+	for _, f := range frames {
+		if strings.Contains(f, `["`+op+`",`) {
+			return true
+		}
+	}
+	return false
+}
+
+// A keyed merge with sort shows rows in the field's order, and a new row that
+// sorts first reaches the page as a prepend, not a whole-list replace.
+func TestKeyedSort_E2E(t *testing.T) {
+	serverLog := captureServerLog(t)
+	dir := t.TempDir()
+	feed := filepath.Join(dir, "runs.jsonl")
+	os.WriteFile(feed, []byte(`{"id":"a","t":"2026-11-22T10:00:00Z"}`+"\n"+`{"id":"b","t":"2026-11-22T11:00:00Z"}`+"\n"), 0o644)
+	page := "---\ntitle: Runs\nsources:\n  runs:\n    type: merge\n    inputs: [\"*\"]\n    key: [fields.id]\n    sort: -fields.t\n---\n\n```lvt\n" +
+		`<ol lvt-source="runs" data-testid="runs">{{range .Data}}<li data-key="{{.key}}">{{.fields.id}}</li>{{end}}</ol>` + "\n```\n"
+	os.WriteFile(filepath.Join(dir, "index.md"), []byte(page), 0o644)
+
+	cfg := config.DefaultConfig()
+	cfg.FlagSources = map[string]config.SourceConfig{"gh": {Type: "stream", File: feed, Format: "json"}}
+	srv := server.NewWithConfig(dir, cfg)
+	if err := srv.Discover(); err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(server.WithCompression(srv))
+	defer ts.Close()
+	defer srv.StopStreams()
+
+	chrome, cleanup := SetupDockerChrome(t, 90*time.Second)
+	defer cleanup()
+	ctx := chrome.Context
+	logs := &streamBrowserLogs{}
+	logs.listen(ctx)
+	dump := func() {
+		frames := logs.frames()
+		t.Logf("console:\n%s", strings.Join(logs.console, "\n"))
+		t.Logf("ws received: %d frames, last: %s", len(frames), strings.Join(frames[max(0, len(frames)-4):], "\n"))
+		t.Logf("server log tail: %s", tail(serverLog.String(), 3000))
+	}
+	order := `[...document.querySelectorAll('[data-testid="runs"] li')].map(li => li.textContent).join(",")`
+	wait := func(want string) {
+		t.Helper()
+		if err := chromedp.Run(ctx, waitForDOM(order+` === "`+want+`"`, 15*time.Second)); err != nil {
+			dump()
+			t.Fatalf("waiting for rows %s: %v", want, err)
+		}
+	}
+	appendRun := func(line string) {
+		f, _ := os.OpenFile(feed, os.O_APPEND|os.O_WRONLY, 0)
+		fmt.Fprintln(f, line)
+		f.Close()
+	}
+	if err := chromedp.Run(ctx, network.Enable(), chromedp.Navigate(ConvertURLForDockerChrome(ts.URL)),
+		chromedp.WaitVisible(`[data-testid="runs"]`, chromedp.ByQuery)); err != nil {
+		dump()
+		t.Fatal(err)
+	}
+	wait("b,a")
+
+	before := len(logs.frames())
+	appendRun(`{"id":"c","t":"2026-11-22T12:00:00Z"}`)
+	wait("c,b,a")
+	if !sawOp(logs.frames()[before:], "p") {
+		dump()
+		t.Fatal(`a newest row didn't arrive as a ["p", ...] prepend`)
+	}
+
+	before = len(logs.frames())
+	appendRun(`{"id":"m","t":"2026-11-22T10:30:00Z"}`)
+	wait("c,b,m,a")
+	if !sawOp(logs.frames()[before:], "i") {
+		dump()
+		t.Fatal(`a row between others didn't arrive as an ["i", ...] insert`)
+	}
+
+	// A row whose sort value changes moves; nothing else is re-rendered.
+	appendRun(`{"id":"a","t":"2026-11-22T13:00:00Z"}`)
+	wait("a,c,b,m")
 }

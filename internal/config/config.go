@@ -355,6 +355,10 @@ type SourceConfig struct {
 	// Drop (PATH=VALUE), on a keyed merge, removes a key's row when a row
 	// matches, such as fields.state=removed for a removed container.
 	Drop string `yaml:"drop,omitempty"`
+	// Sort (PATH, or -PATH for descending), on a keyed merge, orders its rows
+	// by a field instead of first-seen order, such as -fields.createdAt for
+	// newest first.
+	Sort string `yaml:"sort,omitempty"`
 	// Params, on a merge, take values from the page URL's query and start
 	// the merge's inputs with TD_<name>=value. A value is accepted only while
 	// it is in a row of the merge its In names.
