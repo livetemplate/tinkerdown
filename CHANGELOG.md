@@ -11,6 +11,16 @@ Earlier releases (v0.1.x) are documented in the
 
 ## [Unreleased]
 
+### Fixed
+
+- **Reopening a log no longer shows its lines twice.** A merge with `params`
+  kept its rows for 5 minutes after the last viewer left, but its inputs
+  stopped after 30 seconds. Opening the same item again within those minutes
+  restarted the input, which printed its output into rows the merge still
+  held. A merge now drops its rows when its shortest input does, and starts again
+  from its inputs' rows when it restarts. This affected
+  the containers app's log pane, and the CI app's failed log.
+
 ## [v0.7.2] - 2026-11-22
 
 ### Added
