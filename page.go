@@ -875,7 +875,7 @@ func autoGenerateSelectTemplate(content string) string {
 	}
 
 	// Parse lvt-value="fieldName" - defaults to "Id"
-	// Use titleCase since processMapValues titlecases all nested keys for Go template access
+	// Use titleCase since processMapValues adds a capitalised alias for each row key
 	valueField := "Id"
 	valueMatch := regexp.MustCompile(`lvt-value="([^"]+)"`).FindStringSubmatch(attrs)
 	if valueMatch != nil {
@@ -883,7 +883,7 @@ func autoGenerateSelectTemplate(content string) string {
 	}
 
 	// Parse lvt-label="fieldName" - defaults to "Name"
-	// Use titleCase since processMapValues titlecases all nested keys for Go template access
+	// Use titleCase since processMapValues adds a capitalised alias for each row key
 	labelField := "Name"
 	labelMatch := regexp.MustCompile(`lvt-label="([^"]+)"`).FindStringSubmatch(attrs)
 	if labelMatch != nil {
