@@ -35,6 +35,10 @@ Earlier releases (v0.1.x) are documented in the
 
 ### Fixed
 
+- **A log pane that opens with many lines now follows new ones.**
+  `lvt-fx:scroll="bottom-sticky"` stopped following when one update added
+  many rows, such as a `params` merge opening a stream with its backlog.
+  Fixed in `@livetemplate/client` 0.25.11, which tinkerdown now uses.
 - **`serve` no longer hangs after a page edit while a tab is open.** An open
   WebSocket held the server's route lock for as long as the tab stayed open.
   A page edit then waited for that lock to rescan the pages, and every page
