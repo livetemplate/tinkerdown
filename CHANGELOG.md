@@ -11,6 +11,8 @@ Earlier releases (v0.1.x) are documented in the
 
 ## [Unreleased]
 
+## [v0.7.3] - 2026-11-22
+
 ### Fixed
 
 - **Reopening a log no longer shows its lines twice.** A merge with `params`
