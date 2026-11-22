@@ -16,8 +16,10 @@ Earlier releases (v0.1.x) are documented in the
 - **Presentation mode no longer shows a blank screen on a page without `##`
   sections**, such as one whose only `##` is a tabs heading. Presentation
   mode shows one `##` section at a time, so a page with none had nothing to
-  show. It's now one slide holding the whole page. An `<h2>` inside a block
-  no longer starts a slide, because its slide was blank too.
+  show. It's now one slide holding the whole page. Content before the first
+  `##`, such as a tabs heading and its block, now shows on the first slide
+  instead of on none. An `<h2>` inside a block no longer starts a slide,
+  because its slide was blank too.
 
 ## [v0.7.4] - 2026-11-22
 
