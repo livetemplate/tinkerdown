@@ -496,6 +496,7 @@ func pageSourceConfig(src tinkerdown.SourceConfig) config.SourceConfig {
 		Collect:      src.Collect,
 		CollectReset: src.CollectReset,
 		Drop:         src.Drop,
+		Sort:         src.Sort,
 	}
 	if a := src.Accepts; a != nil {
 		cfg.Accepts = &config.SourceAccepts{Kinds: a.Kinds, Min: a.Min, Hint: a.Hint}

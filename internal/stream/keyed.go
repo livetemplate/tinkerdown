@@ -1,8 +1,11 @@
 package stream
 
 import (
+	"cmp"
 	"fmt"
 	"slices"
+	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -16,7 +19,7 @@ const MaxCollected = 64 * 1024
 // Guarded by hub.mu, like the rest of the buffer.
 type keyedRows struct {
 	spec  KeySpec
-	rows  []Row          // first-seen order
+	rows  []Row          // first-seen order, or spec.Sort's
 	index map[string]int // key -> position in rows
 }
 
@@ -45,6 +48,11 @@ func (k *keyedRows) add(r Row, size int) {
 			}
 			row["collected"] = appendCollected(prev, FieldPath(r, k.spec.Collect))
 		}
+		if o := k.spec.Sort; o.Path != "" && o.compare(FieldPath(k.rows[i], o.Path), FieldPath(row, o.Path)) != 0 {
+			k.remove(i) // its sort value changed: move it
+			k.insert(row)
+			return
+		}
 		k.rows[i] = row
 		return
 	}
@@ -54,8 +62,104 @@ func (k *keyedRows) add(r Row, size int) {
 	if len(k.rows) >= size {
 		k.evictOldest()
 	}
-	k.index[key] = len(k.rows)
-	k.rows = append(k.rows, row)
+	k.insert(row)
+}
+
+// insert places row at the end, or with Sort set, after every row that
+// sorts before it or equal to it, so ties keep the order rows arrived in.
+func (k *keyedRows) insert(row Row) {
+	at := len(k.rows)
+	if o := k.spec.Sort; o.Path != "" {
+		v := FieldPath(row, o.Path)
+		at = sort.Search(len(k.rows), func(j int) bool { return o.compare(v, FieldPath(k.rows[j], o.Path)) < 0 })
+	}
+	k.rows = slices.Insert(k.rows, at, row)
+	k.reindex(at)
+}
+
+// reindex points the index at rows from position from on.
+func (k *keyedRows) reindex(from int) {
+	for j := from; j < len(k.rows); j++ {
+		k.index[k.rows[j]["key"].(string)] = j
+	}
+}
+
+// Order sorts a keyed merge's rows by the field at Path, descending with
+// Desc; see compare for how values order.
+type Order struct {
+	Path string
+	Desc bool
+}
+
+// ParseOrder parses PATH, or -PATH for descending.
+func ParseOrder(s string) (Order, bool) {
+	path, desc := strings.CutPrefix(s, "-")
+	if path == "" {
+		return Order{}, false
+	}
+	return Order{Path: path, Desc: desc}, true
+}
+
+func (o Order) String() string {
+	if o.Desc {
+		return "-" + o.Path
+	}
+	return o.Path
+}
+
+// compare orders two sort values: negative when a sorts first. A missing
+// value sorts last in either direction. Otherwise numbers, including numeric
+// text such as logfmt's, compare as numbers and sort before other text, which
+// compares as text: the same numbers a where-clause filter sees.
+func (o Order) compare(a, b interface{}) int {
+	if a == nil || b == nil {
+		return cmp.Compare(boolInt(a == nil), boolInt(b == nil))
+	}
+	x, xok := number(a)
+	y, yok := number(b)
+	var c int
+	switch {
+	case xok && yok:
+		c = cmp.Compare(x, y)
+	case xok != yok:
+		c = cmp.Compare(boolInt(yok), boolInt(xok)) // a number before text
+	default:
+		c = strings.Compare(text(a), text(b))
+	}
+	if o.Desc {
+		c = -c
+	}
+	return c
+}
+
+func boolInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
+
+func text(v interface{}) string {
+	if s, ok := v.(string); ok {
+		return s
+	}
+	return fmt.Sprint(v)
+}
+
+// number returns v as a number when it is one, or text that parses as one.
+func number(v interface{}) (float64, bool) {
+	switch n := v.(type) {
+	case float64:
+		return n, true
+	case int:
+		return float64(n), true
+	case int64:
+		return float64(n), true
+	case string:
+		f, err := strconv.ParseFloat(strings.TrimSpace(n), 64)
+		return f, err == nil
+	}
+	return 0, false
 }
 
 // keyOf hashes the row's key fields into the row's "key". A missing field
@@ -131,9 +235,7 @@ func (k *keyedRows) evictOldest() {
 func (k *keyedRows) remove(i int) {
 	delete(k.index, k.rows[i]["key"].(string))
 	k.rows = slices.Delete(k.rows, i, i+1)
-	for j := i; j < len(k.rows); j++ {
-		k.index[k.rows[j]["key"].(string)] = j
-	}
+	k.reindex(i)
 }
 
 func seqOf(r Row) int64 {
