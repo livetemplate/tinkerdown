@@ -127,7 +127,10 @@ onefile (worktree `.worktrees/log-fields`):
 - [ ] livetemplate's own e2e or client tests pass, covering A1.
 - [ ] tinkerdown `GOWORK=off go test ./...` passes, with:
   - the `CheckDir` test, which fails on main (A3) and passes after the rename
-  - `linkify` table tests for: plain text, one URL, two URLs, trailing punctuation, a URL in parentheses, `<script>`, `javascript:alert(1)`, a `"` inside a URL, `&` in a query, a URL ending in `&`, `&quot;` next to a URL, balanced parentheses (`https://en.wikipedia.org/wiki/Foo_(bar)`), `https://` with nothing after it, `HTTP://` in capitals, a `template.HTML` input (still escaped), and a number value
+  - `linkify` table tests:
+    - text: plain text, one URL, two URLs, a number value
+    - URL edges: trailing punctuation, a URL in parentheses, balanced parentheses (`https://en.wikipedia.org/wiki/Foo_(bar)`), `https://` with nothing after it, `HTTP://` in capitals
+    - escaping: `<script>`, `javascript:alert(1)`, a `"` inside a URL, `&` in a query, a URL ending in `&`, `&quot;` next to a URL, a `template.HTML` input (still escaped)
 - [ ] After the v0.7.4 tag: `GOMODCACHE=$(mktemp -d) GOFLAGS=-modcacherw go install github.com/livetemplate/tinkerdown/cmd/tinkerdown@v0.7.4` succeeds.
 - [ ] onefile `TestLogViewer` (chromedp) checks, with console logs, server logs, WebSocket frames and HTML captured:
   - a slog line shows `subject=…`, `to=…` and `body=…` after its message
