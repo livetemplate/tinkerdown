@@ -773,3 +773,28 @@ func TestMergeStopsWithItsInputs(t *testing.T) {
 		t.Fatalf("the merge holds %d rows after its input restarted; want its output once", n)
 	}
 }
+
+// A merge that stops before an input (the input waits longer) starts again
+// from the input's rows: it neither loses them nor shows them twice.
+func TestMergeReseedsFromALongerInput(t *testing.T) {
+	marker := fmt.Sprintf("mergelong%d", os.Getpid())
+	h := NewHub()
+	defer h.Close()
+	h.IdleStop = 200 * time.Millisecond
+	running := func() bool { return exec.Command("pgrep", "-f", marker).Run() == nil }
+	in, _ := h.Input(InputSpec{Name: "log", Cmd: ": " + marker + "; echo once; while true; do sleep 1; done", IdleStop: time.Hour})
+	m, _ := h.Merge("logview", []*Buffer{in}, 0, KeySpec{})
+
+	sub := m.Subscribe()
+	waitFor(t, "the line", func() bool { return len(m.Snapshot()) == 1 })
+	sub.Close()
+	time.Sleep(500 * time.Millisecond) // past the merge's stop, well before the input's
+	if !running() || len(in.Snapshot()) != 1 {
+		t.Fatal("the input should still be running with its line")
+	}
+	again := m.Subscribe()
+	defer again.Close()
+	if n := len(m.Snapshot()); n != 1 {
+		t.Fatalf("the merge holds %d rows after it restarted; want the input's line once", n)
+	}
+}

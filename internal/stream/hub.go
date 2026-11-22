@@ -174,20 +174,27 @@ func (h *Hub) Merge(name string, inputs []*Buffer, size int, key KeySpec) (*Buff
 	if len(key.Paths) > 0 {
 		b.keyed = &keyedRows{spec: key, index: map[string]int{}}
 	}
-	var seed []Row
 	for _, in := range inputs {
 		in.merges = append(in.merges, b)
+	}
+	b.seedLocked()
+	h.buffers[bufKey] = b
+	return b, nil
+}
+
+// seedLocked fills a merge with its inputs' current rows, in seq order.
+func (b *Buffer) seedLocked() {
+	var seed []Row
+	for _, in := range b.inputs {
 		seed = append(seed, in.snapshotLocked()...)
 	}
 	slices.SortFunc(seed, func(x, y Row) int { return cmp.Compare(x["seq"].(int64), y["seq"].(int64)) })
 	if b.keyed == nil {
-		seed = seed[max(0, len(seed)-size):]
+		seed = seed[max(0, len(seed)-b.size):]
 	}
 	for _, r := range seed {
 		b.appendLocked(r)
 	}
-	h.buffers[bufKey] = b
-	return b, nil
 }
 
 // publish stamps rows with seq, source and stream, appends them to b and to
@@ -255,6 +262,7 @@ type Buffer struct {
 	idle     *time.Timer
 	idleSeen int           // refs epoch, so a stale idle timer doesn't stop a re-used input
 	idleStop time.Duration // overrides hub.IdleStop when set
+	dropped  bool          // a merge's rows went at an idle stop; reseed on the next holder
 }
 
 func newBuffer(h *Hub, key, name string, size int) *Buffer {
@@ -272,6 +280,12 @@ func (b *Buffer) retainLocked() {
 	}
 	for _, in := range b.inputs {
 		in.retainLocked()
+	}
+	if b.dropped {
+		// The rows went at an idle stop; an input that kept running (a
+		// longer IdleStop) still has its own, so start from those.
+		b.dropped = false
+		b.seedLocked()
 	}
 	if b.run != nil && b.stopRun == nil && b.hub.ctx.Err() == nil {
 		ctx, cancel := context.WithCancel(b.hub.ctx)
@@ -317,6 +331,7 @@ func (b *Buffer) releaseLocked() {
 			b.keyed.rows, b.keyed.index = nil, map[string]int{}
 		}
 		b.snap.Store(nil)
+		b.dropped = b.merge
 	})
 }
 
