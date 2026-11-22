@@ -3129,9 +3129,20 @@ func (s *Server) renderPage(page *tinkerdown.Page, currentPath string, host stri
             };
 
             function getSections() {
-                // Get all H2 elements (tutorial sections)
-                const h2Elements = document.querySelectorAll('.content-wrapper h2');
+                // Each H2 directly in the content starts a slide. One nested in
+                // a block can't: the CSS hides every direct child that isn't
+                // in the current slide, so its slide would be blank.
+                const wrapper = document.querySelector('.content-wrapper');
+                const h2Elements = wrapper ? wrapper.querySelectorAll(':scope > h2') : [];
                 sections = [];
+
+                // A page with no H2 (only a tabs heading, or none) is one
+                // slide holding all of its content.
+                if (wrapper && h2Elements.length === 0 && wrapper.firstElementChild) {
+                    const elements = [...wrapper.children];
+                    sections.push({ heading: elements[0], elements, index: 0 });
+                    return sections;
+                }
 
                 h2Elements.forEach((h2, index) => {
                     const section = {
