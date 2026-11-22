@@ -11,6 +11,8 @@ Earlier releases (v0.1.x) are documented in the
 
 ## [Unreleased]
 
+## [v0.7.0] - 2026-11-22
+
 ### Added
 
 - **`serve --action NAME=COMMAND`.** A button named NAME on any page, including
