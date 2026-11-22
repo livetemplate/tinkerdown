@@ -4,7 +4,7 @@ State — Done: nothing. Next: plan sign-off, then Phase 1 (livetemplate).
 
 ## Context
 
-This plan fixes four related issues, in three repos. Each phase's release unblocks the next:
+This plan fixes four related issues, in three repos:
 
 | Issue | Repo | What's wrong | Phase |
 |---|---|---|---|
@@ -24,7 +24,6 @@ The audit also checked these:
 - `takeString` deletes `time`, `level` and `msg` from a row's `fields` (`internal/stream/parse.go:195`). Ranging over `.fields` therefore shows only the other fields.
 - livetemplate inserts a `template.HTML` value without escaping it (`valueToString`, `eval.go:629`).
 - tinkerdown pins livetemplate v0.25.9 and `@livetemplate/client` `^0.25.11` (`client/package.json:18`). v0.25.10–v0.25.12 changed range keys (#547, #550), `bottom-sticky` and the embedded client.
-- livetemplate releases through `scripts/release.sh`.
 
 ## Product
 
@@ -76,7 +75,7 @@ A row shows its message, then each other field as `key=value`, with every `http:
   because: it shows the time and level twice
 - onefile `logs`: fields wrap with `overflow-wrap: anywhere`, so a long token never scrolls the page sideways at 390px.
   alternative: none considered
-- Releases go in order: livetemplate v0.25.13, then tinkerdown v0.7.4 (it needs v0.25.13 and adds `linkify` and the rename), then the onefile PR, which needs 0.7.4. Each release gets its own sign-off.
+- Releases go in order: livetemplate v0.25.13, then tinkerdown v0.7.4 (it needs v0.25.13 and adds `linkify` and the rename), then the onefile PR, which needs 0.7.4.
   alternative: none considered
 
 ## Files to modify
