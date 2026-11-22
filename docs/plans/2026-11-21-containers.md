@@ -1,6 +1,6 @@
 # Plan: a containers onefile app, with actions and log streams from flags
 
-State — Done: plan merged (#336), Phase 1 (`drop`). Next: Phase 2.
+State — Done: plan merged (#336), Phase 1 (`drop`, #337), Phase 2 (`--action`). Next: Phase 3.
 
 ## Context
 
@@ -73,8 +73,9 @@ On a phone, each row puts the image and status under the name and the buttons on
   because: a quoted value can still be read as an option (`--output=…`); README commands also pass `--`
 - A value stays one argument only when the command quotes it: `"$TD_name"`. Unquoted, the shell splits `a b` into two. Tinkerdown can't enforce this; the docs and every README command quote it.
   alternative: none considered
-- An action's values are the button's `data-*` attributes, as for page actions today.
-  alternative: none considered
+- An action's values are the button's `data-*` attributes, as for page actions today. A key that isn't a valid `TD_` name is skipped; a bad value under a valid name refuses the click.
+  alternative: refuse any key that isn't a valid name
+  because: a hyphenated `data-*` attribute would block every click; Phase 2's e2e saw only the button's own keys arrive
 - Page-declared exec actions keep their current `{{…}}` expansion.
   alternative: move them to environment variables too
   because: that changes existing pages; recorded as G2
@@ -92,6 +93,15 @@ On a phone, each row puts the image and status under the name and the buttons on
 - A merge with `params` gets a buffer per distinct set of values (keyed by name, config hash and values). Its inputs stop 30s after the last viewer leaves.
   alternative: run until shutdown, as streams do today
   because: every container opened would leave a `docker logs -f` running
+- A flag action passes the approval gate by its `FromFlag` marker (`yaml:"-"`), checked at the page dispatch, and lives in `cfg.FlagActions`, apart from `cfg.Actions`.
+  alternative: exempt flag names inside `EnforceApprovedAction`
+  because: webhooks share that gate, so a flag name would approve a same-named yaml action; webhooks and the HTTP action API read only `cfg.Actions`
+- `serve` refuses an `--action` with a builtin's name (`pause`, `delete`, …).
+  alternative: none considered
+  because: builtins are matched first, so the command would never run
+- A failed action re-renders its block, for every action kind.
+  alternative: none considered
+  because: the error an action sets was never shown (found in Phase 2)
 - Kill asks first through the button's `data-confirm`. Stop and restart don't.
   alternative: none considered
 - The feed is one copyable `--source` value. Events are filtered to `create`, `start`, `die`, `pause`, `unpause` and `destroy`, and Docker templates map them onto `ps` states (`start` → `running`, `die` → `exited`, `destroy` → `removed`). Names are printed with `{{json .Names}}`.
@@ -172,7 +182,7 @@ onefile:
 drop: PATH=V           keyed merge: a row matching PATH=V (V may be a|b) removes its key's row, and is not stored
 params:                merge: values from the page query; inputs start with TD_NAME=value; no rows until all are present
   NAME: {in: M.PATH}   a value is accepted only while it equals PATH in a row of merge M on the page
---action NAME=COMMAND  exec action from the command line; values arrive as $TD_<data-* name>
+--action NAME=COMMAND  exec action from the command line; values arrive as $TD_<data-* name>; not a builtin's name
 TD_ value rules        name ^[A-Za-z0-9_]{1,32}$; value 1-256 bytes, no leading "-", no control characters
 ```
 

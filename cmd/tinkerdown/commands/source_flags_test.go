@@ -217,3 +217,44 @@ func TestCheckFlagSources(t *testing.T) {
 		}
 	}
 }
+
+func TestAddFlagAction(t *testing.T) {
+	flags := map[string]*config.Action{}
+	if err := addFlagAction(flags, `stop=docker stop -- "$TD_name" --signal=TERM`, true); err != nil {
+		t.Fatal(err)
+	}
+	if a := flags["stop"]; a == nil || a.Cmd != `docker stop -- "$TD_name" --signal=TERM` || a.Kind != "exec" || !a.FromFlag {
+		t.Fatalf("stop = %+v", a)
+	}
+	for _, c := range []struct {
+		v     string
+		allow bool
+	}{
+		{"stop=docker stop x", true},      // given twice
+		{"restart=docker restart", false}, // no --allow-exec
+		{"pause=docker pause x", true},    // builtin
+		{"Delete=rm x", true},             // builtin, any case
+		{"bad name=x", true},
+		{"noequals", true},
+		{"empty=  ", true},
+	} {
+		if err := addFlagAction(flags, c.v, c.allow); err == nil {
+			t.Errorf("addFlagAction(%q, %v) = nil, want an error", c.v, c.allow)
+		}
+	}
+}
+
+func TestCheckFlagActionsRefusesApproved(t *testing.T) {
+	cfg := &config.Config{
+		Actions:     map[string]*config.Action{"stop": {Kind: "exec", Cmd: "true"}},
+		Generation:  &config.GenerationConfig{Actions: []string{"stop"}},
+		FlagActions: map[string]*config.Action{"stop": {Kind: "exec", Cmd: "x", FromFlag: true}},
+	}
+	if err := checkFlagActions(cfg); err == nil {
+		t.Fatal("a flag replaced an approved action")
+	}
+	cfg.FlagActions = map[string]*config.Action{"kill": {Kind: "exec", Cmd: "x", FromFlag: true}}
+	if err := checkFlagActions(cfg); err != nil {
+		t.Fatal(err)
+	}
+}

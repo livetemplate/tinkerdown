@@ -301,3 +301,86 @@ func TestKeyedMerge_E2E(t *testing.T) {
 		t.Fatal(`no ["r", ...] op: the dropped row was not removed in place`)
 	}
 }
+
+// TestFlagActions_E2E clicks row buttons on a page that declares no actions:
+// each runs an --action command with the row's value as $TD_name, a value
+// that looks like shell code arrives as text, and a refused value runs nothing
+// and shows the block's error.
+func TestFlagActions_E2E(t *testing.T) {
+	serverLog := captureServerLog(t)
+	orig := config.IsExecAllowed()
+	config.SetAllowExec(true)
+	defer config.SetAllowExec(orig)
+
+	dir := t.TempDir()
+	feed := filepath.Join(dir, "feed.jsonl")
+	os.WriteFile(feed, []byte(`{"name":"web"}`+"\n"+`{"name":"a b $(touch pwned)"}`+"\n"+`{"name":"-rf"}`+"\n"), 0o644)
+	page := "---\ntitle: Rows\nsources:\n  rows:\n    type: merge\n    inputs: [\"*\"]\n    key: [fields.name]\n---\n\n```lvt\n" +
+		`<div lvt-source="rows">{{if .Error}}<p data-testid="error">{{.Error}}</p>{{end}}<ol data-testid="rows">{{range .Data}}<li data-key="{{.key}}"><button name="mark" data-name="{{.fields.name}}">{{.fields.name}}</button></li>{{end}}</ol></div>` + "\n```\n"
+	os.WriteFile(filepath.Join(dir, "index.md"), []byte(page), 0o644)
+
+	cfg := config.DefaultConfig()
+	cfg.FlagSources = map[string]config.SourceConfig{"feed": {Type: "stream", File: feed, Format: "json"}}
+	cfg.FlagActions = map[string]*config.Action{"mark": {Kind: "exec", Cmd: `printf '%s\n' "$TD_name" >> clicked.txt`, FromFlag: true}}
+	srv := server.NewWithConfig(dir, cfg)
+	if err := srv.Discover(); err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(server.WithCompression(srv))
+	defer ts.Close()
+	defer srv.StopStreams()
+
+	chrome, cleanup := SetupDockerChrome(t, 90*time.Second)
+	defer cleanup()
+	ctx := chrome.Context
+	logs := &streamBrowserLogs{}
+	logs.listen(ctx)
+	dump := func() {
+		frames := logs.frames()
+		var html string
+		chromedp.Run(ctx, chromedp.OuterHTML("body", &html, chromedp.ByQuery))
+		t.Logf("console:\n%s", strings.Join(logs.console, "\n"))
+		t.Logf("ws received: %d frames, last: %s", len(frames), strings.Join(frames[max(0, len(frames)-4):], "\n"))
+		t.Logf("html: %s", tail(html, 3000))
+		t.Logf("server log tail: %s", tail(serverLog.String(), 3000))
+	}
+	clicked := func() string {
+		b, _ := os.ReadFile(filepath.Join(dir, "clicked.txt"))
+		return string(b)
+	}
+	if err := chromedp.Run(ctx, network.Enable(), chromedp.Navigate(ConvertURLForDockerChrome(ts.URL)),
+		chromedp.WaitVisible(`[data-testid="rows"]`, chromedp.ByQuery),
+		waitForDOM(`document.querySelectorAll('[data-testid="rows"] button').length === 3`, 15*time.Second)); err != nil {
+		dump()
+		t.Fatal(err)
+	}
+	click := func(i int, want string) {
+		t.Helper()
+		if err := chromedp.Run(ctx, chromedp.Click(fmt.Sprintf(`[data-testid="rows"] li:nth-child(%d) button`, i), chromedp.ByQuery)); err != nil {
+			dump()
+			t.Fatal(err)
+		}
+		deadline := time.Now().Add(10 * time.Second)
+		for clicked() != want && time.Now().Before(deadline) {
+			time.Sleep(50 * time.Millisecond)
+		}
+		if got := clicked(); got != want {
+			dump()
+			t.Fatalf("clicked.txt = %q, want %q", got, want)
+		}
+	}
+	click(1, "web\n")
+	click(2, "web\na b $(touch pwned)\n")
+	if _, err := os.Stat(filepath.Join(dir, "pwned")); err == nil {
+		t.Fatal("a value ran as shell code")
+	}
+
+	if err := chromedp.Run(ctx, chromedp.Click(`[data-testid="rows"] li:nth-child(3) button`, chromedp.ByQuery),
+		waitForDOM(`(document.querySelector('[data-testid="error"]')?.textContent || "").includes("starts with -")`, 10*time.Second)); err != nil {
+		dump()
+		t.Fatalf("a refused value showed no error: %v", err)
+	}
+	if got := clicked(); got != "web\na b $(touch pwned)\n" {
+		t.Fatalf("a refused value ran: clicked.txt = %q", got)
+	}
+}

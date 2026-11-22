@@ -988,3 +988,21 @@ func TestValidateTimestamp(t *testing.T) {
 		}
 	})
 }
+
+// A webhook can't reach an action given with serve --action: those live in
+// FlagActions, which only pages read.
+func TestWebhookHandler_FlagActionNotReachable(t *testing.T) {
+	called := false
+	cfg := &config.Config{
+		Actions:     map[string]*config.Action{},
+		FlagActions: map[string]*config.Action{"stop": {Kind: "exec", Cmd: "true", FromFlag: true}},
+		Webhooks:    map[string]*config.Webhook{"hook": {Action: "stop"}},
+	}
+	handler := NewWebhookHandler(cfg, t.TempDir(), func(string, map[string]interface{}) error { called = true; return nil })
+
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, httptest.NewRequest("POST", "/webhook/hook", nil))
+	if w.Code != http.StatusNotFound || called {
+		t.Fatalf("webhook reached a flag action: status %d, called %v", w.Code, called)
+	}
+}

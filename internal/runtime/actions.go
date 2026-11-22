@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"os/exec"
 	"sort"
 	"strings"
@@ -271,6 +272,9 @@ func (s *GenericState) executeCustomAction(action *config.Action, data map[strin
 	case "http":
 		return s.executeHTTPAction(action, data)
 	case "exec":
+		if action.FromFlag {
+			return s.executeFlagAction(action, data)
+		}
 		return s.executeExecAction(action, data)
 	default:
 		return fmt.Errorf("unknown action kind: %s", action.Kind)
@@ -441,11 +445,6 @@ func sanitizeExecCommand(cmd string) error {
 
 // executeExecAction executes a shell command.
 func (s *GenericState) executeExecAction(action *config.Action, data map[string]interface{}) error {
-	// Check if exec is allowed
-	if !config.IsExecAllowed() {
-		return fmt.Errorf("exec actions disabled (use --allow-exec flag)")
-	}
-
 	// Expand template expressions in command
 	cmdStr, err := expandTemplate(action.Cmd, data)
 	if err != nil {
@@ -457,21 +456,28 @@ func (s *GenericState) executeExecAction(action *config.Action, data map[string]
 		return err
 	}
 
-	// Create command with timeout
+	return s.runShell(cmdStr, nil)
+}
+
+// runShell runs an exec action's command with sh -c in the site directory,
+// with a 30s timeout and env added to the server's environment, then
+// refreshes the block. It needs --allow-exec. A failure sets the block's
+// Error with the stderr.
+func (s *GenericState) runShell(cmdStr string, env []string) error {
+	if !config.IsExecAllowed() {
+		return fmt.Errorf("exec actions disabled (use --allow-exec flag)")
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-
 	cmd := exec.CommandContext(ctx, "sh", "-c", cmdStr)
 	cmd.Dir = s.siteDir
+	cmd.Env = append(os.Environ(), env...)
 
-	// Capture output
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
-	// Run command
-	err = cmd.Run()
-	if err != nil {
+	if err := cmd.Run(); err != nil {
 		errMsg := fmt.Sprintf("command failed: %v", err)
 		if stderr.Len() > 0 {
 			errMsg += ": " + stderr.String()
@@ -482,6 +488,19 @@ func (s *GenericState) executeExecAction(action *config.Action, data map[string]
 
 	// Success - refresh data
 	return s.refresh()
+}
+
+// executeFlagAction runs an action from `serve --action`. Its values arrive
+// as TD_<name> environment variables, so the shell never parses them as code;
+// the command itself came from the user's own command line, so it isn't
+// templated or sanitized. A refused value runs nothing.
+func (s *GenericState) executeFlagAction(action *config.Action, data map[string]interface{}) error {
+	env, err := config.TDEnv(data)
+	if err != nil {
+		s.Error = err.Error()
+		return err
+	}
+	return s.runShell(action.Cmd, env)
 }
 
 // expandTemplate expands Go template expressions in a string.

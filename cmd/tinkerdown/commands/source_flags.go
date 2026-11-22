@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/livetemplate/tinkerdown/internal/config"
+	"github.com/livetemplate/tinkerdown/internal/runtime"
 	"github.com/livetemplate/tinkerdown/internal/security"
 	"github.com/livetemplate/tinkerdown/internal/server"
 	"golang.org/x/term"
@@ -71,6 +72,37 @@ func addFlagSource(flags map[string]config.SourceConfig, value string, allowExec
 	}
 	flags[name] = src
 	return name, nil
+}
+
+// addFlagAction parses an --action NAME=COMMAND value and adds it to flags.
+// It splits on the first "=" only, so a command may contain "=". A builtin
+// name (pause, delete, ...) is refused, since a builtin would run instead.
+func addFlagAction(flags map[string]*config.Action, v string, allowExec bool) error {
+	name, cmd, ok := strings.Cut(v, "=")
+	switch {
+	case !ok || strings.TrimSpace(cmd) == "":
+		return fmt.Errorf("--action %q: want NAME=COMMAND", v)
+	case !sourceName.MatchString(name):
+		return fmt.Errorf("--action %q: name %q must be 1-32 letters, digits, _ or -", v, name)
+	case runtime.IsBuiltinAction(name):
+		return fmt.Errorf("--action %s: %q is a builtin action; pick another name", name, name)
+	case flags[name] != nil:
+		return fmt.Errorf("--action %s is given twice", name)
+	case !allowExec:
+		return fmt.Errorf("--action %s runs a command; add --allow-exec to allow it", name)
+	}
+	flags[name] = &config.Action{Kind: "exec", Cmd: cmd, FromFlag: true}
+	return nil
+}
+
+// checkFlagActions refuses a flag that replaces an approved action.
+func checkFlagActions(cfg *config.Config) error {
+	for _, name := range slices.Sorted(maps.Keys(cfg.FlagActions)) {
+		if cfg.ApprovedAction(name) {
+			return fmt.Errorf("--action %s: %q is an approved action in tinkerdown.yaml and can't be replaced", name, name)
+		}
+	}
+	return nil
 }
 
 // checkFlagSources refuses a flag that replaces an approved source, and one no

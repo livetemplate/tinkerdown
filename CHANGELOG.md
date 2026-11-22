@@ -13,6 +13,12 @@ Earlier releases (v0.1.x) are documented in the
 
 ### Added
 
+- **`serve --action NAME=COMMAND`.** A button named NAME on any page, including
+  a page from a URL, runs COMMAND. The button's `data-*` values arrive as
+  `$TD_<name>` environment variables, never pasted into the command, and a
+  value that is empty, over 256 bytes, starts with `-` or holds a control
+  character runs nothing. See
+  [docs/reference/cli.md](docs/reference/cli.md#actions-from-the-command-line).
 - **`drop` on keyed merges.** `drop: fields.state=removed` removes a key's
   row when a matching row arrives, and the page gets a remove for it. Values
   may list alternatives as `a|b`. See
@@ -25,6 +31,8 @@ Earlier releases (v0.1.x) are documented in the
   A page edit then waited for that lock to rescan the pages, and every page
   request queued behind the rescan. The lock is now held only to find the
   connection's page.
+- **A failed action's error shows on the page.** The block re-renders after a
+  failed action, so the error it set is no longer lost.
 
 ## [v0.6.0] - 2026-11-21
 
