@@ -649,22 +649,10 @@ func (s *Server) serveWebSocket(w http.ResponseWriter, r *http.Request) {
 		pagePath = "/" // Default to home page
 	}
 
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	if len(s.routes) == 0 {
+	route, ok := s.wsRoute(pagePath)
+	if !ok {
 		http.Error(w, "No pages available", http.StatusNotFound)
 		return
-	}
-
-	// Resolve ?page= the way the page handler resolves a URL, so the two
-	// endpoints agree on what names a page.
-	route := s.findRoute(pagePath)
-	for _, alt := range pageAliases(pagePath) {
-		if route != nil {
-			break
-		}
-		route = s.findRoute(alt)
 	}
 	if route == nil {
 		log.Printf("[WS] Page %q not found", pagePath)
@@ -680,6 +668,28 @@ func (s *Server) serveWebSocket(w http.ResponseWriter, r *http.Request) {
 	// synchronized across multiple connections to the same page.
 	wsHandler := NewWebSocketHandler(route.Page, s, true, s.rootDir, s.config, r.URL.Query())
 	wsHandler.ServeHTTP(w, r)
+}
+
+// wsRoute finds the page a WebSocket connection names, and reports whether
+// the server has any page. It holds s.mu only for the lookup: a connection
+// lives for as long as its tab is open, and holding the read lock for that
+// long would block Discover, and every page request queued behind it.
+func (s *Server) wsRoute(pagePath string) (route *Route, ok bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if len(s.routes) == 0 {
+		return nil, false
+	}
+	// Resolve ?page= the way the page handler resolves a URL, so the two
+	// endpoints agree on what names a page.
+	route = s.findRoute(pagePath)
+	for _, alt := range pageAliases(pagePath) {
+		if route != nil {
+			break
+		}
+		route = s.findRoute(alt)
+	}
+	return route, true
 }
 
 // serveAsset serves embedded client assets.

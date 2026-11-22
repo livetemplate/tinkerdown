@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"flag"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -1004,4 +1005,54 @@ func TestGoldenCacheMeta(t *testing.T) {
 		},
 	}
 	compareGolden(t, "cache_meta", envelope)
+}
+
+// An open WebSocket must not hold the server's route lock: a page edit runs
+// Discover, which would wait for every tab to close, and page requests
+// queued behind it would hang.
+func TestOpenWebSocketDoesNotBlockDiscover(t *testing.T) {
+	dir := t.TempDir()
+	page := "---\ntitle: T\nsources:\n  items:\n    type: json\n    file: items.json\n---\n\n```lvt\n<ul lvt-source=\"items\">{{range .Data}}<li>{{.name}}</li>{{end}}</ul>\n```\n"
+	if err := os.WriteFile(filepath.Join(dir, "index.md"), []byte(page), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "items.json"), []byte(`[{"name":"a"}]`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	srv := New(dir)
+	if err := srv.Discover(); err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(srv)
+	defer ts.Close()
+
+	conn, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(ts.URL, "http")+"/ws?page=/", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+	if _, _, err := conn.ReadMessage(); err != nil { // the connection is being served
+		t.Fatal(err)
+	}
+
+	done := make(chan error, 1)
+	go func() { done <- srv.Discover() }()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Discover blocked while a WebSocket was open")
+	}
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Get(ts.URL + "/")
+	if err != nil {
+		t.Fatalf("page request after Discover: %v", err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("page status %d", resp.StatusCode)
+	}
 }
