@@ -31,6 +31,10 @@ Earlier releases (v0.1.x) are documented in the
   that appears twice in a list no longer makes every update resend the list.
   A range over a map keeps its keys in sorted order. `and` and `or` stop
   at the argument that decides them.
+- **Ranging over a map nested in a row shows each key once.** tinkerdown adds
+  a capitalised copy of each key so `{{.Name}}` reads `name`. It did that at
+  every depth, so `{{range $k, $v := .fields}}` listed `ms` and `Ms`. Copies are
+  now added only for state keys, a state map's keys and a row's own keys.
 
 ### Changed
 

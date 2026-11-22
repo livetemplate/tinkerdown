@@ -472,7 +472,7 @@ func processStateMap(m map[string]interface{}) map[string]interface{} {
 				if itemMap, ok := item.(map[string]interface{}); ok {
 					newSlice[i] = processMapValues(itemMap)
 				} else {
-					newSlice[i] = convertNumber(item)
+					newSlice[i] = plainValue(item)
 				}
 			}
 			processedValue = newSlice
@@ -483,10 +483,8 @@ func processStateMap(m map[string]interface{}) map[string]interface{} {
 				newSlice[i] = processMapValues(item)
 			}
 			processedValue = newSlice
-		case float64:
-			processedValue = convertNumber(val)
 		default:
-			processedValue = v
+			processedValue = plainValue(v)
 		}
 
 		// Keep original key (e.g., "status", "data", "items")
@@ -504,40 +502,22 @@ func processStateMap(m map[string]interface{}) map[string]interface{} {
 	return result
 }
 
-// processMapValues recursively processes map values to add titlecase keys.
+// processMapValues adds a PascalCase alias for each of m's own keys (snake_case
+// to PascalCase), so a template can read a row's "row_cap" as {{.RowCap}}.
+// Maps and lists nested inside m keep only their own keys, through plainValue:
+// a template that ranges over one, such as a log row's .fields, sees each key
+// once.
 func processMapValues(m map[string]interface{}) map[string]interface{} {
-	result := make(map[string]interface{})
+	result := make(map[string]interface{}, len(m)*2)
 	for k, v := range m {
-		var processedValue interface{}
-
-		switch val := v.(type) {
-		case map[string]interface{}:
-			processedValue = processMapValues(val)
-		case []interface{}:
-			newSlice := make([]interface{}, len(val))
-			for i, item := range val {
-				if itemMap, ok := item.(map[string]interface{}); ok {
-					newSlice[i] = processMapValues(itemMap)
-				} else {
-					newSlice[i] = convertNumber(item)
-				}
-			}
-			processedValue = newSlice
-		case float64:
-			processedValue = convertNumber(val)
-		default:
-			processedValue = v
-		}
+		processedValue := plainValue(v)
 
 		// Keep original key
 		result[k] = processedValue
 
 		// Also add PascalCase key if different (converts snake_case to PascalCase)
-		if len(k) > 0 {
-			pascalKey := snakeToPascal(k)
-			if pascalKey != k {
-				result[pascalKey] = processedValue
-			}
+		if pascalKey := snakeToPascal(k); pascalKey != k {
+			result[pascalKey] = processedValue
 		}
 	}
 	return result
@@ -567,6 +547,26 @@ func snakeToPascal(s string) string {
 	}
 
 	return result.String()
+}
+
+// plainValue copies v with whole float64s made ints at every depth, and adds
+// no key aliases.
+func plainValue(v interface{}) interface{} {
+	switch val := v.(type) {
+	case map[string]interface{}:
+		out := make(map[string]interface{}, len(val))
+		for k, x := range val {
+			out[k] = plainValue(x)
+		}
+		return out
+	case []interface{}:
+		out := make([]interface{}, len(val))
+		for i, x := range val {
+			out[i] = plainValue(x)
+		}
+		return out
+	}
+	return convertNumber(v)
 }
 
 // convertNumber converts float64 values that are whole numbers to int.

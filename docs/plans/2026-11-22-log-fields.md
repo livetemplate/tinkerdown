@@ -1,6 +1,6 @@
 # Plan: log rows that show every field and link their URLs
 
-State — Done: plan signed off (2026-11-22, #366), Phase 1 (livetemplate#555, v0.25.13), Phase 2 built on v0.25.13. Next: the Phase 2 PR, then v0.7.4.
+State — Done: plan signed off (2026-11-22, #366), Phase 1 (livetemplate#555, v0.25.13), Phase 2 (#367). Next: the nested-alias fix, v0.7.4, then the Phase 3 PR.
 
 ## Context
 
@@ -180,4 +180,6 @@ onefile (worktree `.worktrees/log-fields`):
 - Audit: re-read the `logs` page and its e2e fixtures against this plan.
 - Implementation: per the Files list.
 - Acceptance: `/simplify`, then the onefile criteria, verified in Docker Chrome through chromedp and never with `curl`. PR and sign-off.
-- Learn: recorded here; close the four issues from their PRs.
+- Learn:
+  - tinkerdown added a capitalised copy of every map key at every depth, so ranging over `.fields` showed each field twice (`ms` and `Ms`). The fix (signed off 2026-11-22) ships in v0.7.4, with copies only for state keys, a state map's keys and a row's own keys (`processMapValues`, `TestProcessStateMapAliases`).
+  - Close the four issues from their PRs.
