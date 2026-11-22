@@ -1,6 +1,6 @@
 # Plan: log rows that show every field and link their URLs
 
-State — Done: plan signed off (2026-11-22, #366), Phase 1 (livetemplate#555, v0.25.13), Phase 2 (#367), the nested-alias fix (#369), v0.7.4, Phase 3 (onefile#6); all four issues closed., homebrew-tap#12 (formula 0.7.4). Next: none; the plan is complete.
+State — Done: plan signed off (2026-11-22, #366), Phase 1 (livetemplate#555, v0.25.13), Phase 2 (#367), the nested-alias fix (#369), v0.7.4, Phase 3 (onefile#6), homebrew-tap#12 (formula 0.7.4); all four issues closed. Next: none; the plan is complete.
 
 ## Context
 
