@@ -381,11 +381,13 @@ func TestFlagActions_E2E(t *testing.T) {
 	}
 
 	// A button stays aria-busy until the server answers its click, and a
-	// second click on a busy button sends nothing.
+	// second click on a busy button sends nothing. The second click is made in
+	// the same evaluation that sees the button busy: as separate steps, a slow
+	// browser could let the first action finish in between.
 	const slow = `[data-testid="rows"] li:nth-child(1) button[name="slow"]`
+	clickWhileBusy := `(() => { const b = document.querySelector('` + slow + `'); if (b.getAttribute("aria-busy") !== "true") return false; b.click(); return true; })()`
 	if err := chromedp.Run(ctx, chromedp.Click(slow, chromedp.ByQuery),
-		waitForDOM(`document.querySelector('`+slow+`').getAttribute("aria-busy") === "true"`, 2*time.Second),
-		chromedp.Evaluate(`document.querySelector('`+slow+`').click()`, nil)); err != nil {
+		waitForDOM(clickWhileBusy, 2*time.Second)); err != nil {
 		dump()
 		t.Fatalf("a running action's button isn't busy: %v", err)
 	}
@@ -394,6 +396,7 @@ func TestFlagActions_E2E(t *testing.T) {
 		t.Fatalf("the button stayed busy after its action finished: %v", err)
 	}
 	if b, _ := os.ReadFile(filepath.Join(dir, "slow.txt")); string(b) != "slow web\n" {
+		dump()
 		t.Fatalf("slow.txt = %q; a click on a busy button must not send again", b)
 	}
 	// Each click the server ran (two marks, the refused value, one slow) got

@@ -2,8 +2,9 @@ package server
 
 import "testing"
 
-// TestBlockHelperFuncsReachParseAndTreeGen guards that Tinkerdown's base block
-// helpers (split) reach BOTH funcMaps a block needs at serve time:
+// TestBlockHelperFuncsReachParseAndTreeGen guards that every one of
+// Tinkerdown's base block helpers (blockHelperFuncs) reaches BOTH funcMaps a
+// block needs at serve time:
 //   - the component set's Funcs, which reach the block's PARSE (New / Validate);
 //   - getComponentFuncs, applied via tmpl.Funcs after New for TREE GENERATION.
 //
@@ -12,10 +13,16 @@ import "testing"
 // invisible until serve.
 func TestBlockHelperFuncsReachParseAndTreeGen(t *testing.T) {
 	sets := ComponentTemplates()
-	if len(sets) == 0 || sets[0].Funcs["split"] == nil {
-		t.Fatal("split missing from ComponentTemplates()[0].Funcs — a block using it would fail to PARSE")
+	if len(sets) == 0 {
+		t.Fatal("ComponentTemplates() returned no sets")
 	}
-	if getComponentFuncs()["split"] == nil {
-		t.Fatal("split missing from getComponentFuncs() — a block using it would fail TREE GENERATION")
+	treeFuncs := getComponentFuncs()
+	for name := range blockHelperFuncs {
+		if sets[0].Funcs[name] == nil {
+			t.Errorf("%s missing from ComponentTemplates()[0].Funcs — a block using it would fail to PARSE", name)
+		}
+		if treeFuncs[name] == nil {
+			t.Errorf("%s missing from getComponentFuncs() — a block using it would fail TREE GENERATION", name)
+		}
 	}
 }
