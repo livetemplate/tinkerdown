@@ -53,13 +53,15 @@ A row shows its message, then each other field as `key=value`, with every `http:
 - livetemplate: when two items in one range hash the same, the second and later get `<hash>-2`, `<hash>-3` and so on, in range order.
   alternative: key every plain value by its index
   because: index keys rename every item after an insert at the top, which turns a stream-mode prepend into a full update. Suffixing only the duplicates keeps every existing key byte-for-byte, which `appendJSONValue`'s wire-stability comment (`internal/keys/hash.go:85`) requires. It replaces v0.25.10's whole-range resend for plain values, while that fallback stays for keys a page sets with `data-key`.
-  cost: removing the first of two equal items renames the survivor from `<hash>-2` to `<hash>`, which the client sees as one remove and one add instead of no change. That is still cheaper than resending the range.
+  A suffixed key can't equal a real one, because real keys are 12 hex characters with no `-`.
+  cost: removing the first of two equal items, or prepending an equal one, renames from `<hash>-2` to `<hash>`, so the client sees one remove and one add instead of no change or a pure insert. That is still cheaper than resending the range.
 - livetemplate: `and` and `or` evaluate their arguments one at a time and stop at the first one that decides the result, as Go's `text/template` does since Go 1.18. This applies only to the builtins, not to a function a page registers under the same name.
   alternative: none considered
 - tinkerdown: a template function `linkify`, added to `blockHelperFuncs` (`internal/server/websocket.go:1343`) next to `split`. It takes any value, escapes all of its text, and turns each `http://` or `https://` URL into `<a href="…" target="_blank" rel="noopener noreferrer">`.
   - A URL starts at `http://` or `https://`, matched without regard to case, with at least one character after it. Only that match becomes an `href`.
   - A URL ends at whitespace, `"`, `'`, `<`, `>` or `\`.
-  - Trailing `.`, `,`, `;`, `:`, `!`, `?` and an unmatched `)` stay outside the link. A `)` that closes a `(` inside the URL stays in it.
+  - Trailing `.`, `,`, `;`, `:`, `!`, `?`, `”`, `’`, `。`, `，` and an unmatched `)` or `）` stay outside the link. A `)` that closes a `(` inside the URL stays in it.
+  - It finds URLs with Go's `regexp` (RE2), which runs in linear time, so a long line full of `http://` can't make it slow.
   - It matches on the raw text, then escapes each piece on its own: text with `html.EscapeString`, and the URL the same way in both the link text and the `href`. Matching after escaping would see `&#34;` instead of `"` and cut `&amp;` at its `;`.
   - It returns `template.HTML`.
 
@@ -121,8 +123,8 @@ onefile (worktree `.worktrees/log-fields`):
 - [ ] livetemplate `go test ./...` passes, with new tests:
   - `{{range}}{{range}}…{{end}}{{end}}` gives each outer item its inner range and a distinct key
   - `split "a a b" " "` gives keys `h(a)`, `h(a)-2`, `h(b)`, with `h(a)` unchanged from v0.25.12, and a later update to that range sends item ops, not a whole-range resend
-  - removing the first `a` sends one remove and one add for the survivor, and leaves `h(b)` untouched
-  - `and` and `or` stop at the deciding argument, so the `slice` example renders `n` without a panic
+  - removing the first `a`, or prepending another `a`, sends one remove and one add for the renamed item, and leaves `h(b)` untouched
+  - `and` and `or` stop at the deciding argument and return its value, not a bool, so the `slice` example renders `n` without a panic. A nil or missing field as the first argument decides `and` as false.
   - a page's own `and` function is still called with every argument
 - [ ] livetemplate's own e2e or client tests pass, covering A1.
 - [ ] tinkerdown `GOWORK=off go test ./...` passes, with:
@@ -130,7 +132,8 @@ onefile (worktree `.worktrees/log-fields`):
   - `linkify` table tests:
     - text: plain text, one URL, two URLs, a number value
     - URL edges: trailing punctuation, a URL in parentheses, balanced parentheses (`https://en.wikipedia.org/wiki/Foo_(bar)`), `https://` with nothing after it, `HTTP://` in capitals
-    - escaping: `<script>`, `javascript:alert(1)`, a `"` inside a URL, `&` in a query, a URL ending in `&`, `&quot;` next to a URL, a `template.HTML` input (still escaped)
+    - URL edges, non-ASCII: a URL followed by `”`, `。` or `）`
+    - escaping: `<script>`, `javascript:alert(1)`, `JavaScript:alert(1)`, `https://a.com/x"onmouseover=alert(1)` (the link stops at `"`), a `"` inside a URL, `&` in a query, a URL ending in `&`, `&quot;` next to a URL, a `template.HTML` input (still escaped)
 - [ ] After the v0.7.4 tag: `GOMODCACHE=$(mktemp -d) GOFLAGS=-modcacherw go install github.com/livetemplate/tinkerdown/cmd/tinkerdown@v0.7.4` succeeds.
 - [ ] onefile `TestLogViewer` (chromedp) checks, with console logs, server logs, WebSocket frames and HTML captured:
   - a slog line shows `subject=…`, `to=…` and `body=…` after its message
@@ -156,7 +159,7 @@ onefile (worktree `.worktrees/log-fields`):
   - Find where a body-only range's item tree loses its content (`walkAST` → `buildRangeTreeWithStatics` → `extractItemDynamics`).
   - Check whether stream mode's `RangeStreamState.Hashes` follows `AutoKey` or a separate content hash. If it's the content hash, duplicates need the suffix there too.
   - Check A1 in the client's keyed-range code.
-  - Check A2 with a test: a stream-mode range whose rows hold a nested range over a map still sends append ops.
+  - Check A2 with a test: a stream-mode range whose rows hold a nested range over a map still sends append ops, and an unchanged row produces no diff on a second render (map keys render sorted).
 - Implementation: per the Files list.
 - Acceptance: `/simplify`, then the livetemplate criteria. PR, sign-off, then v0.25.13 through `scripts/release.sh`.
 - Learn: recorded here.
