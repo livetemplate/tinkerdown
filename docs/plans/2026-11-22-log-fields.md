@@ -53,11 +53,13 @@ A row shows its message, then each other field as `key=value`, with every `http:
 - livetemplate: when two items in one range hash the same, the second and later get `<hash>-2`, `<hash>-3` and so on, in range order.
   alternative: key every plain value by its index
   because: index keys rename every item after an insert at the top, which turns a stream-mode prepend into a full update. Suffixing only the duplicates keeps every existing key byte-for-byte, which `appendJSONValue`'s wire-stability comment (`internal/keys/hash.go:85`) requires. It replaces v0.25.10's whole-range resend for plain values, while that fallback stays for keys a page sets with `data-key`.
+  cost: removing the first of two equal items renames the survivor from `<hash>-2` to `<hash>`, which the client sees as one remove and one add instead of no change. That is still cheaper than resending the range.
 - livetemplate: `and` and `or` evaluate their arguments one at a time and stop at the first one that decides the result, as Go's `text/template` does since Go 1.18. This applies only to the builtins, not to a function a page registers under the same name.
   alternative: none considered
 - tinkerdown: a template function `linkify`, added to `blockHelperFuncs` (`internal/server/websocket.go:1343`) next to `split`. It takes any value, escapes all of its text, and turns each `http://` or `https://` URL into `<a href="…" target="_blank" rel="noopener noreferrer">`.
+  - A URL starts at `http://` or `https://`, matched without regard to case, with at least one character after it. Only that match becomes an `href`.
   - A URL ends at whitespace, `"`, `'`, `<`, `>` or `\`.
-  - Trailing `.`, `,`, `;`, `:`, `!`, `?` and an unmatched `)` stay outside the link.
+  - Trailing `.`, `,`, `;`, `:`, `!`, `?` and an unmatched `)` stay outside the link. A `)` that closes a `(` inside the URL stays in it.
   - It matches on the raw text, then escapes each piece on its own: text with `html.EscapeString`, and the URL the same way in both the link text and the `href`. Matching after escaping would see `&#34;` instead of `"` and cut `&amp;` at its `;`.
   - It returns `template.HTML`.
 
@@ -90,7 +92,7 @@ tinkerdown (worktree `.worktrees/log-links`):
 - `internal/assets/vendor/` → `internal/assets/third_party/`, and `internal/assets/assets.go`.
 - `internal/assets/module_test.go` new?: the `CheckDir` test.
 - `internal/server/linkify.go` new? and `internal/server/linkify_test.go` new?; `internal/server/websocket.go`: `linkify` in `blockHelperFuncs`.
-- `go.mod`, `go.sum`: livetemplate v0.25.13, and `golang.org/x/mod` (indirect today) as a direct requirement.
+- `go.mod`, `go.sum`: livetemplate v0.25.13, and `golang.org/x/mod` (indirect today) as a direct requirement, used only by the test.
 - `client/package.json`, `client/package-lock.json`, `internal/assets/client/*`: `@livetemplate/client` 0.25.12 and the rebuilt bundle (A5).
 - The docs page that lists `split` (found in the Phase 2 audit): add `linkify`.
 - `CHANGELOG.md`: `[Unreleased]`, with Added (`linkify`) and Fixed (`go install`, livetemplate's range keys and `and`).
@@ -106,7 +108,7 @@ onefile (worktree `.worktrees/log-fields`):
 | # | Type | Item | Severity | Status |
 |---|---|---|---|---|
 | A1 | assumption | The livetemplate client accepts a key with a `-2` suffix: it treats keys as opaque strings. | high | open (Phase 1 audit) |
-| A2 | assumption | A row with a nested `{{range}}` over `.fields` keeps the outer range in stream mode, so new log lines still arrive as append ops. | high | open (Phase 3, checked in WebSocket frames) |
+| A2 | assumption | A row with a nested `{{range}}` over `.fields` keeps the outer range in stream mode, so new log lines still arrive as append ops. | high | open (Phase 1 audit, with a livetemplate test before the release; Phase 3 confirms it in WebSocket frames) |
 | A3 | assumption | `golang.org/x/mod/zip.CheckDir` reports `vendor/` files as omitted, so the new test fails before the rename. | medium | open (Phase 2) |
 | A4 | assumption | A map value that is a number or bool prints correctly through `linkify`'s `fmt.Sprint`. | low | open (Phase 2) |
 | R1 | risk | `linkify` returns HTML built from log text, so a bug there is an XSS hole. Mitigation: every piece of output passes through `html.EscapeString`, only `http`/`https` become links, and the tests cover `<script>`, `javascript:`, a quote inside a URL, `&` in a query and a URL ending in `&`. | high | open |
@@ -119,16 +121,17 @@ onefile (worktree `.worktrees/log-fields`):
 - [ ] livetemplate `go test ./...` passes, with new tests:
   - `{{range}}{{range}}…{{end}}{{end}}` gives each outer item its inner range and a distinct key
   - `split "a a b" " "` gives keys `h(a)`, `h(a)-2`, `h(b)`, with `h(a)` unchanged from v0.25.12, and a later update to that range sends item ops, not a whole-range resend
+  - removing the first `a` sends one remove and one add for the survivor, and leaves `h(b)` untouched
   - `and` and `or` stop at the deciding argument, so the `slice` example renders `n` without a panic
   - a page's own `and` function is still called with every argument
 - [ ] livetemplate's own e2e or client tests pass, covering A1.
 - [ ] tinkerdown `GOWORK=off go test ./...` passes, with:
   - the `CheckDir` test, which fails on main (A3) and passes after the rename
-  - `linkify` table tests for: plain text, one URL, two URLs, trailing punctuation, a URL in parentheses, `<script>`, `javascript:alert(1)`, a `"` inside a URL, `&` in a query, a URL ending in `&`, `&quot;` next to a URL, and a number value
+  - `linkify` table tests for: plain text, one URL, two URLs, trailing punctuation, a URL in parentheses, `<script>`, `javascript:alert(1)`, a `"` inside a URL, `&` in a query, a URL ending in `&`, `&quot;` next to a URL, balanced parentheses (`https://en.wikipedia.org/wiki/Foo_(bar)`), `https://` with nothing after it, `HTTP://` in capitals, a `template.HTML` input (still escaped), and a number value
 - [ ] After the v0.7.4 tag: `GOMODCACHE=$(mktemp -d) GOFLAGS=-modcacherw go install github.com/livetemplate/tinkerdown/cmd/tinkerdown@v0.7.4` succeeds.
 - [ ] onefile `TestLogViewer` (chromedp) checks, with console logs, server logs, WebSocket frames and HTML captured:
   - a slog line shows `subject=…`, `to=…` and `body=…` after its message
-  - the URL in `body=` is an `<a target="_blank">` with the exact `href`
+  - the URL in `body=` is one `<a target="_blank">` with the exact `href` and the whole URL as its text, even where the line wraps
   - a `<script>` in a line renders as text
   - a line appended after the page loads arrives as an append op (A2)
   - searching `sign` shows the row with the matching text visible
@@ -150,13 +153,14 @@ onefile (worktree `.worktrees/log-fields`):
   - Find where a body-only range's item tree loses its content (`walkAST` → `buildRangeTreeWithStatics` → `extractItemDynamics`).
   - Check whether stream mode's `RangeStreamState.Hashes` follows `AutoKey` or a separate content hash. If it's the content hash, duplicates need the suffix there too.
   - Check A1 in the client's keyed-range code.
+  - Check A2 with a test: a stream-mode range whose rows hold a nested range over a map still sends append ops.
 - Implementation: per the Files list.
 - Acceptance: `/simplify`, then the livetemplate criteria. PR, sign-off, then v0.25.13 through `scripts/release.sh`.
 - Learn: recorded here.
 
 ### Phase 2: tinkerdown#364 and `linkify`
-- Audit: A3 on main, A4, A5, and where the docs list template functions.
-- Implementation: per the Files list, with livetemplate bumped to v0.25.13.
+- Audit: A4, A5, where the docs list template functions, and every other mention of `assets/vendor` or `vendor/` in the repo (Makefile, `.gitignore`, CI workflows, lint config, the client bundle's copy step, docs).
+- Implementation: commit the `CheckDir` test first and show it failing on main (A3), then the rename, then the rest per the Files list, with livetemplate bumped to v0.25.13.
 - Acceptance: `/simplify`, then the tinkerdown criteria. PR, sign-off, then v0.7.4 through `release.sh`, the `go install` check and the Homebrew PR.
 - Learn: recorded here.
 
