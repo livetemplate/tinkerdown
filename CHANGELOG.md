@@ -11,6 +11,8 @@ Earlier releases (v0.1.x) are documented in the
 
 ## [Unreleased]
 
+## [v0.7.2] - 2026-11-22
+
 ### Added
 
 - **`sort` on keyed merges.** `sort: -fields.createdAt` shows rows newest
