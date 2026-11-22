@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -37,6 +38,15 @@ type Follower interface {
 	FlushInterval() time.Duration
 	IsPaused() bool
 }
+
+// QuerySetter is a store whose source reads the page URL's query. SetQuery
+// reports whether its values changed, so the store needs a refresh.
+type QuerySetter interface {
+	Store
+	SetQuery(url.Values) bool
+}
+
+var _ QuerySetter = (*GenericState)(nil)
 
 // GenericState holds runtime state for any source type.
 // It replaces the code-generated State structs that were previously compiled as plugins.
@@ -709,6 +719,13 @@ func (s *GenericState) Subscribe() *stream.Subscription {
 		return f.Subscribe()
 	}
 	return nil
+}
+
+// SetQuery gives the state's source the page's new query, and reports
+// whether the values it reads changed, so the caller must refresh.
+func (s *GenericState) SetQuery(q url.Values) bool {
+	qs, ok := s.source.(source.QuerySetter)
+	return ok && qs.SetQuery(q)
 }
 
 // FlushInterval is the minimum time between pushes of a followable source.

@@ -87,9 +87,9 @@ On a phone, each row puts the image and status under the name and the buttons on
   because: anyone can write a link. A free value lets another site make your machine run your command with a value it picks, and an action loses the shareable link
 - The `in` check runs again when MERGE's rows change. A link opened before the feed's first rows starts once the row appears; a value never listed starts nothing.
   alternative: none considered
-- The page's query reaches the WebSocket: the server adds it to the `ws-url` it renders, and the handler passes it to block state.
-  alternative: the client appends `location.search`
-  because: the server already builds the URL, and the client then needs no change
+- The page's query reaches the WebSocket: the client adds `location.search` to the `ws-url` when it connects, with the server's `page` set last, and the handler passes it to block state.
+  alternative: the server adds it to the `ws-url` it renders, as Phase 3 first did
+  because: once links change the query without a page load, a reconnect needs the client to build the URL anyway. One owner keeps the rule in one place
 - A merge with `params` gets a buffer per distinct set of values: the values join the input's environment, which is part of its hub key. Its inputs stop 30s after the last viewer leaves (a per-input `IdleStop`).
   alternative: the hub's 5-minute idle stop, which every stream input already has
   because: every container opened starts its own `docker logs -f`
@@ -98,6 +98,15 @@ On a phone, each row puts the image and status under the name and the buttons on
   because: the containers feed is `["*"]` and must leave `logs` alone; found when the Phase 3 e2e saw `logs` in the list's inputs
 - The gate's block and the `params` block build the gate merge through the same resolver (`source.Page`), so they share one buffer and one feed command.
   alternative: none considered
+- A link that only changes the query, on a page with a `params` merge, changes the values without a page load. The client updates the address bar (`pushState`) and sends the new query on the open WebSocket; the server re-applies it to the `params` blocks only, and Back and Forward do the same.
+  alternative: reconnect the WebSocket with the new query
+  because: reconnecting rebuilds every block, so the list's search text, tab and Pause would reset (user, 2026-11-22)
+- The client catches only links to the same path whose query differs, on pages the server marks as having a `params` merge. A modified click, `target` or `download` link behaves as before.
+  alternative: catch query links on every page
+  because: a page without `params` gains nothing from it, and its links keep their behaviour
+- A `params` block builds its gate merges at page load, even before a value is in the query, and a refused value shows as the block's `.Error`.
+  alternative: refuse the value when the block is built, as Phase 3 first did
+  because: the value can now change on a live block, which must stay subscribed
 - A flag action passes the approval gate by its `FromFlag` marker (`yaml:"-"`), checked at the page dispatch, and lives in `cfg.FlagActions`, apart from `cfg.Actions`.
   alternative: exempt flag names inside `EnforceApprovedAction`
   because: webhooks share that gate, so a flag name would approve a same-named yaml action; webhooks and the HTTP action API read only `cfg.Actions`
@@ -162,6 +171,7 @@ onefile:
   - `TestFlagActions_E2E`: clicking a row button runs the command with the row's value
   - `TestParamsMerge_E2E`: `?name=a` shows only `a`'s rows, and `?name=b` gets a separate buffer
   - `TestParamsMerge_E2E`: `?name=c`, not in the list, runs no command until a `c` row appears
+  - `TestParamsMerge_E2E`: clicking a row link switches the logs with no page load (a `window` marker survives) and keeps the list's search text; Back returns to the earlier value
   - `TestKeyedMerge_E2E`: a drop sends `["r", …]`
 - [ ] onefile `cd e2e && go test -run TestContainers ./...`, with containers named `ofe2e-<pid>-*` and the README command plus `--filter name=ofe2e-<pid>`:
   - a running container shows `running`; one that exits with code 3 shows `exited (3)` in the Exited tab
@@ -207,12 +217,15 @@ The feed's JSON line: `{"name", "image", "state", "status"}`. `state` is one of 
 
 ### Phase 3: merges with `params`
 - Audit: A3; how a block's merge buffer is resolved per connection.
-- Implementation: query into the WebSocket, per-values buffers, stop after the last viewer.
+- Implementation: query into the WebSocket, per-values buffers, stop after the last viewer; query links without a page load.
 - Acceptance: `/simplify`, the params stream criteria, `TestParamsMerge_E2E`, docs, the full suite.
 
 ### Phase 4: the containers app
 - Audit: A1, A4. Re-read the Contract against what shipped.
-- Implementation: the onefile files.
+- Implementation: the onefile files, with three findings from the 8092 demo:
+  - show only a state's buttons, with CSS on the row's `st-<state>` class, because a per-row `{{if}}` would end row-by-row updates
+  - show a click as in progress until the state changes, because a `docker stop` takes seconds
+  - start a restarted container's logs with `--since`, not `--tail`, so lines aren't repeated
 - Acceptance: `/simplify`, the onefile criteria, screenshots through chromedp.
 
 ## Delivery

@@ -90,6 +90,11 @@ func (s SourceConfig) WildcardInputs() bool {
 	return s.Type == "merge" && len(s.Inputs) == 1 && s.Inputs[0] == "*"
 }
 
+// ParamsMerge reports whether a merge takes values from the page URL's query.
+func (s SourceConfig) ParamsMerge() bool {
+	return s.Type == "merge" && len(s.Params) > 0
+}
+
 // Kind is "cmd" or "file" for a stream source, and "" otherwise.
 func (s SourceConfig) Kind() string {
 	switch {

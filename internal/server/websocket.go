@@ -415,6 +415,17 @@ func ResolveSource(cfg *config.Config, page *tinkerdown.Page, name string) (conf
 	return config.ExpandInputs(src, names, mergeInputLookup(cfg, page, name)), true
 }
 
+// showsParamsMerge reports whether a block on the page shows a merge with
+// params, whose values a same-page link changes on the open WebSocket.
+func showsParamsMerge(cfg *config.Config, page *tinkerdown.Page) bool {
+	for _, block := range page.ServerBlocks {
+		if src, ok := effectiveSource(cfg, page, block.Metadata["lvt-source"]); ok && src.ParamsMerge() {
+			return true
+		}
+	}
+	return false
+}
+
 // paramsInputs lists the inputs of the page's merges with params. Those
 // inputs read TD_ values, so a ["*"] merge doesn't take them: run without
 // their values, they would fail and restart in a loop.
@@ -438,7 +449,7 @@ func paramsInputs(cfg *config.Config, page *tinkerdown.Page, names []string) map
 	}
 	reserved := map[string]bool{}
 	for _, n := range slices.Compact(slices.Sorted(slices.Values(names))) {
-		if src, ok := effectiveSource(cfg, page, n); ok && src.Type == "merge" && len(src.Params) > 0 {
+		if src, ok := effectiveSource(cfg, page, n); ok && src.ParamsMerge() {
 			for _, in := range src.Inputs {
 				reserved[in] = true
 			}
@@ -731,6 +742,11 @@ func (h *WebSocketHandler) handleMessage(conn *websocket.Conn, message []byte) {
 		return
 	}
 
+	if envelope.BlockID == "" {
+		h.handlePageAction(envelope.Action, envelope.Data)
+		return
+	}
+
 	h.mu.RLock()
 	instance, ok := h.instances[envelope.BlockID]
 	h.mu.RUnlock()
@@ -772,6 +788,43 @@ func (h *WebSocketHandler) handleMessage(conn *websocket.Conn, message []byte) {
 	actionLower := strings.ToLower(envelope.Action)
 	if actionLower == "add" || actionLower == "delete" || actionLower == "update" || actionLower == "toggle" {
 		h.refreshDependentComputedSources(instance, conn)
+	}
+}
+
+// handlePageAction runs a message for the whole page rather than one block.
+func (h *WebSocketHandler) handlePageAction(action string, data json.RawMessage) {
+	switch action {
+	case "query":
+		h.setQuery(data)
+	default:
+		log.Printf("[WS] Unknown page action: %s", action)
+	}
+}
+
+// setQuery takes the page's new query, sent by the client when a link changed
+// it without a page load, and refreshes the blocks whose values changed.
+// data is {"query": "name=web"}.
+func (h *WebSocketHandler) setQuery(data json.RawMessage) {
+	var msg struct {
+		Query string `json:"query"`
+	}
+	if err := json.Unmarshal(data, &msg); err != nil {
+		log.Printf("[WS] Bad query message: %v", err)
+		return
+	}
+	q, err := url.ParseQuery(strings.TrimPrefix(msg.Query, "?"))
+	if err != nil {
+		log.Printf("[WS] Bad query %q: %v", msg.Query, err)
+		return
+	}
+	h.mu.Lock()
+	h.query = q
+	instances := slices.Collect(maps.Values(h.instances))
+	h.mu.Unlock()
+	for _, instance := range instances {
+		if qs, ok := instance.state.(runtime.QuerySetter); ok && qs.SetQuery(q) {
+			h.refreshBlock(instance)
+		}
 	}
 }
 
@@ -1588,6 +1641,19 @@ func (h *WebSocketHandler) streamHub() *stream.Hub {
 	return h.server.streams
 }
 
+// refreshBlock re-fetches a block's source and pushes the result, with the
+// computed blocks built on it. A failed fetch is pushed too: it sets the
+// block's Error, which the page shows only on a render.
+func (h *WebSocketHandler) refreshBlock(instance *BlockInstance) {
+	if err := h.handleAction(instance, "Refresh", nil); err != nil {
+		log.Printf("[WS] refresh of block %s: %v", instance.blockID, err)
+		h.sendUpdate(instance)
+		return
+	}
+	h.sendUpdate(instance)
+	h.refreshDependentComputedSources(instance, instance.conn)
+}
+
 // followStream pushes a stream block's new rows to this connection until it
 // closes. Wake-ups coalesce, and pushes are at least FlushInterval apart, so a
 // burst of lines becomes one refresh. A paused page is skipped; Resume refreshes.
@@ -1601,15 +1667,9 @@ func (h *WebSocketHandler) followStream(instance *BlockInstance) {
 		return
 	}
 	push := func() {
-		if f.IsPaused() {
-			return
+		if !f.IsPaused() {
+			h.refreshBlock(instance)
 		}
-		if err := h.handleAction(instance, "Refresh", nil); err != nil {
-			log.Printf("[WS] stream refresh of block %s: %v", instance.blockID, err)
-			return
-		}
-		h.sendUpdate(instance)
-		h.refreshDependentComputedSources(instance, instance.conn)
 	}
 	h.followers.Go(func() {
 		defer sub.Close()

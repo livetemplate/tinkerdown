@@ -949,7 +949,7 @@ func (s *Server) servePage(w http.ResponseWriter, r *http.Request, route *Route)
 	// long max-age=31536000 because their URLs change on rebuild.
 	w.Header().Set("Cache-Control", "no-cache, must-revalidate")
 
-	html := s.renderPage(route.Page, r.URL.Path, r.Host, detectWSScheme(r), r.URL.RawQuery)
+	html := s.renderPage(route.Page, r.URL.Path, r.Host, detectWSScheme(r))
 	// Resolve embed-lvt placeholders against their upstream LiveTemplate
 	// apps. Runs per-request so each visitor gets a fresh upstream session
 	// and forwards their cookies/auth context.
@@ -981,12 +981,19 @@ func (s *Server) ServeSinglePage(rel string, remote bool) {
 	s.singlePage, s.remotePage = rel, remote
 }
 
-// pageWSURL is the WebSocket URL of the page at path. It carries the page
-// URL's query, with page set last so the query can't name another page.
-func pageWSURL(scheme, host, path, rawQuery string) string {
-	q, _ := url.ParseQuery(rawQuery)
-	q.Set("page", path)
-	return fmt.Sprintf("%s://%s/ws?%s", scheme, host, q.Encode())
+// liveQueryMeta asks the client to change a same-page link's query on the
+// open WebSocket, without a page load, on a page showing a merge with params.
+func liveQueryMeta(cfg *config.Config, page *tinkerdown.Page) string {
+	if !showsParamsMerge(cfg, page) {
+		return ""
+	}
+	return "\n    <meta name=\"tinkerdown-live-query\" content=\"true\">"
+}
+
+// pageWSURL is the WebSocket URL of the page at path. The client adds the
+// page URL's query when it connects, so a merge with params can read it.
+func pageWSURL(scheme, host, path string) string {
+	return fmt.Sprintf("%s://%s/ws?page=%s", scheme, host, url.QueryEscape(path))
 }
 
 // detectWSScheme returns the appropriate WebSocket URL scheme ("wss"
@@ -1036,14 +1043,12 @@ func prismIncludeAssets(page *tinkerdown.Page) (css, js string) {
     <script defer src="/assets/prism-line-numbers.js"></script>`
 }
 
-// rawQuery is the page URL's query; the WebSocket URL carries it, so a merge
-// with params can read it.
-func (s *Server) renderPage(page *tinkerdown.Page, currentPath string, host string, wsScheme string, rawQuery string) string {
+func (s *Server) renderPage(page *tinkerdown.Page, currentPath string, host string, wsScheme string) string {
 	// Pages can opt into a minimal, full-bleed shell via `layout: landing`.
 	// Branch before any docs-shell work so the default path is byte-for-byte
 	// unchanged. Unknown layout values fall through to the docs shell.
 	if strings.EqualFold(strings.TrimSpace(page.Layout), "landing") {
-		return s.renderLandingShell(page, currentPath, host, wsScheme, rawQuery)
+		return s.renderLandingShell(page, currentPath, host, wsScheme)
 	}
 
 	// Render code blocks with metadata for client discovery
@@ -1109,11 +1114,11 @@ func (s *Server) renderPage(page *tinkerdown.Page, currentPath string, host stri
 
 	// Build WebSocket URL from host with page path for multi-page routing.
 	// Scheme MUST match the page's request scheme — see detectWSScheme.
-	wsURL := pageWSURL(wsScheme, host, currentPath, rawQuery)
+	wsURL := pageWSURL(wsScheme, host, currentPath)
 
 	// Build per-page SEO meta tags (OG, Twitter card, description, canonical).
 	// Falls back to site-level config when frontmatter fields are absent.
-	seoTags := s.buildSEOTags(page, currentPath)
+	seoTags := s.buildSEOTags(page, currentPath) + liveQueryMeta(s.config, page)
 
 	// Conditionally include Mermaid (~3.3MB) only when the page has
 	// ```mermaid fenced blocks. HasMermaid is set by the parser AST walk.
@@ -3236,10 +3241,10 @@ func (s *Server) renderPage(page *tinkerdown.Page, currentPath string, host stri
 // site can ship bespoke marketing styling without inheriting the docs chrome.
 // Note: mermaid/chart runtimes are intentionally omitted here; landing pages
 // are marketing surfaces, not diagram-heavy docs. Add them if that need arises.
-func (s *Server) renderLandingShell(page *tinkerdown.Page, currentPath, host, wsScheme, rawQuery string) string {
+func (s *Server) renderLandingShell(page *tinkerdown.Page, currentPath, host, wsScheme string) string {
 	content := s.renderContent(page)
-	wsURL := pageWSURL(wsScheme, host, currentPath, rawQuery)
-	seoTags := s.buildSEOTags(page, currentPath)
+	wsURL := pageWSURL(wsScheme, host, currentPath)
+	seoTags := s.buildSEOTags(page, currentPath) + liveQueryMeta(s.config, page)
 	defaultTheme := themeDefault(s.config.Styling)
 	customCSS := buildCustomCSSLink(s.config.Styling.CustomCSS)
 	siteCSS := buildCustomCSSLink(s.config.Styling.SiteCSS)

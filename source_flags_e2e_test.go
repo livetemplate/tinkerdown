@@ -405,9 +405,9 @@ func TestParamsMerge_E2E(t *testing.T) {
 	list := filepath.Join(dir, "list.jsonl")
 	os.WriteFile(list, []byte(`{"name":"a"}`+"\n"+`{"name":"b"}`+"\n"), 0o644)
 	page := "---\ntitle: Things\nsources:\n  things:\n    type: merge\n    inputs: [\"*\"]\n    key: [fields.name]\n  logview:\n    type: merge\n    inputs: [logs]\n    params:\n      name: {in: things.fields.name}\n---\n\n```lvt\n" +
-		`<ol lvt-source="things" data-testid="list">{{range .Data}}<li data-key="{{.key}}"><a href="?name={{.fields.name}}">{{.fields.name}}</a> <i>{{.source}}</i></li>{{end}}</ol>` +
+		`<div lvt-source="things"><input data-testid="keep"><ol data-testid="list">{{range .Data}}<li data-key="{{.key}}"><a href="?name={{.fields.name}}">{{.fields.name}}</a> <i>{{.source}}</i></li>{{end}}</ol></div>` +
 		"\n```\n\n```lvt\n" +
-		`<ol lvt-source="logview" data-testid="logs">{{range .Data}}<li data-key="{{.seq}}">{{.msg}}</li>{{end}}</ol>` + "\n```\n"
+		`<div lvt-source="logview">{{if .Error}}<p data-testid="logerr">{{.Error}}</p>{{end}}<ol data-testid="logs">{{range .Data}}<li data-key="{{.seq}}">{{.msg}}</li>{{end}}</ol></div>` + "\n```\n"
 	os.WriteFile(filepath.Join(dir, "index.md"), []byte(page), 0o644)
 
 	cfg := config.DefaultConfig()
@@ -471,17 +471,33 @@ func TestParamsMerge_E2E(t *testing.T) {
 	f.Close()
 	wait("c's logs once c is listed", logText+` === "line from c"`)
 
-	// A row link opens another value, with its own buffer.
-	if err := chromedp.Run(ctx, chromedp.Click(`[data-testid="list"] a[href="?name=a"]`, chromedp.ByQuery)); err != nil {
+	// A row link opens another value, with its own buffer, without a page
+	// load: the window marker and the text typed in the list block survive.
+	if err := chromedp.Run(ctx,
+		chromedp.Evaluate(`window.__sameDoc = true`, nil),
+		chromedp.SendKeys(`[data-testid="keep"]`, "typed", chromedp.ByQuery),
+		chromedp.Click(`[data-testid="list"] a[href="?name=a"]`, chromedp.ByQuery)); err != nil {
 		dump()
 		t.Fatal(err)
 	}
 	wait("a's logs, not c's", logText+` === "line from a"`)
 	var href string
-	chromedp.Run(ctx, chromedp.Evaluate(`location.search`, &href))
-	if href != "?name=a" {
-		t.Fatalf("location.search = %q after the link", href)
+	var sameDoc bool
+	var typed string
+	chromedp.Run(ctx,
+		chromedp.Evaluate(`location.search`, &href),
+		chromedp.Evaluate(`window.__sameDoc === true`, &sameDoc),
+		chromedp.Value(`[data-testid="keep"]`, &typed, chromedp.ByQuery))
+	if href != "?name=a" || !sameDoc || typed != "typed" {
+		dump()
+		t.Fatalf("after the link: location.search %q, same document %v, typed text %q; want ?name=a, true, typed", href, sameDoc, typed)
 	}
+	// Back restores c's logs, still without a page load.
+	if err := chromedp.Run(ctx, chromedp.Evaluate(`history.back()`, nil)); err != nil {
+		dump()
+		t.Fatal(err)
+	}
+	wait("c's logs after Back", logText+` === "line from c" && location.search === "?name=c" && window.__sameDoc === true`)
 	if err := chromedp.Run(ctx, chromedp.Navigate(ConvertURLForDockerChrome(ts.URL)+"/?name=b")); err != nil {
 		dump()
 		t.Fatal(err)

@@ -23,31 +23,43 @@ type Followable interface {
 	FlushInterval() time.Duration
 }
 
+// QuerySetter is a source whose rows depend on the page URL's query.
+// SetQuery reports whether the values it reads changed, so the page must
+// refresh.
+type QuerySetter interface {
+	SetQuery(url.Values) bool
+}
+
+var _ QuerySetter = (*StreamSource)(nil)
+
 // StreamSource is a Source backed by a stream.Buffer shared with every other
 // page showing the same input. Fetch returns the buffer's current rows.
 //
-// A merge with params is gated: with every param in the page's query, it
-// watches its gate merges and shows rows only while each value is in its
-// gate. Its own buffer is built the first time every gate opens, so a value
-// never listed creates nothing in the hub, and it holds that buffer (running
-// its inputs) only while every gate is open.
+// A merge with params is gated: it watches its gate merges and, with every
+// param in the page's query, shows rows only while each value is in its gate.
+// Its own buffer is built the first time every gate opens, so a value never
+// listed creates nothing in the hub, and it holds that buffer (running its
+// inputs) only while every gate is open. SetQuery changes the values.
 type StreamSource struct {
 	name  string
 	hub   *stream.Hub
 	buf   *stream.Buffer
 	flush time.Duration
-	gates []gate
 
 	mu       sync.Mutex
-	build    func() (*stream.Buffer, error) // a gated source's buffer, on first open
-	sub      *stream.Subscription           // the page's subscription, once Subscribe ran
-	attached bool                           // buf is attached to sub
+	gates    []gate                                              // one per param, sorted by name; nil unless params
+	build    func(env map[string]string) (*stream.Buffer, error) // a gated source's buffer, on first open
+	env      map[string]string                                   // TD_ values; nil while a param is missing or refused
+	valueErr error                                               // why the query's values were refused
+	sub      *stream.Subscription                                // the page's subscription, once Subscribe ran
+	attached bool                                                // buf is attached to sub
 }
 
-// gate is one params value and the merge that must list it.
+// gate is one param and the merge that must list its value at path.
 type gate struct {
+	param string
 	buf   *stream.Buffer
-	match stream.Match
+	path  string
 }
 
 // MergeParamIdle is how long a params merge's inputs run after the last page
@@ -73,14 +85,18 @@ func (s *StreamSource) Name() string { return s.name }
 // rows wake the page's subscription, and every wake-up refreshes, so Fetch
 // runs each time a gate may have opened or closed.
 func (s *StreamSource) Fetch(ctx context.Context) ([]map[string]interface{}, error) {
-	if s.gates == nil {
+	if s.gates == nil { // gates, and buf when there are none, never change
 		if s.buf == nil {
 			return nil, nil
 		}
 		return s.buf.Snapshot(), nil
 	}
-	open := s.open()
 	s.mu.Lock()
+	if s.valueErr != nil {
+		s.mu.Unlock()
+		return nil, s.valueErr
+	}
+	open := s.openLocked()
 	err := s.syncLocked(open)
 	buf := s.buf
 	s.mu.Unlock()
@@ -90,11 +106,55 @@ func (s *StreamSource) Fetch(ctx context.Context) ([]map[string]interface{}, err
 	return buf.Snapshot(), nil
 }
 
+// SetQuery takes a gated source's values from the page's query, and reports
+// whether they changed. New values let go of the earlier values' buffer,
+// which stops once no page shows it. A refused value is returned by the next
+// Fetch. A source without params ignores the query.
+func (s *StreamSource) SetQuery(q url.Values) bool {
+	if s.gates == nil {
+		return false
+	}
+	var env map[string]string // stays nil while a value is missing or refused
+	var err error
+	for _, g := range s.gates {
+		v := q.Get(g.param)
+		if v == "" {
+			env = nil
+			break
+		}
+		if e := config.CheckTDValue(g.param, v); e != nil {
+			env, err = nil, &ValidationError{Source: s.name, Field: "params", Reason: e.Error()}
+			break
+		}
+		if env == nil {
+			env = map[string]string{}
+		}
+		env["TD_"+g.param] = v
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if maps.Equal(env, s.env) && errText(err) == errText(s.valueErr) {
+		return false
+	}
+	if s.attached {
+		s.sub.Detach(s.buf)
+	}
+	s.buf, s.attached, s.env, s.valueErr = nil, false, env, err
+	return true
+}
+
+func errText(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
+}
+
 // syncLocked builds the buffer on the first open, and attaches it to the
 // page's subscription while open, detaching it once closed. s.mu is held.
 func (s *StreamSource) syncLocked(open bool) error {
 	if open && s.buf == nil {
-		buf, err := s.build()
+		buf, err := s.build(s.env)
 		if err != nil {
 			return err
 		}
@@ -111,10 +171,15 @@ func (s *StreamSource) syncLocked(open bool) error {
 	return nil
 }
 
-// open reports whether every gate's merge has a row holding its value.
-func (s *StreamSource) open() bool {
+// openLocked reports whether the query has every value and every gate's
+// merge has a row holding its value. s.mu is held.
+func (s *StreamSource) openLocked() bool {
+	if s.env == nil {
+		return false
+	}
 	for _, g := range s.gates {
-		if !slices.ContainsFunc(g.buf.Snapshot(), g.match.Matches) {
+		m := stream.Match{Path: g.path, Values: []string{s.env["TD_"+g.param]}}
+		if !slices.ContainsFunc(g.buf.Snapshot(), m.Matches) {
 			return false
 		}
 	}
@@ -126,21 +191,21 @@ func (s *StreamSource) Close() error { return nil }
 
 // Subscribe starts the input if needed and wakes the caller on new rows. A
 // gated source wakes on its gates' rows too, and starts its own input only
-// while its gates are open; it returns nil when the query lacks a param.
+// while its gates are open, even before the query has its values.
 func (s *StreamSource) Subscribe() *stream.Subscription {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if s.gates == nil {
 		if s.buf == nil {
 			return nil
 		}
 		return s.buf.Subscribe()
 	}
-	s.mu.Lock()
-	defer s.mu.Unlock()
 	s.sub = s.hub.NewSubscription()
 	for _, g := range s.gates {
 		s.sub.Attach(g.buf)
 	}
-	_ = s.syncLocked(s.open()) // a build error reaches the page through Fetch
+	_ = s.syncLocked(s.openLocked()) // a build error reaches the page through Fetch
 	return s.sub
 }
 
@@ -172,24 +237,14 @@ func NewStreamSource(hub *stream.Hub, name string, cfg config.SourceConfig, site
 		}
 		return src, nil
 	}
-	var env map[string]string
 	idle := time.Duration(0)
 	if len(cfg.Params) > 0 {
 		if page == nil || page.Resolve == nil || page.InputLookup == nil {
 			return nil, fmt.Errorf("merge source %q: params need a page", name)
 		}
-		env, idle = map[string]string{}, MergeParamIdle
+		idle = MergeParamIdle
 		for _, p := range slices.Sorted(maps.Keys(cfg.Params)) {
-			spec := cfg.Params[p]
-			v := page.Query.Get(p)
-			if v == "" {
-				return src, nil // no value yet: no rows, nothing runs
-			}
-			if err := config.CheckTDValue(p, v); err != nil {
-				return nil, &ValidationError{Source: name, Field: "params", Reason: err.Error()}
-			}
-			env["TD_"+p] = v
-			gateName, path := spec.Gate()
+			gateName, path := cfg.Params[p].Gate()
 			gateCfg, _ := page.Resolve(gateName)
 			// The gate this merge was validated against is the one lookup
 			// resolves; the page's own resolution must be that same merge,
@@ -201,10 +256,10 @@ func NewStreamSource(hub *stream.Hub, name string, cfg config.SourceConfig, site
 			if err != nil {
 				return nil, fmt.Errorf("merge source %q: param %s: %w", name, p, err)
 			}
-			src.gates = append(src.gates, gate{buf: g.buf, match: stream.Match{Path: path, Values: []string{v}}})
+			src.gates = append(src.gates, gate{param: p, buf: g.buf, path: path})
 		}
 	}
-	build := func() (*stream.Buffer, error) {
+	build := func(env map[string]string) (*stream.Buffer, error) {
 		inputs := make([]*stream.Buffer, 0, len(cfg.Inputs))
 		for _, in := range cfg.Inputs {
 			inCfg, _ := lookup(in) // ValidateStreamSource checked it exists and is a stream
@@ -227,9 +282,10 @@ func NewStreamSource(hub *stream.Hub, name string, cfg config.SourceConfig, site
 			}
 		}
 		src.build = build
+		src.SetQuery(page.Query)
 		return src, nil
 	}
-	if src.buf, err = build(); err != nil {
+	if src.buf, err = build(nil); err != nil {
 		return nil, err
 	}
 	return src, nil

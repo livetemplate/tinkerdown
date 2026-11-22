@@ -24,7 +24,9 @@ Earlier releases (v0.1.x) are documented in the
   `TD_name=web`, so a row link opens that item's stream. A value is accepted
   only while it is in a row of the merge `in` names, and each set of values
   gets its own buffer, stopped 30 seconds after its last viewer. A `["*"]`
-  merge doesn't take a `params` merge's inputs. See
+  merge doesn't take a `params` merge's inputs. On a page with a `params`
+  merge, a link that only changes the query updates the values without a
+  page load, and Back and Forward do the same. See
   [docs/sources/stream.md](docs/sources/stream.md#values-from-the-page-url).
 - **`drop` on keyed merges.** `drop: fields.state=removed` removes a key's
   row when a matching row arrives, and the page gets a remove for it. Values

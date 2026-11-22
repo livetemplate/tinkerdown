@@ -54,6 +54,7 @@ function initializeTinkerdown(): void {
 
   if (hasInteractiveBlocks) {
     client.connect();
+    client.setupLiveQuery();
   }
 
   // Expose client globally for debugging
