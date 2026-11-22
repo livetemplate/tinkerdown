@@ -698,9 +698,32 @@ func TestKeyedSortNumericText(t *testing.T) {
 	order, _ := ParseOrder("fields.ms")
 	m, _ := h.Merge("jobs", []*Buffer{in}, 10, KeySpec{Paths: []string{"fields.id"}, Sort: order})
 	job := func(id string, ms interface{}) Row { return Row{"fields": map[string]interface{}{"id": id, "ms": ms}} }
-	h.publish(in, "stdout", job("ten", "10"), job("nine", "9"), job("slow", "n/a"), job("five", 5.0), job("fast", "fast"))
-	if got := keyedIDs(m.Snapshot()); got != "five,nine,ten,fast,slow" {
-		t.Fatalf("numeric text as numbers, then text: %s", got)
+	h.publish(in, "stdout", job("ten", "10"), job("nine", "9"), job("slow", "n/a"), job("five", 5.0), job("fast", "fast"),
+		job("inf", "inf"), job("hex", "0x10"), job("year", "2026"), job("iso", "2026-11-22T10:00:00Z"))
+	if got := keyedIDs(m.Snapshot()); got != "five,nine,ten,year,hex,iso,fast,inf,slow" {
+		t.Fatalf("plain numbers first, then text (inf and hex are text, a year before an ISO time): %s", got)
+	}
+}
+
+// A row whose sort field changes in the same update as its collected text
+// moves and keeps that text.
+func TestKeyedSortMoveKeepsCollected(t *testing.T) {
+	h := NewHub()
+	defer h.Close()
+	in := newBuffer(h, "ksortc", "jobs", 10)
+	order, _ := ParseOrder("-fields.t")
+	m, _ := h.Merge("jobs", []*Buffer{in}, 10, KeySpec{Paths: []string{"fields.id"}, Collect: "fields.out", Sort: order})
+	job := func(id, t, out string) Row {
+		return Row{"fields": map[string]interface{}{"id": id, "t": t, "out": out}}
+	}
+	h.publish(in, "stdout", job("a", "1", "one "), job("b", "2", "x"))
+	h.publish(in, "stdout", job("a", "3", "two"))
+	rows := m.Snapshot()
+	if got := keyedIDs(rows); got != "a,b" {
+		t.Fatalf("a moved first: %s", got)
+	}
+	if got := rows[0]["collected"]; got != "one two" {
+		t.Fatalf("a's collected = %q, want both outputs", got)
 	}
 }
 

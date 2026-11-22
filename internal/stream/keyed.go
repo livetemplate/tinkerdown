@@ -3,6 +3,7 @@ package stream
 import (
 	"cmp"
 	"fmt"
+	"regexp"
 	"slices"
 	"sort"
 	"strconv"
@@ -49,7 +50,9 @@ func (k *keyedRows) add(r Row, size int) {
 			row["collected"] = appendCollected(prev, FieldPath(r, k.spec.Collect))
 		}
 		if o := k.spec.Sort; o.Path != "" && o.compare(FieldPath(k.rows[i], o.Path), FieldPath(row, o.Path)) != 0 {
-			k.remove(i) // its sort value changed: move it
+			// Its sort value changed: move it. Two O(n) reindexes, bounded
+			// by the buffer size.
+			k.remove(i)
 			k.insert(row)
 			return
 		}
@@ -156,11 +159,17 @@ func number(v interface{}) (float64, bool) {
 	case int64:
 		return float64(n), true
 	case string:
-		f, err := strconv.ParseFloat(strings.TrimSpace(n), 64)
-		return f, err == nil
+		// Plain decimal text only: ParseFloat also takes "inf", "nan" and
+		// hex, which would make a status such as "inf" sort as a number.
+		if t := strings.TrimSpace(n); decimal.MatchString(t) {
+			f, err := strconv.ParseFloat(t, 64)
+			return f, err == nil
+		}
 	}
 	return 0, false
 }
+
+var decimal = regexp.MustCompile(`^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$`)
 
 // keyOf hashes the row's key fields into the row's "key". A missing field
 // counts as empty, so a row without one still gets a key of its own (go

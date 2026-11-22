@@ -15,8 +15,9 @@ Earlier releases (v0.1.x) are documented in the
 
 - **`sort` on keyed merges.** `sort: -fields.createdAt` shows rows newest
   first, instead of in first-seen order. Numbers, and text that reads as a
-  number, compare as numbers; other values compare as text. A new row reaches the page as an insert at its place, so
-  screen readers and keyboard focus follow the order on screen. See
+  number, compare as numbers; other values compare as text. A new row
+  reaches the page as an insert at its place, so screen readers and keyboard
+  focus follow the order on screen. See
   [docs/sources/stream.md](docs/sources/stream.md#one-row-per-key).
 
 ## [v0.7.1] - 2026-11-22
