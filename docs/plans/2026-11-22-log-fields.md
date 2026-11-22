@@ -159,7 +159,7 @@ onefile (worktree `.worktrees/log-fields`):
   - Find where a body-only range's item tree loses its content (`walkAST` → `buildRangeTreeWithStatics` → `extractItemDynamics`).
   - Check whether stream mode's `RangeStreamState.Hashes` follows `AutoKey` or a separate content hash. If it's the content hash, duplicates need the suffix there too.
   - Check A1 in the client's keyed-range code.
-  - Check A2 with a test: a stream-mode range whose rows hold a nested range over a map still sends append ops, and an unchanged row produces no diff on a second render (map keys render sorted).
+  - Check A2 with a test: a stream-mode range whose rows hold a nested range over a map still sends append ops. Because map keys render sorted, an unchanged row produces no diff on a second render.
 - Implementation: per the Files list.
 - Acceptance: `/simplify`, then the livetemplate criteria. PR, sign-off, then v0.25.13 through `scripts/release.sh`.
 - Learn: recorded here.
