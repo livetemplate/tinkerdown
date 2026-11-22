@@ -53,15 +53,15 @@ A row shows its message, then each other field as `key=value`, with every `http:
 - livetemplate: when two items in one range hash the same, the second and later get `<hash>-2`, `<hash>-3` and so on, in range order.
   alternative: key every plain value by its index
   because: index keys rename every item after an insert at the top, which turns a stream-mode prepend into a full update. Suffixing only the duplicates keeps every existing key byte-for-byte, which `appendJSONValue`'s wire-stability comment (`internal/keys/hash.go:85`) requires. It replaces v0.25.10's whole-range resend for plain values, while that fallback stays for keys a page sets with `data-key`.
-  A suffixed key can't equal a real one, because real keys are 12 hex characters with no `-`.
+  A suffixed key can't equal a real one, because real keys are 12 hex characters with no `-`. Suffixes go only on generated keys: a range keyed by `data-key` never gets them, so a page key like `abc-2` can't meet one.
   cost: removing the first of two equal items, or prepending an equal one, renames from `<hash>-2` to `<hash>`, so the client sees one remove and one add instead of no change or a pure insert. That is still cheaper than resending the range.
 - livetemplate: `and` and `or` evaluate their arguments one at a time and stop at the first one that decides the result, as Go's `text/template` does since Go 1.18. This applies only to the builtins, not to a function a page registers under the same name.
   alternative: none considered
 - tinkerdown: a template function `linkify`, added to `blockHelperFuncs` (`internal/server/websocket.go:1343`) next to `split`. It takes any value, escapes all of its text, and turns each `http://` or `https://` URL into `<a href="…" target="_blank" rel="noopener noreferrer">`.
   - A URL starts at `http://` or `https://`, matched without regard to case, with at least one character after it. Only that match becomes an `href`.
   - A URL ends at whitespace, `"`, `'`, `<`, `>` or `\`.
-  - Trailing `.`, `,`, `;`, `:`, `!`, `?`, `”`, `’`, `。`, `，` and an unmatched `)` or `）` stay outside the link. A `)` that closes a `(` inside the URL stays in it.
-  - It finds URLs with Go's `regexp` (RE2), which runs in linear time, so a long line full of `http://` can't make it slow.
+  - Trailing `.`, `,`, `;`, `:`, `!`, `?`, `”`, `’`, `。`, `，` and an unmatched `)`, `）`, `]` or `}` stay outside the link. A closing bracket that matches an opening one inside the URL stays in it.
+  - Go's `regexp` (RE2), which runs in linear time, finds each candidate span, so a long line full of `http://` can't make it slow. A loop then trims the trailing punctuation and counts brackets, since RE2 can't balance them.
   - It matches on the raw text, then escapes each piece on its own: text with `html.EscapeString`, and the URL the same way in both the link text and the `href`. Matching after escaping would see `&#34;` instead of `"` and cut `&amp;` at its `;`.
   - It returns `template.HTML`.
 
@@ -112,7 +112,7 @@ onefile (worktree `.worktrees/log-fields`):
 | A1 | assumption | The livetemplate client accepts a key with a `-2` suffix: it treats keys as opaque strings. | high | open (Phase 1 audit) |
 | A2 | assumption | A row with a nested `{{range}}` over `.fields` keeps the outer range in stream mode, so new log lines still arrive as append ops. | high | open (Phase 1 audit, with a livetemplate test before the release; Phase 3 confirms it in WebSocket frames) |
 | A3 | assumption | `golang.org/x/mod/zip.CheckDir` reports `vendor/` files as omitted, so the new test fails before the rename. | medium | open (Phase 2) |
-| A4 | assumption | A map value that is a number or bool prints correctly through `linkify`'s `fmt.Sprint`. | low | open (Phase 2) |
+| A4 | assumption | A field value that isn't a string (a number, bool, nested map, slice or error) prints usefully through `linkify`'s `fmt.Sprint`. That's the intended behavior. | low | open (Phase 2) |
 | R1 | risk | `linkify` returns HTML built from log text, so a bug there is an XSS hole. Mitigation: every piece of output passes through `html.EscapeString`, only `http`/`https` become links, and the tests cover `<script>`, `javascript:`, a quote inside a URL, `&` in a query and a URL ending in `&`. | high | open |
 | A5 | assumption | tinkerdown works on livetemplate v0.25.13 with a client bundle rebuilt from `@livetemplate/client` 0.25.12: its full suite and the onefile suite pass. | medium | open (Phase 2) |
 | R2 | risk | Suffixing duplicate keys renames the second and later duplicates, so a connection open across the upgrade sees one remove and add for each. Mitigation: none needed; a server restart already starts new connections. | low | accepted |
@@ -124,14 +124,15 @@ onefile (worktree `.worktrees/log-fields`):
   - `{{range}}{{range}}…{{end}}{{end}}` gives each outer item its inner range and a distinct key
   - `split "a a b" " "` gives keys `h(a)`, `h(a)-2`, `h(b)`, with `h(a)` unchanged from v0.25.12, and a later update to that range sends item ops, not a whole-range resend
   - removing the first `a`, or prepending another `a`, sends one remove and one add for the renamed item, and leaves `h(b)` untouched
-  - `and` and `or` stop at the deciding argument and return its value, not a bool, so the `slice` example renders `n` without a panic. A nil or missing field as the first argument decides `and` as false.
+  - `and` and `or` stop at the deciding argument and return its value, not a bool, so the `slice` example renders `n` without a panic. A nil or missing field as the first argument decides `and` as false, and `or` with no truthy argument returns its last one.
   - a page's own `and` function is still called with every argument
 - [ ] livetemplate's own e2e or client tests pass, covering A1.
 - [ ] tinkerdown `GOWORK=off go test ./...` passes, with:
   - the `CheckDir` test, which fails on main (A3) and passes after the rename
   - `linkify` table tests:
-    - text: plain text, one URL, two URLs, a number value
+    - text: plain text, one URL, two URLs, a number value, a map and a slice value (printed by `fmt.Sprint`, then linked and escaped)
     - URL edges: trailing punctuation, a URL in parentheses, balanced parentheses (`https://en.wikipedia.org/wiki/Foo_(bar)`), `https://` with nothing after it, `HTTP://` in capitals
+    - URL edges: `((` nested in a URL, `(see https://a.com/x).`, a URL followed by `]` or `}`
     - URL edges, non-ASCII: a URL followed by `”`, `。` or `）`
     - escaping: `<script>`, `javascript:alert(1)`, `JavaScript:alert(1)`, `https://a.com/x"onmouseover=alert(1)` (the link stops at `"`), a `"` inside a URL, `&` in a query, a URL ending in `&`, `&quot;` next to a URL, a `template.HTML` input (still escaped)
 - [ ] After the v0.7.4 tag: `GOMODCACHE=$(mktemp -d) GOFLAGS=-modcacherw go install github.com/livetemplate/tinkerdown/cmd/tinkerdown@v0.7.4` succeeds.
