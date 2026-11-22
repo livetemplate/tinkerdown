@@ -63,6 +63,10 @@ export class TinkerdownClient {
 
       this.ws.onclose = () => {
         this.isConnected = false;
+        // The server never answers clicks sent before the drop.
+        this.blocks.forEach((block) => {
+          if (block instanceof InteractiveBlock) block.clearPending();
+        });
         console.log("[TinkerdownClient] Disconnected from server");
         this.options.onDisconnect?.();
         this.scheduleReconnect();
@@ -129,17 +133,13 @@ export class TinkerdownClient {
   /**
    * Send a message to the server
    */
-  send(blockID: string, action: string, data: any = {}): void {
+  send(blockID: string, action: string, data: any = {}, ref?: string): void {
     if (!this.isConnected || !this.ws) {
       console.warn("[TinkerdownClient] Cannot send - not connected");
       return;
     }
 
-    const envelope: MessageEnvelope = {
-      blockID,
-      action,
-      data,
-    };
+    const envelope: MessageEnvelope = { blockID, action, data, ref };
 
     const message = JSON.stringify(envelope);
 
@@ -308,9 +308,7 @@ export class TinkerdownClient {
       case "lvt":
         block = new InteractiveBlock(config, this.persistence, this.options.debug);
         // Set message sender for interactive blocks
-        (block as InteractiveBlock).setMessageSender((blockID, action, data) => {
-          this.send(blockID, action, data);
-        });
+        (block as InteractiveBlock).setMessageSender(this.send.bind(this));
         break;
 
       case "wasm":
@@ -335,9 +333,7 @@ export class TinkerdownClient {
     block.initialize();
 
     // Register with router (for message handling)
-    this.router.register(metadata.id, (action, data, execMeta, cacheMeta) => {
-      block.handleMessage(action, data, execMeta, cacheMeta);
-    });
+    this.router.register(metadata.id, (...args) => block.handleMessage(...args));
 
     // Store block reference
     this.blocks.set(metadata.id, block);

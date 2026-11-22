@@ -3,6 +3,7 @@ package source
 import (
 	"context"
 	"errors"
+	"maps"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -127,6 +128,9 @@ func TestParamsMergeSetQuery(t *testing.T) {
 	}
 	waitFor("line from a")
 	bufA := src.buf
+	if got := src.Params(); !maps.Equal(got, map[string]string{"name": "a"}) {
+		t.Fatalf("Params() = %v, want name=a", got)
+	}
 
 	if src.SetQuery(q("name=a&other=1")) || src.buf != bufA || !src.attached {
 		t.Fatal("an unchanged value must report no change and keep its buffer attached")
@@ -142,6 +146,9 @@ func TestParamsMergeSetQuery(t *testing.T) {
 	src.SetQuery(q("name=-rf"))
 	if src.SetQuery(q("name=-rf")) {
 		t.Fatal("the same refused value must report no change")
+	}
+	if got := src.Params(); got != nil {
+		t.Fatalf("Params() for a refused value = %v, want nil", got)
 	}
 	var ve *ValidationError
 	if rows, err := src.Fetch(context.Background()); !errors.As(err, &ve) || rows != nil {
@@ -163,6 +170,9 @@ func TestParamsMergeSetQuery(t *testing.T) {
 	}
 	if plain.SetQuery(q("name=a")) {
 		t.Error("a merge without params reported using the query")
+	}
+	if got := plain.Params(); got != nil {
+		t.Errorf("Params() of a merge without params = %v, want nil", got)
 	}
 }
 

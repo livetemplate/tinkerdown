@@ -35,7 +35,7 @@ export abstract class BaseBlock {
   /**
    * Handle incoming messages from the server
    */
-  abstract handleMessage(action: string, data: any, execMeta?: ExecMeta, cacheMeta?: CacheMeta): void;
+  abstract handleMessage(action: string, data: any, execMeta?: ExecMeta, cacheMeta?: CacheMeta, ref?: string): void;
 
   /**
    * Get the block ID

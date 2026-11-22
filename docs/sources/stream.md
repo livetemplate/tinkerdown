@@ -121,6 +121,8 @@ tinkerdown serve --allow-exec page.md --source docker='…' --source logs='docke
 
 A row links to `?name={{.fields.name}}`, and `logview` then follows that container. Quote the variable, `"$TD_name"`, so a value stays one argument.
 
+The block's `.Params` holds the values it took, by name, so it can say what it shows: `{{with .Params.name}}<h3>{{.}}</h3>{{end}}`. `.Params` is empty until every param is present and valid.
+
 Because the page has a `params` merge, clicking a link that only changes the query doesn't load the page again. The address bar changes, the new values go to the server on the open connection, and only the `params` blocks update, so the rest of the page keeps its search text, tab and Pause. Back and Forward work the same way. A link opened in a new tab, or to another page, loads as usual.
 
 Because anyone can write a link, every param needs `in`. A value is accepted only while it equals `PATH` in a row of `MERGE`, another merge on the same page, so a link opens only what the page already lists. The check runs again when `MERGE`'s rows change: a link opened before its row arrives starts once the row appears. Without every param in the query, the block shows no rows and nothing runs. A value that is empty, over 256 bytes, starts with `-`, or holds a control character sets the block's `.Error` instead, and nothing runs.

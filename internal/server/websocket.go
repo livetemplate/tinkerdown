@@ -84,6 +84,7 @@ type MessageEnvelope struct {
 	Data      json.RawMessage `json:"data"`
 	ExecMeta  *ExecMeta       `json:"execMeta,omitempty"`  // Optional exec source metadata
 	CacheMeta *CacheMeta      `json:"cacheMeta,omitempty"` // Optional cache metadata
+	Ref       string          `json:"ref,omitempty"`       // Names one click: sent with an action, echoed on the update after it
 }
 
 // ExecMeta contains execution state for exec source blocks
@@ -753,6 +754,7 @@ func (h *WebSocketHandler) handleMessage(conn *websocket.Conn, message []byte) {
 
 	if !ok {
 		log.Printf("[WS] Unknown block ID: %s", envelope.BlockID)
+		h.sendRefError(conn, envelope.BlockID, envelope.Ref, "unknown block")
 		return
 	}
 
@@ -761,7 +763,7 @@ func (h *WebSocketHandler) handleMessage(conn *websocket.Conn, message []byte) {
 		log.Printf("[WS] Error handling action: %v", err)
 		// Re-render anyway: a failed action sets the block's Error, which the
 		// page shows only on the next render.
-		h.sendUpdate(instance)
+		h.sendUpdateRef(instance, envelope.Ref)
 		return
 	}
 
@@ -779,8 +781,8 @@ func (h *WebSocketHandler) handleMessage(conn *websocket.Conn, message []byte) {
 		h.mu.RUnlock()
 	}
 
-	// Re-render and send update
-	h.sendUpdate(instance)
+	// Re-render and send update; the ref tells the client this action is done.
+	h.sendUpdateRef(instance, envelope.Ref)
 
 	// Refresh computed sources that depend on the modified source,
 	// but only for write-mutating actions (add, delete, update, toggle).
@@ -919,6 +921,23 @@ func (h *WebSocketHandler) handleAction(instance *BlockInstance, action string, 
 
 // sendUpdate re-renders the state and sends a tree update to the client.
 func (h *WebSocketHandler) sendUpdate(instance *BlockInstance) {
+	h.sendUpdateRef(instance, "")
+}
+
+// sendRefError answers the click named ref with an error when no update can
+// carry it back, so the client stops showing it busy. Without a ref it does
+// nothing.
+func (h *WebSocketHandler) sendRefError(conn *websocket.Conn, blockID, ref, message string) {
+	if ref == "" {
+		return
+	}
+	data, _ := json.Marshal(map[string]string{"message": message})
+	h.sendMessage(conn, MessageEnvelope{BlockID: blockID, Action: "error", Data: data, Ref: ref})
+}
+
+// sendUpdateRef sends the block's update, carrying ref when it answers the
+// action the client sent with that ref.
+func (h *WebSocketHandler) sendUpdateRef(instance *BlockInstance, ref string) {
 	// Get state data and render under instance lock
 	var response MessageEnvelope
 	func() {
@@ -961,6 +980,7 @@ func (h *WebSocketHandler) sendUpdate(instance *BlockInstance) {
 			BlockID:   instance.blockID,
 			Action:    "tree",
 			Data:      json.RawMessage(buf.Bytes()),
+			Ref:       ref,
 			ExecMeta:  extractExecMeta(stateData),
 			CacheMeta: extractCacheMeta(stateData),
 		}
@@ -969,6 +989,8 @@ func (h *WebSocketHandler) sendUpdate(instance *BlockInstance) {
 	// Send tree update (outside the instance lock)
 	if response.BlockID != "" {
 		h.sendMessage(instance.conn, response)
+	} else {
+		h.sendRefError(instance.conn, instance.blockID, ref, "the update could not be rendered")
 	}
 
 	// Evaluate and send expression updates (outside the instance lock)

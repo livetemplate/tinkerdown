@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -25,9 +26,10 @@ type Followable interface {
 
 // QuerySetter is a source whose rows depend on the page URL's query.
 // SetQuery reports whether the values it reads changed, so the page must
-// refresh.
+// refresh. Params returns the values it accepted, by param name.
 type QuerySetter interface {
 	SetQuery(url.Values) bool
+	Params() map[string]string
 }
 
 var _ QuerySetter = (*StreamSource)(nil)
@@ -50,6 +52,7 @@ type StreamSource struct {
 	gates    []gate                                              // one per param, sorted by name; nil unless params
 	build    func(env map[string]string) (*stream.Buffer, error) // a gated source's buffer, on first open
 	env      map[string]string                                   // TD_ values; nil while a param is missing or refused
+	params   map[string]string                                   // env by param name, without TD_; nil with env
 	valueErr error                                               // why the query's values were refused
 	sub      *stream.Subscription                                // the page's subscription, once Subscribe ran
 	attached bool                                                // buf is attached to sub
@@ -140,7 +143,23 @@ func (s *StreamSource) SetQuery(q url.Values) bool {
 		s.sub.Detach(s.buf)
 	}
 	s.buf, s.attached, s.env, s.valueErr = nil, false, env, err
+	s.params = nil
+	if env != nil {
+		s.params = make(map[string]string, len(env))
+		for k, v := range env {
+			s.params[strings.TrimPrefix(k, "TD_")] = v
+		}
+	}
 	return true
+}
+
+// Params returns the query's values for a gated source's params, by name,
+// once every one is present and passes the value rules; nil otherwise.
+// The map is shared and must not be modified.
+func (s *StreamSource) Params() map[string]string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.params
 }
 
 func errText(err error) string {

@@ -11,6 +11,19 @@ Earlier releases (v0.1.x) are documented in the
 
 ## [Unreleased]
 
+### Added
+
+- **A button shows `aria-busy` while its action runs.** The client tags each
+  action with a ref, and the server sends it back on the update after the
+  action. Until then the button (or `lvt-on:click` element, or form) is
+  `aria-busy="true"`, which draws a spinner, and a second click sends
+  nothing. See
+  [docs/reference/lvt-attributes.md](docs/reference/lvt-attributes.md#aria-busy-while-an-action-runs).
+- **`.Params` on a merge with `params`.** The block's state holds the values
+  it took from the page URL, so `{{with .Params.name}}` can name what it
+  shows. See
+  [docs/sources/stream.md](docs/sources/stream.md#values-from-the-page-url).
+
 ## [v0.7.0] - 2026-11-22
 
 ### Added

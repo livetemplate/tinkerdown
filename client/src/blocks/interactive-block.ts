@@ -10,18 +10,35 @@ import "./exec-toolbar.css";
 import "./cache-indicator.css";
 import "./stream-rows.css";
 
+/** A click waiting for the server to finish its action. */
+interface PendingClick {
+  el: HTMLElement;
+  /** Finds the element again if an update replaced it: same tag and attribute value… */
+  query: string;
+  /** …and the same data-* values. */
+  data: Record<string, string>;
+  action: string;
+  timer: ReturnType<typeof setTimeout>;
+}
+
+/** How long a click stays busy if the server never answers it. */
+const PENDING_TIMEOUT_MS = 60_000;
+
 export class InteractiveBlock extends BaseBlock {
   private client: LiveTemplateClient | null = null;
   private containerElement: HTMLElement | null = null;
-  private sendMessage: ((blockID: string, action: string, data: any) => void) | null = null;
-  private pendingForm: HTMLFormElement | null = null;
-  private pendingAction: string | null = null;
+  private sendMessage: ((blockID: string, action: string, data: any, ref?: string) => void) | null = null;
 
   // Bound event handlers (stored for removal in destroy)
   private readonly _handleClick = (e: Event) => this.handleClick(e);
   private readonly _handleSubmit = (e: Event) => this.handleSubmit(e);
   private readonly _handleChange = (e: Event) => this.handleFieldEvent(e, "change");
   private readonly _handleInput = (e: Event) => this.handleFieldEvent(e, "input");
+
+  // Clicks whose action the server hasn't answered yet, by ref. Their element
+  // shows aria-busy until the update carrying the ref arrives.
+  private pending = new Map<string, PendingClick>();
+  private refSeq = 0;
 
   // lvt-mod:debounce / lvt-mod:throttle state, per field element
   private rateLimits = new WeakMap<Element, { timer?: ReturnType<typeof setTimeout>; last: number }>();
@@ -89,12 +106,19 @@ export class InteractiveBlock extends BaseBlock {
     this.element.removeEventListener("input", this._handleInput, true);
     this.timers.forEach((t) => clearTimeout(t));
     this.timers.clear();
+    this.clearPending();
     this.client = null;
-    this.pendingForm = null;
-    this.pendingAction = null;
   }
 
-  handleMessage(action: string, data: any, execMeta?: ExecMeta, cacheMeta?: CacheMeta): void {
+  /**
+   * Ends every pending click without an answer, as when the connection drops:
+   * the server will never send their refs back.
+   */
+  clearPending(): void {
+    Array.from(this.pending.keys()).forEach((ref) => this.finishClick(ref, false));
+  }
+
+  handleMessage(action: string, data: any, execMeta?: ExecMeta, cacheMeta?: CacheMeta, ref?: string): void {
     this.log("Received message:", action, data);
 
     switch (action) {
@@ -103,6 +127,12 @@ export class InteractiveBlock extends BaseBlock {
         if (data && this.containerElement && this.client) {
           this.client.updateDOM(this.containerElement, data);
           this.log("DOM updated with tree");
+
+          // An update re-renders elements without the aria-busy this block
+          // added: finish the click this update answers, and mark the rest
+          // again.
+          if (ref) this.finishClick(ref, true);
+          this.pending.forEach((click) => this.findClick(click)?.setAttribute("aria-busy", "true"));
 
           // Update cache indicator attributes
           if (cacheMeta) {
@@ -113,36 +143,12 @@ export class InteractiveBlock extends BaseBlock {
           if (this.execToolbar && execMeta) {
             this.updateExecToolbar(execMeta);
           }
-
-          // Dispatch lifecycle events for pending form (mimics formLifecycleManager)
-          if (this.pendingForm) {
-            const meta = { success: true, errors: {}, action: this.pendingAction };
-
-            // Dispatch lvt:success event from the form
-            // The reactive attribute listeners from @livetemplate/client handle
-            // lvt-el:reset:on:success and other lvt-el:{method}:on:{state} attributes
-            this.pendingForm.dispatchEvent(
-              new CustomEvent("lvt:success", { bubbles: true, detail: meta })
-            );
-            this.log("Dispatched lvt:success event");
-
-            this.pendingForm = null;
-            this.pendingAction = null;
-          }
         }
         break;
 
       case "error":
-        this.error("Server error:", data.message);
-        // Dispatch lvt:error event for pending form
-        if (this.pendingForm) {
-          const meta = { success: false, errors: data.errors || {}, action: this.pendingAction };
-          this.pendingForm.dispatchEvent(
-            new CustomEvent("lvt:error", { bubbles: true, detail: meta })
-          );
-          this.pendingForm = null;
-          this.pendingAction = null;
-        }
+        this.error("Server error:", data?.message);
+        if (ref) this.finishClick(ref, false, data?.errors);
         break;
 
       default:
@@ -153,7 +159,7 @@ export class InteractiveBlock extends BaseBlock {
   /**
    * Set the message sender (called by LivemdtoolsClient)
    */
-  setMessageSender(sender: (blockID: string, action: string, data: any) => void): void {
+  setMessageSender(sender: (blockID: string, action: string, data: any, ref?: string) => void): void {
     this.sendMessage = sender;
   }
 
@@ -183,6 +189,7 @@ export class InteractiveBlock extends BaseBlock {
     const button = target.closest("button[name]") as HTMLButtonElement | null;
     if (button && button.form === null && this.element.contains(button)) {
       e.preventDefault();
+      if (this.isBusy(button)) return; // its action is still running
 
       if (!this.checkConfirm(button)) {
         this.log("Click action cancelled by user:", button.name);
@@ -190,7 +197,7 @@ export class InteractiveBlock extends BaseBlock {
       }
 
       const data = this.extractData(button);
-      this.sendAction(button.name, data);
+      this.sendAction(button.name, data, this.markBusy(button, "name", button.name, data));
       this.log("Click action (button name):", button.name, data);
       return;
     }
@@ -201,6 +208,7 @@ export class InteractiveBlock extends BaseBlock {
       const action = lvtEl.getAttribute("lvt-on:click");
       if (action) {
         e.preventDefault();
+        if (this.isBusy(lvtEl)) return;
 
         if (!this.checkConfirm(lvtEl)) {
           this.log("Click action cancelled by user:", action);
@@ -208,7 +216,7 @@ export class InteractiveBlock extends BaseBlock {
         }
 
         const data = this.extractData(lvtEl);
-        this.sendAction(action, data);
+        this.sendAction(action, data, this.markBusy(lvtEl, "lvt-on:click", action, data));
         this.log("Click action (lvt-on:click):", action, data);
       }
     }
@@ -234,6 +242,9 @@ export class InteractiveBlock extends BaseBlock {
     }
 
     e.preventDefault();
+    // A submit button with a name shows the wait; otherwise the form does.
+    const busyEl: HTMLElement = submitter instanceof HTMLButtonElement && submitter.name ? submitter : target;
+    if (this.isBusy(busyEl)) return;
     const formData = new FormData(target);
     const data: Record<string, any> = {};
     formData.forEach((value, key) => {
@@ -243,16 +254,12 @@ export class InteractiveBlock extends BaseBlock {
       data[key] = value;
     });
 
-    // Track form and action for lifecycle events
-    this.pendingForm = target;
-    this.pendingAction = action;
-
     // Dispatch lvt:pending event
     target.dispatchEvent(
       new CustomEvent("lvt:pending", { bubbles: true, detail: { action } })
     );
 
-    this.sendAction(action, data);
+    this.sendAction(action, data, this.markBusy(busyEl, "name", action, this.extractData(busyEl)));
     this.log("Submit action:", action, data);
   }
 
@@ -349,14 +356,63 @@ export class InteractiveBlock extends BaseBlock {
   /**
    * Send an action to the server
    */
-  private sendAction(action: string, data: any = {}): void {
+  private sendAction(action: string, data: any = {}, ref?: string): void {
     if (!this.sendMessage) {
       this.error("Cannot send action - no message sender configured");
       return;
     }
 
-    this.sendMessage(this.id, action, data);
+    this.sendMessage(this.id, action, data, ref);
   }
+
+  private isBusy(el: HTMLElement): boolean {
+    return el.getAttribute("aria-busy") === "true";
+  }
+
+  /**
+   * Marks el aria-busy until the server answers the action it sends, and
+   * returns the ref that names the click. An update that replaces el is
+   * matched again by tag, attr's value and the same data-* values.
+   */
+  private markBusy(el: HTMLElement, attr: string, action: string, data: Record<string, string>): string {
+    const ref = `${this.id}:${++this.refSeq}`;
+    const query = `${el.localName}[${CSS.escape(attr)}="${CSS.escape(el.getAttribute(attr) ?? "")}"]`;
+    const timer = setTimeout(() => this.finishClick(ref, false), PENDING_TIMEOUT_MS);
+    this.pending.set(ref, { el, query, data, action, timer });
+    el.setAttribute("aria-busy", "true");
+    return ref;
+  }
+
+  /**
+   * Ends a pending click: clears its aria-busy, and for a form tells
+   * lvt-el:{method}:on:success|error listeners how it went.
+   */
+  private finishClick(ref: string, ok: boolean, errors: Record<string, string> = {}): void {
+    const click = this.pending.get(ref);
+    if (!click) return;
+    this.pending.delete(ref);
+    clearTimeout(click.timer);
+    const el = this.findClick(click);
+    el?.removeAttribute("aria-busy");
+    const form = el instanceof HTMLFormElement ? el : el?.closest("form");
+    form?.dispatchEvent(new CustomEvent(ok ? "lvt:success" : "lvt:error", {
+      bubbles: true,
+      detail: { success: ok, errors, action: click.action },
+    }));
+  }
+
+  private findClick(click: PendingClick): HTMLElement | null {
+    if (this.element.contains(click.el)) return click.el;
+    const same = (c: HTMLElement) => {
+      const d = this.extractData(c);
+      const keys = Object.keys(click.data);
+      return keys.length === Object.keys(d).length && keys.every((k) => d[k] === click.data[k]);
+    };
+    const found = Array.from(this.element.querySelectorAll<HTMLElement>(click.query)).find(same);
+    if (found) click.el = found;
+    return found || null;
+  }
+
 
   /**
    * Inject exec toolbar for runbook/notebook-style command execution
