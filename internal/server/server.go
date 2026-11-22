@@ -1934,14 +1934,14 @@ func (s *Server) renderPage(page *tinkerdown.Page, currentPath string, host stri
             transform: scale(0.95);
         }
 
-        /* Theme Toggle */
+        /* Theme Toggle: one trigger button + a Light/Dark/System menu */
         .theme-toggle {
+            position: relative;
             display: flex;
-            gap: 0.35rem;
             align-items: center;
         }
 
-        .theme-toggle button {
+        .theme-toggle > button {
             background: transparent;
             border: 1px solid var(--border-color);
             color: var(--text-primary);
@@ -1959,26 +1959,87 @@ func (s *Server) renderPage(page *tinkerdown.Page, currentPath string, host stri
             flex-shrink: 0;
         }
 
-        .theme-toggle button svg {
+        .theme-toggle svg {
             width: 1.1rem;
             height: 1.1rem;
             display: block;
+            flex-shrink: 0;
         }
 
-        .theme-toggle button:hover {
+        .theme-toggle > button:hover,
+        .theme-toggle.open > button {
             background: var(--code-bg);
             transform: none;
             box-shadow: none;
         }
 
-        .theme-toggle button.active {
-            background: var(--accent);
-            color: white;
-            border-color: var(--accent);
+        .theme-toggle > button:active {
+            transform: scale(0.95);
         }
 
-        .theme-toggle button:active {
-            transform: scale(0.95);
+        /* Only the icon of the selected theme shows on the trigger. */
+        .theme-toggle > button svg { display: none; }
+        .theme-toggle[data-choice="light"] > button .icon-light,
+        .theme-toggle[data-choice="dark"] > button .icon-dark,
+        .theme-toggle[data-choice="auto"] > button .icon-auto { display: block; }
+
+        .theme-menu {
+            display: none;
+            position: absolute;
+            top: calc(100%% + 0.35rem);
+            right: 0;
+            z-index: 1001;
+            min-width: 8.5rem;
+            padding: 0.25rem;
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 8px;
+            box-shadow: 0 4px 12px var(--card-shadow);
+        }
+
+        .theme-toggle.open .theme-menu { display: block; }
+
+        /* In the sidebar footer the toolbar sits at the bottom: open upward. */
+        .nav-sidebar-footer .theme-menu {
+            top: auto;
+            bottom: calc(100%% + 0.35rem);
+            right: auto;
+            left: 50%%;
+            transform: translateX(-50%%);
+        }
+
+        .theme-menu button {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            width: 100%%;
+            margin: 0;
+            padding: 0.4rem 0.6rem;
+            background: transparent;
+            border: none;
+            border-radius: 6px;
+            box-shadow: none;
+            color: var(--text-primary);
+            font-size: 0.9rem;
+            text-align: left;
+            cursor: pointer;
+        }
+
+        .theme-menu button:hover,
+        .theme-menu button:focus-visible {
+            background: var(--code-bg);
+            outline: none;
+        }
+
+        .theme-menu button[aria-checked="true"] {
+            color: var(--accent);
+            font-weight: 600;
+        }
+
+        /* Keep the toolbar fully visible while the menu is open. */
+        .page-toolbar:has(.theme-toggle.open),
+        body.presentation-mode .theme-toggle.open {
+            opacity: 1;
         }
 
         /* Presentation Mode Styles */
@@ -2890,33 +2951,18 @@ func (s *Server) renderPage(page *tinkerdown.Page, currentPath string, host stri
             </svg>
         </button>
 
-        <!-- Theme Toggle -->
-        <div class="theme-toggle">
-            <button id="theme-light" title="Light theme" aria-label="Light theme">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="12" cy="12" r="5"/>
-                    <line x1="12" y1="1" x2="12" y2="3"/>
-                    <line x1="12" y1="21" x2="12" y2="23"/>
-                    <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
-                    <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
-                    <line x1="1" y1="12" x2="3" y2="12"/>
-                    <line x1="21" y1="12" x2="23" y2="12"/>
-                    <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
-                    <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
-                </svg>
+        <!-- Theme Toggle: trigger shows the selected theme's icon; menu picks one -->
+        <div class="theme-toggle" data-choice="auto">
+            <button id="theme-menu-toggle" type="button" title="Theme (Ctrl+Shift+D)" aria-label="Theme" aria-haspopup="menu" aria-expanded="false" aria-controls="theme-menu">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-light" aria-hidden="true"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-dark" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-auto" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
             </button>
-            <button id="theme-dark" title="Dark theme" aria-label="Dark theme">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
-                </svg>
-            </button>
-            <button id="theme-auto" title="Auto theme (system preference)" aria-label="Auto theme">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
-                    <line x1="8" y1="21" x2="16" y2="21"/>
-                    <line x1="12" y1="17" x2="12" y2="21"/>
-                </svg>
-            </button>
+            <div id="theme-menu" class="theme-menu" role="menu" aria-label="Theme">
+                <button id="theme-light" type="button" role="menuitemradio" aria-checked="false" data-theme-choice="light"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-light" aria-hidden="true"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg><span>Light</span></button>
+                <button id="theme-dark" type="button" role="menuitemradio" aria-checked="false" data-theme-choice="dark"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-dark" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg><span>Dark</span></button>
+                <button id="theme-auto" type="button" role="menuitemradio" aria-checked="false" data-theme-choice="auto"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="icon-auto" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg><span>System</span></button>
+            </div>
         </div>
     </div>
 
@@ -2944,14 +2990,14 @@ func (s *Server) renderPage(page *tinkerdown.Page, currentPath string, host stri
                 const effectiveTheme = theme === 'auto' ? getSystemTheme() : theme;
                 html.setAttribute('data-theme', effectiveTheme);
 
-                // Update button states
-                document.querySelectorAll('.theme-toggle button').forEach(btn => {
-                    btn.classList.remove('active');
-                });
-                const activeBtn = document.getElementById('theme-' + theme);
-                if (activeBtn) {
-                    activeBtn.classList.add('active');
+                // Reflect the choice (not the resolved theme) on the trigger and menu.
+                const toggle = document.querySelector('.theme-toggle');
+                if (toggle) {
+                    toggle.dataset.choice = theme;
                 }
+                document.querySelectorAll('.theme-menu [data-theme-choice]').forEach(item => {
+                    item.setAttribute('aria-checked', String(item.dataset.themeChoice === theme));
+                });
             }
 
             // Set and save theme
@@ -2973,9 +3019,50 @@ func (s *Server) renderPage(page *tinkerdown.Page, currentPath string, host stri
 
             // Add click handlers after DOM is ready
             window.addEventListener('DOMContentLoaded', () => {
-                document.getElementById('theme-light').addEventListener('click', () => setTheme('light'));
-                document.getElementById('theme-dark').addEventListener('click', () => setTheme('dark'));
-                document.getElementById('theme-auto').addEventListener('click', () => setTheme('auto'));
+                const toggle = document.querySelector('.theme-toggle');
+                const trigger = document.getElementById('theme-menu-toggle');
+                const items = Array.from(document.querySelectorAll('.theme-menu [data-theme-choice]'));
+
+                function setMenuOpen(open, focusTrigger) {
+                    if (!toggle || !trigger) return;
+                    toggle.classList.toggle('open', open);
+                    trigger.setAttribute('aria-expanded', String(open));
+                    if (open) {
+                        const checked = items.find(i => i.getAttribute('aria-checked') === 'true') || items[0];
+                        if (checked) checked.focus();
+                    } else if (focusTrigger) {
+                        trigger.focus();
+                    }
+                }
+
+                if (toggle && trigger) {
+                    trigger.addEventListener('click', () => {
+                        setMenuOpen(!toggle.classList.contains('open'), false);
+                    });
+                    items.forEach(item => item.addEventListener('click', () => {
+                        setTheme(item.dataset.themeChoice);
+                        setMenuOpen(false, true);
+                    }));
+                    toggle.addEventListener('keydown', (e) => {
+                        if (!toggle.classList.contains('open')) return;
+                        const idx = items.indexOf(document.activeElement);
+                        if (e.key === 'Escape') {
+                            e.preventDefault();
+                            setMenuOpen(false, true);
+                        } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                            e.preventDefault();
+                            const step = e.key === 'ArrowDown' ? 1 : items.length - 1;
+                            items[(Math.max(idx, 0) + step) %% items.length].focus();
+                        }
+                    });
+                    // Close on any click or focus move outside the toggle.
+                    document.addEventListener('click', (e) => {
+                        if (!toggle.contains(e.target)) setMenuOpen(false, false);
+                    });
+                    toggle.addEventListener('focusout', (e) => {
+                        if (e.relatedTarget && !toggle.contains(e.relatedTarget)) setMenuOpen(false, false);
+                    });
+                }
 
                 // Keyboard shortcut: Ctrl+Shift+D
                 document.addEventListener('keydown', (e) => {

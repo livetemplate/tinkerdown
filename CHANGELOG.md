@@ -26,6 +26,13 @@ Earlier releases (v0.1.x) are documented in the
   shows. See
   [docs/sources/stream.md](docs/sources/stream.md#values-from-the-page-url).
 
+### Changed
+
+- **One theme button instead of three.** The toolbar's light, dark and auto
+  buttons are now a single button that shows the current theme's icon. It opens
+  a Light / Dark / System menu, upward when the toolbar sits in the sidebar
+  footer. Ctrl+Shift+D still cycles the themes.
+
 ## [v0.7.0] - 2026-11-22
 
 ### Added
