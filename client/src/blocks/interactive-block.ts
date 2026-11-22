@@ -413,7 +413,6 @@ export class InteractiveBlock extends BaseBlock {
     return found || null;
   }
 
-
   /**
    * Inject exec toolbar for runbook/notebook-style command execution
    */

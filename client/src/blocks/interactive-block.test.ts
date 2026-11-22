@@ -75,3 +75,84 @@ describe("InteractiveBlock field events", () => {
     expect(sent).toEqual([]);
   });
 });
+
+describe("InteractiveBlock busy clicks", () => {
+  beforeAll(() => {
+    // jsdom has no CSS.escape; browsers do.
+    if (!(globalThis as any).CSS?.escape) {
+      (globalThis as any).CSS = { escape: (s: string) => s.replace(/([^\w-])/g, "\\$1") };
+    }
+  });
+  afterEach(() => jest.useRealTimers());
+
+  // A block whose updates re-render its content from html, as a server
+  // update re-creating the row would, and that records refs it sends.
+  function makeBusyBlock(html: string) {
+    document.body.innerHTML = `<div id="b">${html}</div>`;
+    const el = document.getElementById("b")!;
+    const block = new InteractiveBlock({ id: "lvt-0", element: el, metadata: {} } as any, new PersistenceManager() as any);
+    const sent: Array<{ action: string; data: any; ref?: string }> = [];
+    (block as any).sendMessage = (_id: string, action: string, data: any, ref?: string) => sent.push({ action, data, ref });
+    block.initialize();
+    (block as any).client = {
+      updateDOM: (container: HTMLElement) => {
+        container.innerHTML = html;
+      },
+    };
+    return { block, sent };
+  }
+  const button = () => document.querySelector<HTMLButtonElement>('button[name="stop"]')!;
+
+  it("marks a clicked button busy, sends a ref, and ignores clicks until answered", () => {
+    const { sent } = makeBusyBlock(`<button name="stop" data-name="web">Stop</button>`);
+    button().click();
+    button().click();
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({ action: "stop", data: { name: "web" } });
+    expect(sent[0].ref).toBeTruthy();
+    expect(button().getAttribute("aria-busy")).toBe("true");
+  });
+
+  it("keeps a re-created button busy through other updates, and clears it on its answer", () => {
+    const { block, sent } = makeBusyBlock(`<button name="stop" data-name="web">Stop</button><button name="stop" data-name="db">Stop</button>`);
+    button().click();
+    const clicked = () => document.querySelector('button[data-name="web"]')!;
+    block.handleMessage("tree", {});
+    expect(clicked().getAttribute("aria-busy")).toBe("true");
+    expect(document.querySelector('button[data-name="db"]')!.hasAttribute("aria-busy")).toBe(false);
+    block.handleMessage("tree", {}, undefined, undefined, sent[0].ref);
+    expect(clicked().hasAttribute("aria-busy")).toBe(false);
+  });
+
+  it("clears a click on an error that carries its ref", () => {
+    const { block, sent } = makeBusyBlock(`<button name="stop" data-name="web">Stop</button>`);
+    button().click();
+    block.handleMessage("error", { message: "unknown block" }, undefined, undefined, sent[0].ref);
+    expect(button().hasAttribute("aria-busy")).toBe(false);
+  });
+
+  it("fires lvt:success on a form when its own answer arrives, not on another update", () => {
+    const { block, sent } = makeBusyBlock(`<form name="save"><input name="q" value="x"><button type="submit">Save</button></form>`);
+    const events: string[] = [];
+    document.addEventListener("lvt:success", () => events.push("success"));
+    document.querySelector("form")!.requestSubmit();
+    expect(sent[0]).toMatchObject({ action: "save", data: { q: "x" } });
+    block.handleMessage("tree", {});
+    expect(events).toEqual([]);
+    expect(document.querySelector("form")!.getAttribute("aria-busy")).toBe("true");
+    block.handleMessage("tree", {}, undefined, undefined, sent[0].ref);
+    expect(events).toEqual(["success"]);
+  });
+
+  it("ends pending clicks when the connection closes, or after the timeout", () => {
+    jest.useFakeTimers();
+    const { block } = makeBusyBlock(`<button name="stop" data-name="web">Stop</button><button name="kill" data-name="web">Kill</button>`);
+    button().click();
+    block.clearPending();
+    expect(button().hasAttribute("aria-busy")).toBe(false);
+    const kill = document.querySelector<HTMLButtonElement>('button[name="kill"]')!;
+    kill.click();
+    jest.advanceTimersByTime(60_000);
+    expect(kill.hasAttribute("aria-busy")).toBe(false);
+  });
+});
