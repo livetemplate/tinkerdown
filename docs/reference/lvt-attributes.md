@@ -278,6 +278,12 @@ Confirmation dialog before action.
 </button>
 ```
 
+### aria-busy while an action runs
+
+A button that sends an action has `aria-busy="true"` until the server has run it, so a slow command shows a spinner. Tinkerdown's stylesheet draws the spinner on its own, and a page can style `[aria-busy="true"]` further.
+
+While a button is busy, clicking it again sends nothing. The same applies to an element with `lvt-on:click`, and to a form: its submit button is marked when it has a `name`, and the form itself otherwise.
+
 ---
 
 ## Rate Limiting

@@ -35,6 +35,8 @@ export interface MessageEnvelope {
   data: any;
   execMeta?: ExecMeta;
   cacheMeta?: CacheMeta;
+  /** Names one click: sent with an action, echoed on the update after it. */
+  ref?: string;
 }
 
 export interface TinkerdownClientOptions {

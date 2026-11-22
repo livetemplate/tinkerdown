@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -317,12 +318,15 @@ func TestFlagActions_E2E(t *testing.T) {
 	feed := filepath.Join(dir, "feed.jsonl")
 	os.WriteFile(feed, []byte(`{"name":"web"}`+"\n"+`{"name":"a b $(touch pwned)"}`+"\n"+`{"name":"-rf"}`+"\n"), 0o644)
 	page := "---\ntitle: Rows\nsources:\n  rows:\n    type: merge\n    inputs: [\"*\"]\n    key: [fields.name]\n---\n\n```lvt\n" +
-		`<div lvt-source="rows">{{if .Error}}<p data-testid="error">{{.Error}}</p>{{end}}<ol data-testid="rows">{{range .Data}}<li data-key="{{.key}}"><button name="mark" data-name="{{.fields.name}}">{{.fields.name}}</button></li>{{end}}</ol></div>` + "\n```\n"
+		`<div lvt-source="rows">{{if .Error}}<p data-testid="error">{{.Error}}</p>{{end}}<ol data-testid="rows">{{range .Data}}<li data-key="{{.key}}"><button name="mark" data-name="{{.fields.name}}">{{.fields.name}}</button> <button name="slow" data-name="{{.fields.name}}">slow</button></li>{{end}}</ol></div>` + "\n```\n"
 	os.WriteFile(filepath.Join(dir, "index.md"), []byte(page), 0o644)
 
 	cfg := config.DefaultConfig()
 	cfg.FlagSources = map[string]config.SourceConfig{"feed": {Type: "stream", File: feed, Format: "json"}}
-	cfg.FlagActions = map[string]*config.Action{"mark": {Kind: "exec", Cmd: `printf '%s\n' "$TD_name" >> clicked.txt`, FromFlag: true}}
+	cfg.FlagActions = map[string]*config.Action{
+		"mark": {Kind: "exec", Cmd: `printf '%s\n' "$TD_name" >> clicked.txt`, FromFlag: true},
+		"slow": {Kind: "exec", Cmd: `sleep 2; printf 'slow %s\n' "$TD_name" >> slow.txt`, FromFlag: true},
+	}
 	srv := server.NewWithConfig(dir, cfg)
 	if err := srv.Discover(); err != nil {
 		t.Fatal(err)
@@ -342,6 +346,9 @@ func TestFlagActions_E2E(t *testing.T) {
 		chromedp.Run(ctx, chromedp.OuterHTML("body", &html, chromedp.ByQuery))
 		t.Logf("console:\n%s", strings.Join(logs.console, "\n"))
 		t.Logf("ws received: %d frames, last: %s", len(frames), strings.Join(frames[max(0, len(frames)-4):], "\n"))
+		logs.mu.Lock()
+		t.Logf("ws sent:\n%s", strings.Join(logs.wsSent, "\n"))
+		logs.mu.Unlock()
 		t.Logf("html: %s", tail(html, 3000))
 		t.Logf("server log tail: %s", tail(serverLog.String(), 3000))
 	}
@@ -351,7 +358,7 @@ func TestFlagActions_E2E(t *testing.T) {
 	}
 	if err := chromedp.Run(ctx, network.Enable(), chromedp.Navigate(ConvertURLForDockerChrome(ts.URL)),
 		chromedp.WaitVisible(`[data-testid="rows"]`, chromedp.ByQuery),
-		waitForDOM(`document.querySelectorAll('[data-testid="rows"] button').length === 3`, 15*time.Second)); err != nil {
+		waitForDOM(`document.querySelectorAll('[data-testid="rows"] button[name="mark"]').length === 3`, 15*time.Second)); err != nil {
 		dump()
 		t.Fatal(err)
 	}
@@ -384,6 +391,40 @@ func TestFlagActions_E2E(t *testing.T) {
 	if got := clicked(); got != "web\na b $(touch pwned)\n" {
 		t.Fatalf("a refused value ran: clicked.txt = %q", got)
 	}
+
+	// A button stays aria-busy until the server answers its click, and a
+	// second click on a busy button sends nothing.
+	const slow = `[data-testid="rows"] li:nth-child(1) button[name="slow"]`
+	if err := chromedp.Run(ctx, chromedp.Click(slow, chromedp.ByQuery),
+		waitForDOM(`document.querySelector('`+slow+`').getAttribute("aria-busy") === "true"`, 2*time.Second),
+		chromedp.Evaluate(`document.querySelector('`+slow+`').click()`, nil)); err != nil {
+		dump()
+		t.Fatalf("a running action's button isn't busy: %v", err)
+	}
+	if err := chromedp.Run(ctx, waitForDOM(`document.querySelector('`+slow+`').getAttribute("aria-busy") === null`, 10*time.Second)); err != nil {
+		dump()
+		t.Fatalf("the button stayed busy after its action finished: %v", err)
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, "slow.txt")); string(b) != "slow web\n" {
+		t.Fatalf("slow.txt = %q; a click on a busy button must not send again", b)
+	}
+	// Each click the server ran (two marks, the refused value, one slow) got
+	// one update carrying its ref back.
+	refs := map[string]int{}
+	for _, f := range logs.frames() {
+		if m := regexp.MustCompile(`"ref":"([^"]+)"`).FindStringSubmatch(f); m != nil {
+			refs[m[1]]++
+		}
+	}
+	if len(refs) != 4 {
+		dump()
+		t.Fatalf("updates carried refs %v; want one for each of the 4 clicks the server ran", refs)
+	}
+	for ref, n := range refs {
+		if n != 1 {
+			t.Fatalf("ref %s came back %d times", ref, n)
+		}
+	}
 }
 
 // TestParamsMerge_E2E opens a params merge from the page URL. A value not yet
@@ -407,7 +448,7 @@ func TestParamsMerge_E2E(t *testing.T) {
 	page := "---\ntitle: Things\nsources:\n  things:\n    type: merge\n    inputs: [\"*\"]\n    key: [fields.name]\n  logview:\n    type: merge\n    inputs: [logs]\n    params:\n      name: {in: things.fields.name}\n---\n\n```lvt\n" +
 		`<div lvt-source="things"><input data-testid="keep"><ol data-testid="list">{{range .Data}}<li data-key="{{.key}}"><a href="?name={{.fields.name}}">{{.fields.name}}</a> <i>{{.source}}</i></li>{{end}}</ol></div>` +
 		"\n```\n\n```lvt\n" +
-		`<div lvt-source="logview">{{if .Error}}<p data-testid="logerr">{{.Error}}</p>{{end}}<ol data-testid="logs">{{range .Data}}<li data-key="{{.seq}}">{{.msg}}</li>{{end}}</ol></div>` + "\n```\n"
+		`<div lvt-source="logview">{{with .Params.name}}<h3 data-testid="logname">{{.}}</h3>{{end}}{{if .Error}}<p data-testid="logerr">{{.Error}}</p>{{end}}<ol data-testid="logs">{{range .Data}}<li data-key="{{.seq}}">{{.msg}}</li>{{end}}</ol></div>` + "\n```\n"
 	os.WriteFile(filepath.Join(dir, "index.md"), []byte(page), 0o644)
 
 	cfg := config.DefaultConfig()
@@ -470,6 +511,8 @@ func TestParamsMerge_E2E(t *testing.T) {
 	fmt.Fprintln(f, `{"name":"c"}`)
 	f.Close()
 	wait("c's logs once c is listed", logText+` === "line from c"`)
+	logName := `(document.querySelector('[data-testid="logname"]')?.textContent || "")`
+	wait("the block naming c", logName+` === "c"`)
 
 	// A row link opens another value, with its own buffer, without a page
 	// load: the window marker and the text typed in the list block survive.
@@ -481,6 +524,7 @@ func TestParamsMerge_E2E(t *testing.T) {
 		t.Fatal(err)
 	}
 	wait("a's logs, not c's", logText+` === "line from a"`)
+	wait("the block naming a", logName+` === "a"`)
 	var href string
 	var sameDoc bool
 	var typed string
@@ -515,6 +559,7 @@ func TestParamsMerge_E2E(t *testing.T) {
 		t.Fatal(err)
 	}
 	wait("the refusal", `document.body.textContent.includes("starts with -")`)
+	wait("no name for a refused value", logName+` === ""`)
 	if n := running(); n > before {
 		t.Fatalf("a refused value started a command (%d -> %d)", before, n)
 	}

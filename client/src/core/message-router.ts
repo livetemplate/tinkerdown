@@ -9,7 +9,7 @@ import "./status-banners.css";
 /** Special block ID for routing expression update messages from the server. */
 const EXPRESSIONS_BLOCK_ID = "__expressions__";
 
-export type MessageHandler = (action: string, data: any, execMeta?: ExecMeta, cacheMeta?: CacheMeta) => void;
+export type MessageHandler = (action: string, data: any, execMeta?: ExecMeta, cacheMeta?: CacheMeta, ref?: string) => void;
 
 export class MessageRouter {
   private handlers: Map<string, MessageHandler> = new Map();
@@ -50,7 +50,7 @@ export class MessageRouter {
       const envelope: MessageEnvelope =
         typeof message === "string" ? JSON.parse(message) : message;
 
-      const { blockID, action, data, execMeta, cacheMeta } = envelope;
+      const { blockID, action, data, execMeta, cacheMeta, ref } = envelope;
 
       // Handle reload action (special case - no blockID)
       if (action === "reload") {
@@ -79,7 +79,7 @@ export class MessageRouter {
         console.log(`[MessageRouter] Routing to ${blockID}:`, { action, data });
       }
 
-      handler(action, data, execMeta, cacheMeta);
+      handler(action, data, execMeta, cacheMeta, ref);
     } catch (error) {
       console.error("[MessageRouter] Error routing message:", error);
     }

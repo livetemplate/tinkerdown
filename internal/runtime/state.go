@@ -81,6 +81,10 @@ type GenericState struct {
 	// what its page declared it takes, so a template can render an empty state.
 	Inputs  []string              `json:"inputs,omitempty"`
 	Accepts *config.SourceAccepts `json:"accepts,omitempty"`
+	// Params are a merge's params values from the page URL, by name, once
+	// they are all present and valid: {{with .Params.name}} names what the
+	// block shows.
+	Params map[string]string `json:"params,omitempty"`
 
 	// Private runtime fields (not serialized)
 	source       source.Source
@@ -593,6 +597,9 @@ func (s *GenericState) refresh() error {
 
 	ctx := context.Background()
 	data, err := s.source.Fetch(ctx)
+	if qs, ok := s.source.(source.QuerySetter); ok {
+		s.Params = qs.Params() // nil for a refused value, so it isn't shown
+	}
 	if err != nil {
 		s.Error = err.Error()
 		return err

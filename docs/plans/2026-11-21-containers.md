@@ -116,6 +116,14 @@ On a phone, each row puts the image and status under the name and the buttons on
   because: the error an action sets was never shown (found in Phase 2)
 - Kill asks first through the button's `data-confirm`. Stop and restart don't.
   alternative: none considered
+- A button is `aria-busy` from its click until the server's update carrying the click's ref, and ignores clicks meanwhile. The client re-applies the mark after every update, since an update re-renders the button without it.
+  alternative: clear it on the next update, as `pendingForm` did; or `@livetemplate/client`'s client-owned-state overlay
+  because: a stream block's next update can be a push, not the action's answer (found in Phase 4, G3). The overlay isn't exported, so it needs an upstream release. It is also keyed by element, so a re-created row would still need the re-find
+- Forms use the same refs: `lvt:success` and `lvt:error` fire when the form's own answer arrives, and `pendingForm` is gone. The server answers a click it can't render an update for (unknown block, a render failure) with a ref'd `error`, and the client ends pending clicks when the socket closes.
+  alternative: none considered
+- A params merge's block state exposes its accepted values as `.Params` (omitted while a value is missing or refused).
+  alternative: none considered
+  because: the logs pane names its container, as the mockup shows
 - The feed is one copyable `--source` value. Events are filtered to `create`, `start`, `die`, `pause`, `unpause` and `destroy`, and Docker templates map them onto `ps` states (`start` → `running`, `die` → `exited`, `destroy` → `removed`). Names are printed with `{{json .Names}}`.
   alternative: all container events
   because: `attach`, `exec_*` and `health_status` would overwrite the row's state with noise
@@ -154,8 +162,8 @@ onefile:
 | R2 | risk | A rename leaves the old name's row behind. Mitigation if it bites: map `rename` to a drop of `oldName`. | low | accepted |
 | G1 | gap | Remote pages can call flag actions but still can't declare their own. Intended. | low | owned (this plan) |
 | G2 | gap | Page-declared exec actions still paste values with `{{…}}`, so a value can add arguments. | medium | unowned |
-| G3 | gap | A pressed button shows nothing until its action finishes, and the logs pane can't name its container. Both need tinkerdown: an action acknowledgement that names the click, so the client can keep the button `aria-busy`, and the accepted `params` values on the block's state. | medium | follow-up (v0.7.1), awaiting the user |
-| R3 | risk | An action runs on the connection's read loop, so while a `docker stop` runs that tab's search, log links and other buttons wait. Act if it bites: run actions off the read loop; the G3 acknowledgement should name the click so that change needs no new protocol. | medium | open |
+| G3 | gap | A pressed button shows nothing until its action finishes, and the logs pane can't name its container. | medium | resolved in v0.7.1: actions carry a ref the server echoes, so the client keeps the button `aria-busy`; the block's state has `.Params` |
+| R3 | risk | An action runs on the connection's read loop holding its block's lock, so while a `docker stop` runs that tab's search, log links and other buttons wait, and the list gets no stream updates. Act if it bites: run actions off the read loop; the ref already names each click, so that change needs no new protocol. | medium | open |
 
 ## Acceptance criteria
 
