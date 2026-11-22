@@ -34,7 +34,9 @@ Earlier releases (v0.1.x) are documented in the
 - **Ranging over a map nested in a row shows each key once.** tinkerdown adds
   a capitalised copy of each key so `{{.Name}}` reads `name`. It did that at
   every depth, so `{{range $k, $v := .fields}}` listed `ms` and `Ms`. Copies are
-  now added only for state keys, a state map's keys and a row's own keys.
+  now added only for state keys, a state map's keys and a row's own keys. A
+  page that read a nested map under a capitalised name, such as `.user.Name`
+  for JSON `name`, now gets nothing and must use `.user.name`.
 
 ### Changed
 
