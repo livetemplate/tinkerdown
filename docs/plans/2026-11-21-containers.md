@@ -1,6 +1,6 @@
 # Plan: a containers onefile app, with actions and log streams from flags
 
-State — Done: audit (below), prototype demo. Next: plan PR, then Phase 1.
+State — Done: plan merged (#336), Phase 1 (`drop`). Next: Phase 2.
 
 ## Context
 
@@ -125,7 +125,7 @@ onefile:
 | # | Type | Item | Severity | Status |
 |---|---|---|---|---|
 | A1 | assumption | The feed survives `--source NAME='…'` quoting and `sh -c`, with the format strings' double quotes escaped. | high | open (Phase 4) |
-| A2 | assumption | Removing a keyed row mid-range reaches the page as `["r", key]`. livetemplate's range diff emits `r` ops (`range_ops.go`). | medium | open (Phase 1) |
+| A2 | assumption | Removing a keyed row mid-range reaches the page as `["r", key]`. livetemplate's range diff emits `r` ops (`range_ops.go`). | medium | verified 2026-11-21 (`TestKeyedMerge_E2E`) |
 | A3 | assumption | A merge input can't be used by a page both as a plain input and through a params merge; if it can, the plain use must refuse a source whose command reads `TD_*`. | medium | open (Phase 3) |
 | A4 | assumption | `data-confirm` works on any button in an lvt block, not only in forms (the PII example uses it on a row button). | low | open (Phase 4) |
 | R1 | risk | Anyone can write a link with `?name=`. `in` limits it to a container the page already lists, so the worst a hostile page can do is start logs for one of those; it can't read them (same-origin policy, Host allow-list). | low | mitigated (`in`) |

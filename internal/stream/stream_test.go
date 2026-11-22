@@ -466,7 +466,7 @@ func TestKeyedCollectReset(t *testing.T) {
 	h := NewHub()
 	defer h.Close()
 	in := newBuffer(h, "kin3", "go", 10)
-	m, _ := h.Merge("t", []*Buffer{in}, 10, KeySpec{Paths: []string{"fields.Test"}, Collect: "fields.Output", ResetPath: "fields.Action", ResetValue: "run|start"})
+	m, _ := h.Merge("t", []*Buffer{in}, 10, KeySpec{Paths: []string{"fields.Test"}, Collect: "fields.Output", Reset: Match{Path: "fields.Action", Values: []string{"run", "start"}}})
 	for _, run := range []string{"first\n", "second\n"} {
 		h.publish(in, "stdout", event("p", "T", "run", ""))
 		h.publish(in, "stdout", event("p", "T", "output", run))
@@ -481,7 +481,7 @@ func TestKeyedCollectResetAlternatives(t *testing.T) {
 	h := NewHub()
 	defer h.Close()
 	in := newBuffer(h, "kin4", "go", 10)
-	m, _ := h.Merge("t", []*Buffer{in}, 10, KeySpec{Paths: []string{"fields.Test"}, Collect: "fields.Output", ResetPath: "fields.Action", ResetValue: "run|start"})
+	m, _ := h.Merge("t", []*Buffer{in}, 10, KeySpec{Paths: []string{"fields.Test"}, Collect: "fields.Output", Reset: Match{Path: "fields.Action", Values: []string{"run", "start"}}})
 	for _, run := range []string{"FAIL one\n", "FAIL two\n"} {
 		h.publish(in, "stdout", event("p", "", "start", "")) // a package row: no run event
 		h.publish(in, "stdout", event("p", "", "output", run))
@@ -508,5 +508,65 @@ func TestKeyedRowKeyIsHex(t *testing.T) {
 	}
 	if rows[0]["key"] == rows[1]["key"] {
 		t.Error("different tests share a key")
+	}
+}
+
+// A drop row removes its key's row and is not stored; a later row for the key
+// starts a new row at the end.
+func TestKeyedDrop(t *testing.T) {
+	h := NewHub()
+	defer h.Close()
+	in := newBuffer(h, "kin6", "docker", 10)
+	m, _ := h.Merge("c", []*Buffer{in}, 10, KeySpec{Paths: []string{"fields.name"}, Drop: Match{Path: "fields.state", Values: []string{"removed", "gone"}}})
+	ctr := func(name, state string) Row {
+		return Row{"fields": map[string]interface{}{"name": name, "state": state}}
+	}
+	names := func() string {
+		var out []string
+		for _, r := range m.Snapshot() {
+			out = append(out, FieldPath(r, "fields.name").(string)+":"+FieldPath(r, "fields.state").(string))
+		}
+		return strings.Join(out, ",")
+	}
+	h.publish(in, "stdout", ctr("web", "running"), ctr("db", "running"), ctr("cache", "running"))
+	h.publish(in, "stdout", ctr("web", "removed"), ctr("nope", "gone"))
+	if got := names(); got != "db:running,cache:running" {
+		t.Fatalf("after drop: %s", got)
+	}
+	h.publish(in, "stdout", ctr("web", "created"), ctr("db", "exited"))
+	if got := names(); got != "db:exited,cache:running,web:created" {
+		t.Fatalf("after re-add: %s", got)
+	}
+	// The index still points at the right rows after a removal mid-list.
+	h.publish(in, "stdout", ctr("cache", "removed"), ctr("web", "running"))
+	if got := names(); got != "db:exited,web:running" {
+		t.Fatalf("after second drop: %s", got)
+	}
+}
+
+// A merge created after the drop rows were published skips them while seeding.
+func TestKeyedDropSeed(t *testing.T) {
+	h := NewHub()
+	defer h.Close()
+	in := newBuffer(h, "kin7", "docker", 10)
+	h.publish(in, "stdout", Row{"fields": map[string]interface{}{"name": "a", "state": "running"}}, Row{"fields": map[string]interface{}{"name": "a", "state": "removed"}})
+	m, _ := h.Merge("c", []*Buffer{in}, 10, KeySpec{Paths: []string{"fields.name"}, Drop: Match{Path: "fields.state", Values: []string{"removed"}}})
+	if n := len(m.Snapshot()); n != 0 {
+		t.Fatalf("rows = %d, want 0", n)
+	}
+}
+
+func TestParseMatch(t *testing.T) {
+	m, ok := ParseMatch("fields.state=removed|dead")
+	if !ok || m.Path != "fields.state" || len(m.Values) != 2 || m.String() != "fields.state=removed|dead" {
+		t.Fatalf("ParseMatch = %+v, %v", m, ok)
+	}
+	for _, bad := range []string{"", "fields.state", "=x", "fields.state=", "fields.state=a||b", "fields.state=a|"} {
+		if _, ok := ParseMatch(bad); ok {
+			t.Errorf("ParseMatch(%q) ok, want refused", bad)
+		}
+	}
+	if (Match{}).Matches(Row{"x": "y"}) {
+		t.Error("zero Match matched a row")
 	}
 }

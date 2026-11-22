@@ -348,6 +348,9 @@ type SourceConfig struct {
 	// CollectReset (PATH=VALUE) starts a key's collected text over when a row
 	// matches, such as fields.Action=run for a test's next run.
 	CollectReset string `yaml:"collect_reset,omitempty"`
+	// Drop (PATH=VALUE), on a keyed merge, removes a key's row when a row
+	// matches, such as fields.state=removed for a removed container.
+	Drop string `yaml:"drop,omitempty"`
 
 	// Wildcard is set by ExpandInputs on a merge declared with inputs ["*"]:
 	// its Inputs are the sources found, and empty means "no sources yet".

@@ -133,10 +133,12 @@ func (h *Hub) Input(spec InputSpec) (*Buffer, error) {
 type KeySpec struct {
 	Paths   []string
 	Collect string
-	// Reset starts a key's collected text over when a row's field at
-	// ResetPath equals ResetValue (or one of its |-separated values), such
-	// as a test's next run.
-	ResetPath, ResetValue string
+	// Reset starts a key's collected text over when a row matches, such as a
+	// test's next run.
+	Reset Match
+	// Drop removes a key's row when a row matches, such as a removed
+	// container. The matching row is not stored.
+	Drop Match
 }
 
 // Merge returns the buffer that interleaves inputs in seq order, creating it
@@ -147,7 +149,7 @@ func (h *Hub) Merge(name string, inputs []*Buffer, size int, key KeySpec) (*Buff
 	if size <= 0 {
 		size = DefaultBufferSize
 	}
-	parts := []string{name, fmt.Sprint(size), strings.Join(key.Paths, ","), key.Collect, key.ResetPath, key.ResetValue}
+	parts := []string{name, fmt.Sprint(size), strings.Join(key.Paths, ","), key.Collect, key.Reset.String(), key.Drop.String()}
 	for _, in := range inputs {
 		if in.merge {
 			return nil, fmt.Errorf("merge %q: input %q is itself a merge", name, in.name)

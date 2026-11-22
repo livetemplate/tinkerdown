@@ -24,15 +24,23 @@ type keyedRows struct {
 // is dropped.
 func (k *keyedRows) add(r Row, size int) {
 	key := k.keyOf(r)
+	i, known := k.index[key]
+	if k.spec.Drop.Matches(r) {
+		// A drop for a key never seen, or already dropped, changes nothing.
+		if known {
+			k.remove(i)
+		}
+		return
+	}
 	row := make(Row, len(r)+2)
 	for f, v := range r {
 		row[f] = v
 	}
 	row["key"] = key
-	if i, ok := k.index[key]; ok {
+	if known {
 		if k.spec.Collect != "" {
 			prev := k.rows[i]["collected"]
-			if k.resets(r) {
+			if k.spec.Reset.Matches(r) {
 				prev = nil
 			}
 			row["collected"] = appendCollected(prev, FieldPath(r, k.spec.Collect))
@@ -65,13 +73,47 @@ func (k *keyedRows) keyOf(r Row) string {
 	return hashKey(strings.Join(parts, "\x1f"))
 }
 
-// resets reports whether r starts its key's collected text over.
-func (k *keyedRows) resets(r Row) bool {
-	if k.spec.ResetPath == "" {
+// Match is a PATH=VALUE condition on a row, where VALUE may list
+// alternatives as a|b. The zero Match matches nothing. It is deliberately
+// smaller than the filter language tabs use: one field, exact string values.
+type Match struct {
+	Path   string
+	Values []string
+}
+
+// ParseMatch reads PATH=VALUE. It reports false when "=" is missing, PATH is
+// empty, or an alternative is empty (a||b); the caller checks that Path is a
+// field path. "|" can't be escaped.
+func ParseMatch(s string) (Match, bool) {
+	path, value, ok := strings.Cut(s, "=")
+	values := strings.Split(value, "|")
+	if !ok || path == "" || slices.Contains(values, "") {
+		return Match{}, false
+	}
+	return Match{Path: path, Values: values}, true
+}
+
+// Matches reports whether r's field at m.Path is one of m.Values. A number is
+// compared as it prints, so 0 matches the value "0".
+func (m Match) Matches(r Row) bool {
+	if m.Path == "" {
 		return false
 	}
-	v := FieldPath(r, k.spec.ResetPath)
-	return v != nil && slices.Contains(strings.Split(k.spec.ResetValue, "|"), fmt.Sprint(v))
+	switch v := FieldPath(r, m.Path).(type) {
+	case nil:
+		return false
+	case string:
+		return slices.Contains(m.Values, v)
+	default:
+		return slices.Contains(m.Values, fmt.Sprint(v))
+	}
+}
+
+func (m Match) String() string {
+	if m.Path == "" {
+		return ""
+	}
+	return m.Path + "=" + strings.Join(m.Values, "|")
 }
 
 // evictOldest drops the row whose latest update has the lowest seq.
@@ -82,10 +124,15 @@ func (k *keyedRows) evictOldest() {
 			oldest = i
 		}
 	}
-	delete(k.index, k.rows[oldest]["key"].(string))
-	k.rows = append(k.rows[:oldest], k.rows[oldest+1:]...)
-	for i := oldest; i < len(k.rows); i++ {
-		k.index[k.rows[i]["key"].(string)] = i
+	k.remove(oldest)
+}
+
+// remove deletes the row at i and reindexes the rows after it.
+func (k *keyedRows) remove(i int) {
+	delete(k.index, k.rows[i]["key"].(string))
+	k.rows = slices.Delete(k.rows, i, i+1)
+	for j := i; j < len(k.rows); j++ {
+		k.index[k.rows[j]["key"].(string)] = j
 	}
 }
 

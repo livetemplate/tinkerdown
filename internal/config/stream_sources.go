@@ -5,7 +5,6 @@ import (
 	"maps"
 	"regexp"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/livetemplate/tinkerdown/internal/stream"
@@ -52,8 +51,8 @@ func ValidateStreamSource(name string, src SourceConfig, lookup func(string) (So
 		if _, err := src.StreamSpec(name).Normalize(); err != nil {
 			return invalid("%v", err)
 		}
-		if len(src.Key) > 0 || src.Collect != "" {
-			return invalid("stream source %q: key and collect apply to merge sources", name)
+		if mergeOnly(src) {
+			return invalid("stream source %q: key, collect, collect_reset and drop apply to merge sources", name)
 		}
 	case "merge":
 		if err := validateAccepts(name, src); err != nil {
@@ -137,19 +136,28 @@ func validateKey(name string, src SourceConfig) error {
 			return invalid("merge source %q: key %q is not a field (NAME or fields.NAME)", name, p)
 		}
 	}
-	if src.CollectReset != "" {
-		path, _, ok := strings.Cut(src.CollectReset, "=")
-		if !ok || src.Collect == "" || !fieldPath.MatchString(path) {
-			return invalid("merge source %q: collect_reset %q must be PATH=VALUE, with collect set", name, src.CollectReset)
-		}
-	}
 	switch {
+	case src.CollectReset != "" && (src.Collect == "" || !validMatch(src.CollectReset)):
+		return invalid("merge source %q: collect_reset %q must be PATH=VALUE, with collect set", name, src.CollectReset)
+	case src.Drop != "" && (len(src.Key) == 0 || !validMatch(src.Drop)):
+		return invalid("merge source %q: drop %q must be PATH=VALUE, with key set", name, src.Drop)
 	case src.Collect != "" && len(src.Key) == 0:
 		return invalid("merge source %q: collect needs key", name)
 	case src.Collect != "" && !fieldPath.MatchString(src.Collect):
 		return invalid("merge source %q: collect %q is not a field (NAME or fields.NAME)", name, src.Collect)
 	}
 	return nil
+}
+
+// validMatch reports whether s is PATH=VALUE with PATH a field path.
+func validMatch(s string) bool {
+	m, ok := stream.ParseMatch(s)
+	return ok && fieldPath.MatchString(m.Path)
+}
+
+// mergeOnly reports whether src sets an option that only a merge uses.
+func mergeOnly(src SourceConfig) bool {
+	return len(src.Key) > 0 || src.Collect != "" || src.CollectReset != "" || src.Drop != ""
 }
 
 func validateAccepts(name string, src SourceConfig) error {
@@ -202,9 +210,10 @@ func (s SourceConfig) FlushInterval() (time.Duration, error) {
 	return d, nil
 }
 
-// KeySpec maps a merge's key, collect and collect_reset onto the hub's.
+// KeySpec maps a merge's key, collect, collect_reset and drop onto the hub's.
 func (s SourceConfig) KeySpec() stream.KeySpec {
 	k := stream.KeySpec{Paths: s.Key, Collect: s.Collect}
-	k.ResetPath, k.ResetValue, _ = strings.Cut(s.CollectReset, "=")
+	k.Reset, _ = stream.ParseMatch(s.CollectReset)
+	k.Drop, _ = stream.ParseMatch(s.Drop)
 	return k
 }

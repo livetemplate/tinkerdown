@@ -11,6 +11,13 @@ Earlier releases (v0.1.x) are documented in the
 
 ## [Unreleased]
 
+### Added
+
+- **`drop` on keyed merges.** `drop: fields.state=removed` removes a key's
+  row when a matching row arrives, and the page gets a remove for it. Values
+  may list alternatives as `a|b`. See
+  [docs/sources/stream.md](docs/sources/stream.md#one-row-per-key).
+
 ### Fixed
 
 - **`serve` no longer hangs after a page edit while a tab is open.** An open
