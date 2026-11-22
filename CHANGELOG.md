@@ -11,6 +11,8 @@ Earlier releases (v0.1.x) are documented in the
 
 ## [Unreleased]
 
+## [v0.7.1] - 2026-11-22
+
 ### Added
 
 - **A button shows `aria-busy` while its action runs.** The client tags each
