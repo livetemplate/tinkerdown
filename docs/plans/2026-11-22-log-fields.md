@@ -16,14 +16,15 @@ This plan fixes four related issues, in three repos. Each phase's release unbloc
 The audit (2026-11-22, livetemplate main at v0.25.12, a throwaway test in `internal/parse`) found three separate bugs behind #554:
 
 - **Lost content.** When a range item's whole body is another range, as in `{{range $w := …}}{{range $p := …}}…{{end}}{{end}}`, each outer item loses its content. Every item then gets the key `cbf29ce48422`, the hash of empty input. With a tag around the inner range, the same template renders correctly.
-- **Duplicate keys.** Plain values are keyed by a hash of their content, so a word that appears twice (`split "a a" " "`) gives two items the same key.
+- **Duplicate keys.** Plain values are keyed by a hash of their content, so a word that appears twice (`split "a a" " "`) gives two items the same key. Since v0.25.10, a repeated key makes every update resend the whole range, so the list renders but is never patched in place.
 - **No short-circuit.** `and` and `or` get all their arguments already evaluated (`evalFunctionCall`, `internal/parse/eval.go:209`). `{{if and (ge (len .s) 8) (eq (slice .s 0 7) "http://")}}` panics on a 2-character `.s`.
 
 The audit also checked these:
 
 - `takeString` deletes `time`, `level` and `msg` from a row's `fields` (`internal/stream/parse.go:195`). Ranging over `.fields` therefore shows only the other fields.
 - livetemplate inserts a `template.HTML` value without escaping it (`valueToString`, `eval.go:629`).
-- tinkerdown pins livetemplate v0.25.9, and livetemplate releases through `scripts/release.sh`.
+- tinkerdown pins livetemplate v0.25.9 and `@livetemplate/client` `^0.25.11` (`client/package.json:18`). v0.25.10–v0.25.12 changed range keys (#547, #550), `bottom-sticky` and the embedded client.
+- livetemplate releases through `scripts/release.sh`.
 
 ## Product
 
@@ -52,12 +53,13 @@ A row shows its message, then each other field as `key=value`, with every `http:
   alternative: none considered
 - livetemplate: when two items in one range hash the same, the second and later get `<hash>-2`, `<hash>-3` and so on, in range order.
   alternative: key every plain value by its index
-  because: index keys rename every item after an insert at the top, which turns a stream-mode prepend into a full update. Suffixing only the duplicates keeps every existing key byte-for-byte, which `appendJSONValue`'s wire-stability comment (`internal/keys/hash.go:85`) requires.
+  because: index keys rename every item after an insert at the top, which turns a stream-mode prepend into a full update. Suffixing only the duplicates keeps every existing key byte-for-byte, which `appendJSONValue`'s wire-stability comment (`internal/keys/hash.go:85`) requires. It replaces v0.25.10's whole-range resend for plain values, while that fallback stays for keys a page sets with `data-key`.
 - livetemplate: `and` and `or` evaluate their arguments one at a time and stop at the first one that decides the result, as Go's `text/template` does since Go 1.18. This applies only to the builtins, not to a function a page registers under the same name.
   alternative: none considered
 - tinkerdown: a template function `linkify`, added to `blockHelperFuncs` (`internal/server/websocket.go:1343`) next to `split`. It takes any value, escapes all of its text, and turns each `http://` or `https://` URL into `<a href="…" target="_blank" rel="noopener noreferrer">`.
   - A URL ends at whitespace, `"`, `'`, `<`, `>` or `\`.
   - Trailing `.`, `,`, `;`, `:`, `!`, `?` and an unmatched `)` stay outside the link.
+  - It matches on the raw text, then escapes each piece on its own: text with `html.EscapeString`, and the URL the same way in both the link text and the `href`. Matching after escaping would see `&#34;` instead of `"` and cut `&amp;` at its `;`.
   - It returns `template.HTML`.
 
   alternative: a script on the page, as onefile#5's workaround does
@@ -89,7 +91,8 @@ tinkerdown (worktree `.worktrees/log-links`):
 - `internal/assets/vendor/` → `internal/assets/third_party/`, and `internal/assets/assets.go`.
 - `internal/assets/module_test.go` new?: the `CheckDir` test.
 - `internal/server/linkify.go` new? and `internal/server/linkify_test.go` new?; `internal/server/websocket.go`: `linkify` in `blockHelperFuncs`.
-- `go.mod`, `go.sum`: livetemplate v0.25.13 and `golang.org/x/mod` if it isn't already required.
+- `go.mod`, `go.sum`: livetemplate v0.25.13, and `golang.org/x/mod` (indirect today) as a direct requirement.
+- `client/package.json`, `client/package-lock.json`, `internal/assets/client/*`: `@livetemplate/client` 0.25.12 and the rebuilt bundle (A5).
 - The docs page that lists `split` (found in the Phase 2 audit): add `linkify`.
 - `CHANGELOG.md`: `[Unreleased]`, with Added (`linkify`) and Fixed (`go install`, livetemplate's range keys and `and`).
 
@@ -107,21 +110,22 @@ onefile (worktree `.worktrees/log-fields`):
 | A2 | assumption | A row with a nested `{{range}}` over `.fields` keeps the outer range in stream mode, so new log lines still arrive as append ops. | high | open (Phase 3, checked in WebSocket frames) |
 | A3 | assumption | `golang.org/x/mod/zip.CheckDir` reports `vendor/` files as omitted, so the new test fails before the rename. | medium | open (Phase 2) |
 | A4 | assumption | A map value that is a number or bool prints correctly through `linkify`'s `fmt.Sprint`. | low | open (Phase 2) |
-| R1 | risk | `linkify` returns HTML built from log text, so a bug there is an XSS hole. Mitigation: escape with `html.EscapeString` before matching, accept only `http`/`https`, and test `<script>`, `javascript:`, quotes inside a URL and `&` in a query. | high | open |
-| R2 | risk | Suffixing duplicate keys changes the keys of ranges that render duplicates today, so a client holding the old keys sees a remove and an add once after upgrading. Mitigation: none needed; duplicate keys never rendered correctly. | low | accepted |
+| R1 | risk | `linkify` returns HTML built from log text, so a bug there is an XSS hole. Mitigation: every piece of output passes through `html.EscapeString`, only `http`/`https` become links, and the tests cover `<script>`, `javascript:`, a quote inside a URL, `&` in a query and a URL ending in `&`. | high | open |
+| A5 | assumption | tinkerdown works on livetemplate v0.25.13 with a client bundle rebuilt from `@livetemplate/client` 0.25.12: its full suite and the onefile suite pass. | medium | open (Phase 2) |
+| R2 | risk | Suffixing duplicate keys renames the second and later duplicates, so a connection open across the upgrade sees one remove and add for each. Mitigation: none needed; a server restart already starts new connections. | low | accepted |
 
 ## Acceptance criteria
 
 - [ ] `/simplify` has run on each phase's diff.
 - [ ] livetemplate `go test ./...` passes, with new tests:
   - `{{range}}{{range}}…{{end}}{{end}}` gives each outer item its inner range and a distinct key
-  - `split "a a b" " "` gives keys `h(a)`, `h(a)-2`, `h(b)`, with `h(a)` unchanged from v0.25.12
+  - `split "a a b" " "` gives keys `h(a)`, `h(a)-2`, `h(b)`, with `h(a)` unchanged from v0.25.12, and a later update to that range sends item ops, not a whole-range resend
   - `and` and `or` stop at the deciding argument, so the `slice` example renders `n` without a panic
   - a page's own `and` function is still called with every argument
 - [ ] livetemplate's own e2e or client tests pass, covering A1.
 - [ ] tinkerdown `GOWORK=off go test ./...` passes, with:
   - the `CheckDir` test, which fails on main (A3) and passes after the rename
-  - `linkify` table tests for: plain text, one URL, two URLs, trailing punctuation, a URL in parentheses, `<script>`, `javascript:alert(1)`, a `"` inside a URL, `&` in a query, and a number value
+  - `linkify` table tests for: plain text, one URL, two URLs, trailing punctuation, a URL in parentheses, `<script>`, `javascript:alert(1)`, a `"` inside a URL, `&` in a query, a URL ending in `&`, `&quot;` next to a URL, and a number value
 - [ ] After the v0.7.4 tag: `GOMODCACHE=$(mktemp -d) GOFLAGS=-modcacherw go install github.com/livetemplate/tinkerdown/cmd/tinkerdown@v0.7.4` succeeds.
 - [ ] onefile `TestLogViewer` (chromedp) checks, with console logs, server logs, WebSocket frames and HTML captured:
   - a slog line shows `subject=…`, `to=…` and `body=…` after its message
@@ -143,13 +147,16 @@ onefile (worktree `.worktrees/log-fields`):
 ## Phases
 
 ### Phase 1: livetemplate#554
-- Audit: find where a body-only range's item tree loses its content (`walkAST` → `buildRangeTreeWithStatics` → `extractItemDynamics`). Check A1 in the client's keyed-range code.
+- Audit:
+  - Find where a body-only range's item tree loses its content (`walkAST` → `buildRangeTreeWithStatics` → `extractItemDynamics`).
+  - Check whether stream mode's `RangeStreamState.Hashes` follows `AutoKey` or a separate content hash. If it's the content hash, duplicates need the suffix there too.
+  - Check A1 in the client's keyed-range code.
 - Implementation: per the Files list.
 - Acceptance: `/simplify`, then the livetemplate criteria. PR, sign-off, then v0.25.13 through `scripts/release.sh`.
 - Learn: recorded here.
 
 ### Phase 2: tinkerdown#364 and `linkify`
-- Audit: A3 on main, A4, and where the docs list template functions.
+- Audit: A3 on main, A4, A5, and where the docs list template functions.
 - Implementation: per the Files list, with livetemplate bumped to v0.25.13.
 - Acceptance: `/simplify`, then the tinkerdown criteria. PR, sign-off, then v0.7.4 through `release.sh`, the `go install` check and the Homebrew PR.
 - Learn: recorded here.
