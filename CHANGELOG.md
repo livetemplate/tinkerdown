@@ -26,6 +26,11 @@ Earlier releases (v0.1.x) are documented in the
 
 ### Fixed
 
+- **`serve` no longer hangs after a page edit while a tab is open.** An open
+  WebSocket held the server's route lock for as long as the tab stayed open.
+  A page edit then waited for that lock to rescan the pages, and every page
+  request queued behind the rescan. The lock is now held only to find the
+  connection's page.
 - **A failed action's error shows on the page.** The block re-renders after a
   failed action, so the error it set is no longer lost.
 
