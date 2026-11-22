@@ -301,11 +301,7 @@ func (b *Buffer) releaseLocked() {
 		return
 	}
 	epoch := b.idleSeen
-	wait := b.hub.IdleStop
-	if b.idleStop > 0 {
-		wait = b.idleStop
-	}
-	b.idle = time.AfterFunc(wait, func() {
+	b.idle = time.AfterFunc(b.idleWait(), func() {
 		b.hub.mu.Lock()
 		defer b.hub.mu.Unlock()
 		if b.refs > 0 || b.idleSeen != epoch {
@@ -322,6 +318,21 @@ func (b *Buffer) releaseLocked() {
 		}
 		b.snap.Store(nil)
 	})
+}
+
+// idleWait is how long b keeps running and its rows after its last holder
+// leaves: its own IdleStop, or the hub's. A merge waits no longer than its
+// shortest input, so it drops its rows when they do: an input restarted
+// after a stop prints its output again, which would otherwise show twice.
+func (b *Buffer) idleWait() time.Duration {
+	wait := b.hub.IdleStop
+	if b.idleStop > 0 {
+		wait = b.idleStop
+	}
+	for _, in := range b.inputs {
+		wait = min(wait, in.idleWait())
+	}
+	return wait
 }
 
 func (b *Buffer) appendLocked(r Row) {

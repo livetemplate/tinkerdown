@@ -747,3 +747,29 @@ func TestParseOrder(t *testing.T) {
 		}
 	}
 }
+
+// A merge drops its rows when its inputs do: an input with a short IdleStop
+// restarts its command on the next subscriber, and a merge that kept the old
+// rows (on the hub's longer IdleStop) would show its output twice.
+func TestMergeStopsWithItsInputs(t *testing.T) {
+	marker := fmt.Sprintf("mergeidle%d", os.Getpid())
+	h := NewHub()
+	defer h.Close()
+	h.IdleStop = time.Hour
+	running := func() bool { return exec.Command("pgrep", "-f", marker).Run() == nil }
+	in, _ := h.Input(InputSpec{Name: "log", Cmd: ": " + marker + "; echo once; while true; do sleep 1; done", IdleStop: 200 * time.Millisecond})
+	m, _ := h.Merge("logview", []*Buffer{in}, 0, KeySpec{})
+
+	sub := m.Subscribe()
+	waitFor(t, "the line", func() bool { return len(m.Snapshot()) == 1 })
+	sub.Close()
+	waitFor(t, "the input to stop after its own IdleStop", func() bool { return !running() })
+
+	again := m.Subscribe()
+	defer again.Close()
+	waitFor(t, "the input to run again", running)
+	time.Sleep(300 * time.Millisecond)
+	if n := len(m.Snapshot()); n != 1 {
+		t.Fatalf("the merge holds %d rows after its input restarted; want its output once", n)
+	}
+}
