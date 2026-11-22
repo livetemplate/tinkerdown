@@ -11,6 +11,8 @@ Earlier releases (v0.1.x) are documented in the
 
 ## [Unreleased]
 
+## [v0.7.4] - 2026-11-22
+
 ### Added
 
 - **A `linkify` template function.** `{{linkify .msg}}` escapes a value and
