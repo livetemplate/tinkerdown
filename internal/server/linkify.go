@@ -19,6 +19,9 @@ const trailingPunct = ".,;:!?”’。，"
 // closers maps each closing bracket that can end a URL to its opener.
 var closers = map[rune]rune{')': '(', '）': '（', ']': '[', '}': '{'}
 
+// openers is the set of closers' openers.
+var openers = map[rune]bool{'(': true, '（': true, '[': true, '{': true}
+
 // htmlEscaper escapes the same characters as html.EscapeString, writing
 // straight into a builder.
 var htmlEscaper = strings.NewReplacer(`&`, "&amp;", `'`, "&#39;", `<`, "&lt;", `>`, "&gt;", `"`, "&#34;")
@@ -69,13 +72,22 @@ func linkify(v any) template.HTML {
 // opener inside the URL, so "(see https://a.com/x)." links only
 // https://a.com/x while https://en.wikipedia.org/wiki/Foo_(bar) keeps its ")".
 func trimURL(url string) string {
+	// Count brackets once, then adjust as runes are trimmed, so a URL that
+	// ends in many ")" is still trimmed in linear time.
+	count := map[rune]int{}
+	for _, r := range url {
+		if _, isCloser := closers[r]; isCloser || openers[r] {
+			count[r]++
+		}
+	}
 	for {
 		r, size := utf8.DecodeLastRuneInString(url)
 		open, isCloser := closers[r]
-		unmatched := isCloser && strings.Count(url, string(open)) < strings.Count(url, string(r))
+		unmatched := isCloser && count[open] < count[r]
 		if !unmatched && !strings.ContainsRune(trailingPunct, r) {
 			return url
 		}
+		count[r]--
 		url = url[:len(url)-size]
 	}
 }

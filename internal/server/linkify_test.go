@@ -2,6 +2,7 @@ package server
 
 import (
 	"html/template"
+	"strings"
 	"testing"
 )
 
@@ -33,6 +34,8 @@ func TestLinkify(t *testing.T) {
 		{"balanced parentheses", "https://en.wikipedia.org/wiki/Foo_(bar)", link("https://en.wikipedia.org/wiki/Foo_(bar)")},
 		{"nested parentheses", "https://a.com/((x))", link("https://a.com/((x))")},
 		{"in brackets", "[https://a.com/x]", "[" + link("https://a.com/x") + "]"},
+		{"mixed brackets inside", "https://a.com/[x](y)", link("https://a.com/[x](y)")},
+		{"an apostrophe ends the URL", "https://a.com/it's", link("https://a.com/it") + "&#39;s"},
 		{"in braces", `{"u":https://a.com/x}`, "{&#34;u&#34;:" + link("https://a.com/x") + "}"},
 		{"nothing after the scheme", "https:// and http://", "https:// and http://"},
 		{"only punctuation after the scheme", "https://.", "https://."},
@@ -59,6 +62,14 @@ func TestLinkify(t *testing.T) {
 				t.Errorf("linkify(%q)\n got %s\nwant %s", tt.in, got, tt.want)
 			}
 		})
+	}
+}
+
+// Trimming a URL that ends in many unmatched ")" stays linear.
+func TestLinkifyManyClosers(t *testing.T) {
+	in := "https://a.com/x" + strings.Repeat(")", 100000)
+	if got, want := string(linkify(in)), link("https://a.com/x")+strings.Repeat(")", 100000); got != want {
+		t.Fatalf("got %d bytes, want %d", len(got), len(want))
 	}
 }
 
