@@ -570,3 +570,51 @@ func TestParseMatch(t *testing.T) {
 		t.Error("zero Match matched a row")
 	}
 }
+
+// One subscription wakes on every buffer attached to it, holds each while
+// attached, and releases a detached one.
+func TestSubscriptionAttachDetach(t *testing.T) {
+	marker := fmt.Sprintf("attachmark%d", os.Getpid())
+	h := NewHub()
+	defer h.Close()
+	h.IdleStop = time.Hour
+	running := func() bool { return exec.Command("pgrep", "-f", marker).Run() == nil }
+
+	gate := newBuffer(h, "gate1", "gate", 10)
+	in, _ := h.Input(InputSpec{Name: "w", Cmd: ": " + marker + "; while true; do echo hi; sleep 0.1; done", IdleStop: 200 * time.Millisecond})
+
+	sub := h.NewSubscription()
+	sub.Attach(gate)
+	h.publish(gate, "stdout", Row{"msg": "x"})
+	select {
+	case <-sub.C:
+	case <-time.After(2 * time.Second):
+		t.Fatal("no wake-up from the attached gate")
+	}
+	if running() {
+		t.Fatal("input runs before it is attached")
+	}
+	sub.Attach(in)
+	sub.Attach(in) // twice: holds once
+	waitFor(t, "input to start on attach", running)
+	sub.Detach(in)
+	waitFor(t, "input to stop after its own IdleStop, not the hub's", func() bool { return !running() })
+
+	sub.Attach(in)
+	waitFor(t, "input to restart on attach", running)
+	sub.Close()
+	sub.Attach(in) // after Close: nothing
+	waitFor(t, "input to stop after Close", func() bool { return !running() })
+}
+
+// Equal specs that differ only in environment get separate buffers.
+func TestInputEnvGetsOwnBuffer(t *testing.T) {
+	h := NewHub()
+	defer h.Close()
+	a, _ := h.Input(InputSpec{Name: "logs", Cmd: "true", Env: map[string]string{"TD_name": "a"}})
+	b, _ := h.Input(InputSpec{Name: "logs", Cmd: "true", Env: map[string]string{"TD_name": "b"}})
+	a2, _ := h.Input(InputSpec{Name: "logs", Cmd: "true", Env: map[string]string{"TD_name": "a"}})
+	if a == b || a != a2 {
+		t.Fatalf("buffers: a=%p b=%p a again=%p; want a per value, shared for equal values", a, b, a2)
+	}
+}

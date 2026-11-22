@@ -195,7 +195,7 @@ func (h *PlaygroundHandler) HandlePreviewWS(w http.ResponseWriter, r *http.Reque
 	}
 
 	// Create WebSocket handler for this session's page
-	wsHandler := NewWebSocketHandler(session.Page, h.server, true, "", h.server.config)
+	wsHandler := NewWebSocketHandler(session.Page, h.server, true, "", h.server.config, nil)
 	wsHandler.ServeHTTP(w, r)
 }
 

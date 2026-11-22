@@ -1,6 +1,6 @@
 # Plan: a containers onefile app, with actions and log streams from flags
 
-State — Done: plan merged (#336), Phase 1 (`drop`, #337), Phase 2 (`--action`). Next: Phase 3.
+State — Done: plan merged (#336), Phase 1 (`drop`, #337), Phase 2 (`--action`, #338), Phase 3 (`params`). Next: release, then Phase 4.
 
 ## Context
 
@@ -11,7 +11,7 @@ A read-only prototype (2026-11-21, on v0.6.0) showed the list working, but a lis
 - **`drop` on keyed merges:** `drop: fields.state=removed` removes a key's row, so a removed container disappears instead of leaving a dead row.
 - **`--action NAME=COMMAND`:** an exec action you declare on the command line, like `--source`. A page, even a remote one, can call it with a button but can't define it.
 - **Values as environment variables:** a flag action or flag source gets each value as `$TD_<name>`, so `docker stop "$TD_name"` never parses the value as shell code.
-- **Merges with `params`:** `params: {name: {in: containers.fields.name}}` takes `?name=web` from the page URL, accepts it only if `web` is a row in the page's `containers` merge, and starts the merge's inputs with `TD_name=web`. A row link `?name=web` then opens that container's logs.
+- **Merges with `params`:** `params: {name: {in: containers.fields.name}}`, on a merge named `logview`, takes `?name=web` from the page URL, accepts it only if `web` is a row in the page's `containers` merge, and starts the merge's inputs with `TD_name=web`. A row link `?name=web` then opens that container's logs.
 
 The audit (2026-11-21) settled these facts:
 
@@ -87,12 +87,26 @@ On a phone, each row puts the image and status under the name and the buttons on
   because: anyone can write a link. A free value lets another site make your machine run your command with a value it picks, and an action loses the shareable link
 - The `in` check runs again when MERGE's rows change. A link opened before the feed's first rows starts once the row appears; a value never listed starts nothing.
   alternative: none considered
-- The page's query reaches the WebSocket: the server adds it to the `ws-url` it renders, and the handler passes it to block state.
-  alternative: the client appends `location.search`
-  because: the server already builds the URL, and the client then needs no change
-- A merge with `params` gets a buffer per distinct set of values (keyed by name, config hash and values). Its inputs stop 30s after the last viewer leaves.
-  alternative: run until shutdown, as streams do today
-  because: every container opened would leave a `docker logs -f` running
+- The page's query reaches the WebSocket: the client adds `location.search` to the `ws-url` when it connects, with the server's `page` set last, and the handler passes it to block state.
+  alternative: the server adds it to the `ws-url` it renders, as Phase 3 first did
+  because: once links change the query without a page load, a reconnect needs the client to build the URL anyway. One owner keeps the rule in one place
+- A merge with `params` gets a buffer per distinct set of values: the values join the input's environment, which is part of its hub key. Its inputs stop 30s after the last viewer leaves (a per-input `IdleStop`).
+  alternative: the hub's 5-minute idle stop, which every stream input already has
+  because: every container opened starts its own `docker logs -f`
+- A `["*"]` merge doesn't take the inputs a `params` merge lists (`paramsInputs` in `ResolveSource`), and a `params` merge lists its inputs by name (A3).
+  alternative: refuse a page where both use one input
+  because: the containers feed is `["*"]` and must leave `logs` alone; found when the Phase 3 e2e saw `logs` in the list's inputs
+- The gate's block and the `params` block build the gate merge through the same resolver (`source.Page`), so they share one buffer and one feed command.
+  alternative: none considered
+- A link that only changes the query, on a page with a `params` merge, changes the values without a page load. The client updates the address bar (`pushState`) and sends the new query on the open WebSocket; the server re-applies it to the `params` blocks only, and Back and Forward do the same.
+  alternative: reconnect the WebSocket with the new query
+  because: reconnecting rebuilds every block, so the list's search text, tab and Pause would reset (user, 2026-11-22)
+- The client catches only links to the same path whose query differs, on pages the server marks as having a `params` merge. A modified click, `target` or `download` link behaves as before.
+  alternative: catch query links on every page
+  because: a page without `params` gains nothing from it, and its links keep their behaviour
+- A `params` block builds its gate merges at page load, even before a value is in the query, and a refused value shows as the block's `.Error`.
+  alternative: refuse the value when the block is built, as Phase 3 first did
+  because: the value can now change on a live block, which must stay subscribed
 - A flag action passes the approval gate by its `FromFlag` marker (`yaml:"-"`), checked at the page dispatch, and lives in `cfg.FlagActions`, apart from `cfg.Actions`.
   alternative: exempt flag names inside `EnforceApprovedAction`
   because: webhooks share that gate, so a flag name would approve a same-named yaml action; webhooks and the HTTP action API read only `cfg.Actions`
@@ -115,7 +129,7 @@ On a phone, each row puts the image and status under the name and the buttons on
 
 tinkerdown (worktree `.worktrees/containers-upstream`):
 - `internal/stream/keyed.go`, `hub.go`: `drop` in `KeySpec` and `keyedRows.add`; per-values buffers for params merges, stopped 30s after the last unsubscribe.
-- `internal/stream/proc.go`: start a cmd with extra `TD_*` environment variables.
+- `internal/stream/proc.go`: no change; it already adds `InputSpec.Env` to the command's environment.
 - `internal/config/config.go`, `parser.go`, `stream_sources.go`: `Drop`, `Params` fields, mirrored; validation (`drop` and `params` need a merge, `drop` needs `key`, every param needs `in` naming a merge on the page and a field path); one `PATH=a|b` parser for `drop` and `collect_reset`; `FlagActions`.
 - `internal/runtime/state.go` or `internal/server/websocket.go`: the `in` check against the named merge's current rows, rerun on its updates.
 - `internal/config/params.go` new?: the `TD_` name and value rules, shared by actions and streams.
@@ -126,7 +140,7 @@ tinkerdown (worktree `.worktrees/containers-upstream`):
 - Docs: `docs/sources/stream.md` (`drop`, `params`), `docs/reference/cli.md` or the `serve` docs (`--action`, `TD_` values), `docs/reference/config.md`; `CHANGELOG.md` under `[Unreleased]`.
 
 onefile:
-- `containers/index.md` new?: merges `containers` (`inputs: ["*"]` accepting the feed, `key: [fields.name]`, `drop: fields.state=removed`) and `logs` (`inputs: [logs]`, `params: {name: {in: containers.fields.name}}`); row buttons and the logs panel.
+- `containers/index.md` new?: merges `containers` (`inputs: ["*"]` accepting the feed, `key: [fields.name]`, `drop: fields.state=removed`) and `logview` (`inputs: [logs]`, `params: {name: {in: containers.fields.name}}`; not `logs`, which the `--source logs` flag would replace); row buttons and the logs panel.
 - `containers/README.md` new? with the copyable command, `containers/docs/desktop.png`, `phone.png` new?
 - `e2e/containers_test.go` new?; root `README.md` lists the app.
 
@@ -136,7 +150,7 @@ onefile:
 |---|---|---|---|---|
 | A1 | assumption | The feed survives `--source NAME='…'` quoting and `sh -c`, with the format strings' double quotes escaped. | high | open (Phase 4) |
 | A2 | assumption | Removing a keyed row mid-range reaches the page as `["r", key]`. livetemplate's range diff emits `r` ops (`range_ops.go`). | medium | verified 2026-11-21 (`TestKeyedMerge_E2E`) |
-| A3 | assumption | A merge input can't be used by a page both as a plain input and through a params merge; if it can, the plain use must refuse a source whose command reads `TD_*`. | medium | open (Phase 3) |
+| A3 | assumption | A merge input can't be used by a page both as a plain input and through a params merge; if it can, the plain use must refuse a source whose command reads `TD_*`. | medium | false: `["*"]` took it; fixed by reserving `params` inputs (Phase 3) |
 | A4 | assumption | `data-confirm` works on any button in an lvt block, not only in forms (the PII example uses it on a row button). | low | open (Phase 4) |
 | R1 | risk | Anyone can write a link with `?name=`. `in` limits it to a container the page already lists, so the worst a hostile page can do is start logs for one of those; it can't read them (same-origin policy, Host allow-list). | low | mitigated (`in`) |
 | R2 | risk | A rename leaves the old name's row behind. Mitigation if it bites: map `rename` to a drop of `oldName`. | low | accepted |
@@ -157,6 +171,7 @@ onefile:
   - `TestFlagActions_E2E`: clicking a row button runs the command with the row's value
   - `TestParamsMerge_E2E`: `?name=a` shows only `a`'s rows, and `?name=b` gets a separate buffer
   - `TestParamsMerge_E2E`: `?name=c`, not in the list, runs no command until a `c` row appears
+  - `TestParamsMerge_E2E`: clicking a row link switches the logs with no page load (a `window` marker survives) and keeps the list's search text; Back returns to the earlier value
   - `TestKeyedMerge_E2E`: a drop sends `["r", …]`
 - [ ] onefile `cd e2e && go test -run TestContainers ./...`, with containers named `ofe2e-<pid>-*` and the README command plus `--filter name=ofe2e-<pid>`:
   - a running container shows `running`; one that exits with code 3 shows `exited (3)` in the Exited tab
@@ -202,12 +217,15 @@ The feed's JSON line: `{"name", "image", "state", "status"}`. `state` is one of 
 
 ### Phase 3: merges with `params`
 - Audit: A3; how a block's merge buffer is resolved per connection.
-- Implementation: query into the WebSocket, per-values buffers, stop after the last viewer.
+- Implementation: query into the WebSocket, per-values buffers, stop after the last viewer; query links without a page load.
 - Acceptance: `/simplify`, the params stream criteria, `TestParamsMerge_E2E`, docs, the full suite.
 
 ### Phase 4: the containers app
 - Audit: A1, A4. Re-read the Contract against what shipped.
-- Implementation: the onefile files.
+- Implementation: the onefile files, with three findings from the 8092 demo:
+  - show only a state's buttons, with CSS on the row's `st-<state>` class, because a per-row `{{if}}` would end row-by-row updates
+  - show a click as in progress until the state changes, because a `docker stop` takes seconds
+  - start a restarted container's logs with `--since`, not `--tail`, so lines aren't repeated
 - Acceptance: `/simplify`, the onefile criteria, screenshots through chromedp.
 
 ## Delivery

@@ -353,3 +353,49 @@ func TestPageSourceConfigCopiesEveryField(t *testing.T) {
 		}
 	}
 }
+
+// The WebSocket URL carries the page URL's query, and the page path wins over
+// a page= in the query.
+func TestPageWSURL(t *testing.T) {
+	if got := pageWSURL("ws", "h", "/a b"); got != "ws://h/ws?page=%2Fa+b" {
+		t.Fatalf("pageWSURL = %s", got)
+	}
+}
+
+// A ["*"] merge doesn't take the inputs of a merge with params: run without
+// their TD_ values they would fail.
+func TestResolveSourceReservesParamsInputs(t *testing.T) {
+	cfg := config.DefaultConfig()
+	cfg.FlagSources = map[string]config.SourceConfig{
+		"docker": {Type: "stream", Cmd: "docker events"},
+		"logs":   {Type: "stream", Cmd: `docker logs -f -- "$TD_name"`},
+	}
+	page := &tinkerdown.Page{Config: tinkerdown.PageConfig{Sources: map[string]tinkerdown.SourceConfig{
+		"containers": {Type: "merge", Inputs: []string{"*"}},
+		"logview":    {Type: "merge", Inputs: []string{"logs"}, Params: map[string]tinkerdown.SourceParam{"name": {In: "containers.fields.name"}}},
+	}}}
+	src, _ := ResolveSource(cfg, page, "containers")
+	if !slices.Equal(src.Inputs, []string{"docker"}) {
+		t.Fatalf("containers inputs = %v, want [docker]", src.Inputs)
+	}
+}
+
+// Only a page with a block on a merge with params asks the client to change
+// the query without a page load.
+func TestLiveQueryMeta(t *testing.T) {
+	cfg := config.DefaultConfig()
+	page := &tinkerdown.Page{
+		Config: tinkerdown.PageConfig{Sources: map[string]tinkerdown.SourceConfig{
+			"containers": {Type: "merge", Inputs: []string{"*"}},
+			"logview":    {Type: "merge", Inputs: []string{"logs"}, Params: map[string]tinkerdown.SourceParam{"name": {In: "containers.fields.name"}}},
+		}},
+		ServerBlocks: map[string]*tinkerdown.ServerBlock{"lvt-0": {Metadata: map[string]string{"lvt-source": "containers"}}},
+	}
+	if got := liveQueryMeta(cfg, page); got != "" {
+		t.Errorf("no block shows logview, got %q", got)
+	}
+	page.ServerBlocks["lvt-1"] = &tinkerdown.ServerBlock{Metadata: map[string]string{"lvt-source": "logview"}}
+	if got := liveQueryMeta(cfg, page); !strings.Contains(got, `name="tinkerdown-live-query"`) {
+		t.Errorf("a block shows logview, got %q", got)
+	}
+}

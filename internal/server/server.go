@@ -666,7 +666,7 @@ func (s *Server) serveWebSocket(w http.ResponseWriter, r *http.Request) {
 	// NOTE: Each WebSocket connection (e.g., each browser tab) gets its own
 	// handler with isolated state. Interactive state is intentionally NOT
 	// synchronized across multiple connections to the same page.
-	wsHandler := NewWebSocketHandler(route.Page, s, true, s.rootDir, s.config)
+	wsHandler := NewWebSocketHandler(route.Page, s, true, s.rootDir, s.config, r.URL.Query())
 	wsHandler.ServeHTTP(w, r)
 }
 
@@ -991,6 +991,21 @@ func (s *Server) ServeSinglePage(rel string, remote bool) {
 	s.singlePage, s.remotePage = rel, remote
 }
 
+// liveQueryMeta asks the client to change a same-page link's query on the
+// open WebSocket, without a page load, on a page showing a merge with params.
+func liveQueryMeta(cfg *config.Config, page *tinkerdown.Page) string {
+	if !showsParamsMerge(cfg, page) {
+		return ""
+	}
+	return "\n    <meta name=\"tinkerdown-live-query\" content=\"true\">"
+}
+
+// pageWSURL is the WebSocket URL of the page at path. The client adds the
+// page URL's query when it connects, so a merge with params can read it.
+func pageWSURL(scheme, host, path string) string {
+	return fmt.Sprintf("%s://%s/ws?page=%s", scheme, host, url.QueryEscape(path))
+}
+
 // detectWSScheme returns the appropriate WebSocket URL scheme ("wss"
 // or "ws") for the request. A page served over HTTPS must connect to
 // a wss:// endpoint or browsers reject the upgrade as mixed-content,
@@ -1109,11 +1124,11 @@ func (s *Server) renderPage(page *tinkerdown.Page, currentPath string, host stri
 
 	// Build WebSocket URL from host with page path for multi-page routing.
 	// Scheme MUST match the page's request scheme — see detectWSScheme.
-	wsURL := fmt.Sprintf("%s://%s/ws?page=%s", wsScheme, host, url.QueryEscape(currentPath))
+	wsURL := pageWSURL(wsScheme, host, currentPath)
 
 	// Build per-page SEO meta tags (OG, Twitter card, description, canonical).
 	// Falls back to site-level config when frontmatter fields are absent.
-	seoTags := s.buildSEOTags(page, currentPath)
+	seoTags := s.buildSEOTags(page, currentPath) + liveQueryMeta(s.config, page)
 
 	// Conditionally include Mermaid (~3.3MB) only when the page has
 	// ```mermaid fenced blocks. HasMermaid is set by the parser AST walk.
@@ -3238,8 +3253,8 @@ func (s *Server) renderPage(page *tinkerdown.Page, currentPath string, host stri
 // are marketing surfaces, not diagram-heavy docs. Add them if that need arises.
 func (s *Server) renderLandingShell(page *tinkerdown.Page, currentPath, host, wsScheme string) string {
 	content := s.renderContent(page)
-	wsURL := fmt.Sprintf("%s://%s/ws?page=%s", wsScheme, host, url.QueryEscape(currentPath))
-	seoTags := s.buildSEOTags(page, currentPath)
+	wsURL := pageWSURL(wsScheme, host, currentPath)
+	seoTags := s.buildSEOTags(page, currentPath) + liveQueryMeta(s.config, page)
 	defaultTheme := themeDefault(s.config.Styling)
 	customCSS := buildCustomCSSLink(s.config.Styling.CustomCSS)
 	siteCSS := buildCustomCSSLink(s.config.Styling.SiteCSS)

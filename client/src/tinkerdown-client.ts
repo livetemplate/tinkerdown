@@ -53,7 +53,7 @@ export class TinkerdownClient {
     }
 
     try {
-      this.ws = new WebSocket(this.options.wsUrl);
+      this.ws = new WebSocket(this.socketUrl());
 
       this.ws.onopen = () => {
         this.isConnected = true;
@@ -80,6 +80,21 @@ export class TinkerdownClient {
       console.error("[TinkerdownClient] Failed to connect:", error);
       this.options.onError?.(error as Error);
     }
+  }
+
+  /**
+   * The WebSocket URL with the page URL's query, so a merge with params reads
+   * the values the address bar shows. The server's page parameter is set
+   * last, so the query can't name another page.
+   */
+  private socketUrl(): string {
+    const ws = new URL(this.options.wsUrl, window.location.href);
+    const page = ws.searchParams.get("page");
+    ws.search = window.location.search;
+    if (page !== null) {
+      ws.searchParams.set("page", page);
+    }
+    return ws.toString();
   }
 
   /**
@@ -133,6 +148,43 @@ export class TinkerdownClient {
     }
 
     this.ws.send(message);
+  }
+
+  /**
+   * On a page the server marks with the tinkerdown-live-query meta (a block
+   * on a merge with params), a link that only changes the query updates the
+   * address bar and sends the new query on the open WebSocket, so the page
+   * isn't loaded again. Back and Forward send the query they restore.
+   */
+  setupLiveQuery(): void {
+    if (!document.querySelector('meta[name="tinkerdown-live-query"]')) {
+      return;
+    }
+    let sent = window.location.search;
+    const apply = () => {
+      if (window.location.search === sent) {
+        return;
+      }
+      sent = window.location.search;
+      this.send("", "query", { query: window.location.search });
+    };
+    document.addEventListener("click", (e) => {
+      if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) {
+        return;
+      }
+      const a = (e.target as Element | null)?.closest?.("a[href]") as HTMLAnchorElement | null;
+      if (!a || (a.target && a.target !== "_self") || a.hasAttribute("download") || !this.isConnected) {
+        return;
+      }
+      const url = new URL(a.href, window.location.href);
+      if (url.origin !== window.location.origin || url.pathname !== window.location.pathname || url.search === window.location.search) {
+        return;
+      }
+      e.preventDefault();
+      window.history.pushState(null, "", url);
+      apply();
+    });
+    window.addEventListener("popstate", apply);
   }
 
   /**

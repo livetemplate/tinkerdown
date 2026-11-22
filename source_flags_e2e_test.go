@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
@@ -382,5 +383,139 @@ func TestFlagActions_E2E(t *testing.T) {
 	}
 	if got := clicked(); got != "web\na b $(touch pwned)\n" {
 		t.Fatalf("a refused value ran: clicked.txt = %q", got)
+	}
+}
+
+// TestParamsMerge_E2E opens a params merge from the page URL. A value not yet
+// in the gate merge runs nothing until its row appears; each value gets its
+// own buffer; a row link opens another value with a full page load; and the
+// gate's ["*"] doesn't take the params merge's input.
+func TestParamsMerge_E2E(t *testing.T) {
+	serverLog := captureServerLog(t)
+	orig := config.IsExecAllowed()
+	config.SetAllowExec(true)
+	defer config.SetAllowExec(orig)
+
+	marker := fmt.Sprintf("pmark%d", os.Getpid())
+	running := func() int {
+		out, _ := exec.Command("pgrep", "-f", marker).Output()
+		return len(strings.Fields(string(out)))
+	}
+	dir := t.TempDir()
+	list := filepath.Join(dir, "list.jsonl")
+	os.WriteFile(list, []byte(`{"name":"a"}`+"\n"+`{"name":"b"}`+"\n"), 0o644)
+	page := "---\ntitle: Things\nsources:\n  things:\n    type: merge\n    inputs: [\"*\"]\n    key: [fields.name]\n  logview:\n    type: merge\n    inputs: [logs]\n    params:\n      name: {in: things.fields.name}\n---\n\n```lvt\n" +
+		`<div lvt-source="things"><input data-testid="keep"><ol data-testid="list">{{range .Data}}<li data-key="{{.key}}"><a href="?name={{.fields.name}}">{{.fields.name}}</a> <i>{{.source}}</i></li>{{end}}</ol></div>` +
+		"\n```\n\n```lvt\n" +
+		`<div lvt-source="logview">{{if .Error}}<p data-testid="logerr">{{.Error}}</p>{{end}}<ol data-testid="logs">{{range .Data}}<li data-key="{{.seq}}">{{.msg}}</li>{{end}}</ol></div>` + "\n```\n"
+	os.WriteFile(filepath.Join(dir, "index.md"), []byte(page), 0o644)
+
+	cfg := config.DefaultConfig()
+	cfg.FlagSources = map[string]config.SourceConfig{
+		"list": {Type: "stream", File: list, Format: "json"},
+		"logs": {Type: "stream", Cmd: ": " + marker + `; echo "line from $TD_name"; while true; do sleep 1; done`, Format: "lines"},
+	}
+	srv := server.NewWithConfig(dir, cfg)
+	if err := srv.Discover(); err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(server.WithCompression(srv))
+	defer ts.Close()
+	defer srv.StopStreams()
+
+	chrome, cleanup := SetupDockerChrome(t, 90*time.Second)
+	defer cleanup()
+	ctx := chrome.Context
+	logs := &streamBrowserLogs{}
+	logs.listen(ctx)
+	dump := func() {
+		frames := logs.frames()
+		var html string
+		chromedp.Run(ctx, chromedp.OuterHTML("body", &html, chromedp.ByQuery))
+		t.Logf("console:\n%s", strings.Join(logs.console, "\n"))
+		t.Logf("ws received: %d frames, last: %s", len(frames), strings.Join(frames[max(0, len(frames)-4):], "\n"))
+		t.Logf("html: %s", tail(html, 3000))
+		t.Logf("server log tail: %s", tail(serverLog.String(), 4000))
+	}
+	wait := func(what, js string) {
+		t.Helper()
+		if err := chromedp.Run(ctx, waitForDOM(js, 15*time.Second)); err != nil {
+			dump()
+			t.Fatalf("waiting for %s: %v", what, err)
+		}
+	}
+	logText := `[...document.querySelectorAll('[data-testid="logs"] li')].map(li => li.textContent).join("|")`
+
+	// ?name=c isn't listed yet: the page shows the list and no logs, and no
+	// logs command runs.
+	if err := chromedp.Run(ctx, network.Enable(), chromedp.Navigate(ConvertURLForDockerChrome(ts.URL)+"/?name=c")); err != nil {
+		dump()
+		t.Fatal(err)
+	}
+	wait("the list", `document.querySelectorAll('[data-testid="list"] li').length === 2`)
+	var sources string
+	chromedp.Run(ctx, chromedp.Evaluate(`[...document.querySelectorAll('[data-testid="list"] i')].map(i => i.textContent).join(",")`, &sources))
+	if sources != "list,list" {
+		dump()
+		t.Fatalf("list rows came from %q; the [\"*\"] merge must not take the params merge's input", sources)
+	}
+	time.Sleep(time.Second)
+	if n := running(); n != 0 {
+		dump()
+		t.Fatalf("%d logs commands run for a value not in the list", n)
+	}
+
+	// The row appears: the logs start.
+	f, _ := os.OpenFile(list, os.O_APPEND|os.O_WRONLY, 0)
+	fmt.Fprintln(f, `{"name":"c"}`)
+	f.Close()
+	wait("c's logs once c is listed", logText+` === "line from c"`)
+
+	// A row link opens another value, with its own buffer, without a page
+	// load: the window marker and the text typed in the list block survive.
+	if err := chromedp.Run(ctx,
+		chromedp.Evaluate(`window.__sameDoc = true`, nil),
+		chromedp.SendKeys(`[data-testid="keep"]`, "typed", chromedp.ByQuery),
+		chromedp.Click(`[data-testid="list"] a[href="?name=a"]`, chromedp.ByQuery)); err != nil {
+		dump()
+		t.Fatal(err)
+	}
+	wait("a's logs, not c's", logText+` === "line from a"`)
+	var href string
+	var sameDoc bool
+	var typed string
+	chromedp.Run(ctx,
+		chromedp.Evaluate(`location.search`, &href),
+		chromedp.Evaluate(`window.__sameDoc === true`, &sameDoc),
+		chromedp.Value(`[data-testid="keep"]`, &typed, chromedp.ByQuery))
+	if href != "?name=a" || !sameDoc || typed != "typed" {
+		dump()
+		t.Fatalf("after the link: location.search %q, same document %v, typed text %q; want ?name=a, true, typed", href, sameDoc, typed)
+	}
+	// Back restores c's logs, still without a page load.
+	if err := chromedp.Run(ctx, chromedp.Evaluate(`history.back()`, nil)); err != nil {
+		dump()
+		t.Fatal(err)
+	}
+	wait("c's logs after Back", logText+` === "line from c" && location.search === "?name=c" && window.__sameDoc === true`)
+	if err := chromedp.Run(ctx, chromedp.Navigate(ConvertURLForDockerChrome(ts.URL)+"/?name=b")); err != nil {
+		dump()
+		t.Fatal(err)
+	}
+	wait("b's logs", logText+` === "line from b"`)
+	if n := running(); n < 2 {
+		dump()
+		t.Fatalf("%d logs commands run; each value opened should have its own", n)
+	}
+
+	// A refused value shows why, and runs nothing new.
+	before := running()
+	if err := chromedp.Run(ctx, chromedp.Navigate(ConvertURLForDockerChrome(ts.URL)+"/?name=-rf")); err != nil {
+		dump()
+		t.Fatal(err)
+	}
+	wait("the refusal", `document.body.textContent.includes("starts with -")`)
+	if n := running(); n > before {
+		t.Fatalf("a refused value started a command (%d -> %d)", before, n)
 	}
 }

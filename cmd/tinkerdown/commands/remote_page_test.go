@@ -113,6 +113,10 @@ func TestCheckRemotePage(t *testing.T) {
 	if err := checkRemotePage(parse(ok)); err != nil {
 		t.Fatalf("a merge-only page with accepts: %v", err)
 	}
+	withParams := "---\ntitle: Containers\nsources:\n  containers:\n    type: merge\n    inputs: [\"*\"]\n    key: [fields.name]\n    drop: fields.state=removed\n  logs:\n    type: merge\n    inputs: [logs]\n    params:\n      name: {in: containers.fields.name}\n---\n\n```lvt\n<ol lvt-source=\"logs\">{{range .Data}}<li data-key=\"{{.seq}}\">{{.msg}}</li>{{end}}</ol>\n```\n"
+	if err := checkRemotePage(parse(withParams)); err != nil {
+		t.Fatalf("a merge-only page with drop and params: %v", err)
+	}
 	cases := map[string]string{
 		"a stream source":                 "---\nsources:\n  x:\n    type: stream\n    cmd: id\n---\n# X\n",
 		"a json source":                   "---\nsources:\n  x:\n    type: json\n    file: ~/.aws/credentials\n---\n# X\n",

@@ -52,13 +52,16 @@ func ValidateStreamSource(name string, src SourceConfig, lookup func(string) (So
 			return invalid("%v", err)
 		}
 		if mergeOnly(src) {
-			return invalid("stream source %q: key, collect, collect_reset and drop apply to merge sources", name)
+			return invalid("stream source %q: key, collect, collect_reset, drop and params apply to merge sources", name)
 		}
 	case "merge":
 		if err := validateAccepts(name, src); err != nil {
 			return err
 		}
 		if err := validateKey(name, src); err != nil {
+			return err
+		}
+		if err := validateParams(name, src, lookup); err != nil {
 			return err
 		}
 		if len(src.Inputs) == 0 && !src.Wildcard {
@@ -85,6 +88,11 @@ func ValidateStreamSource(name string, src SourceConfig, lookup func(string) (So
 // WildcardInputs reports whether a merge takes every stream source it can see.
 func (s SourceConfig) WildcardInputs() bool {
 	return s.Type == "merge" && len(s.Inputs) == 1 && s.Inputs[0] == "*"
+}
+
+// ParamsMerge reports whether a merge takes values from the page URL's query.
+func (s SourceConfig) ParamsMerge() bool {
+	return s.Type == "merge" && len(s.Params) > 0
 }
 
 // Kind is "cmd" or "file" for a stream source, and "" otherwise.
@@ -157,7 +165,33 @@ func validMatch(s string) bool {
 
 // mergeOnly reports whether src sets an option that only a merge uses.
 func mergeOnly(src SourceConfig) bool {
-	return len(src.Key) > 0 || src.Collect != "" || src.CollectReset != "" || src.Drop != ""
+	return len(src.Key) > 0 || src.Collect != "" || src.CollectReset != "" || src.Drop != "" || len(src.Params) > 0
+}
+
+// validateParams checks a merge's params: each name is a TD_ name, and each
+// in names a merge without params of its own, and a field path in it.
+func validateParams(name string, src SourceConfig, lookup func(string) (SourceConfig, bool)) error {
+	if len(src.Params) > 0 && (src.WildcardInputs() || src.Wildcard) {
+		return invalid("merge source %q: params needs inputs listed by name, not [\"*\"]", name)
+	}
+	for _, p := range slices.Sorted(maps.Keys(src.Params)) {
+		if !TDName.MatchString(p) {
+			return invalid("merge source %q: param %q must be 1-32 letters, digits or _", name, p)
+		}
+		gate, path := src.Params[p].Gate()
+		if !fieldPath.MatchString(path) {
+			return invalid("merge source %q: param %s needs in: MERGE.PATH, where PATH is NAME or fields.NAME", name, p)
+		}
+		var g SourceConfig
+		ok := false
+		if lookup != nil {
+			g, ok = lookup(gate)
+		}
+		if !ok || g.Type != "merge" || len(g.Params) > 0 || gate == name {
+			return invalid("merge source %q: param %s: in names %q, which must be another merge on the page without params", name, p, gate)
+		}
+	}
+	return nil
 }
 
 func validateAccepts(name string, src SourceConfig) error {

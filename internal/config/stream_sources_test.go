@@ -138,3 +138,34 @@ func TestKeySpecFromConfig(t *testing.T) {
 		t.Fatalf("KeySpec = %+v", k)
 	}
 }
+
+func TestValidateParams(t *testing.T) {
+	sources := map[string]SourceConfig{
+		"logs":       {Type: "stream", Cmd: `docker logs -f -- "$TD_name"`},
+		"containers": {Type: "merge", Inputs: []string{"logs"}, Key: []string{"fields.name"}},
+		"gated":      {Type: "merge", Inputs: []string{"logs"}, Params: map[string]SourceParam{"x": {In: "containers.fields.name"}}},
+		"astream":    {Type: "stream", File: "a.log"},
+		"logview":    {Type: "merge", Inputs: []string{"logs"}},
+	}
+	lookup := func(n string) (SourceConfig, bool) { s, ok := sources[n]; return s, ok }
+	ok := SourceConfig{Type: "merge", Inputs: []string{"logs"}, Params: map[string]SourceParam{"name": {In: "containers.fields.name"}}}
+	if err := ValidateStreamSource("logview", ok, lookup); err != nil {
+		t.Fatalf("valid params merge: %v", err)
+	}
+	for name, src := range map[string]SourceConfig{
+		"params on a stream":   {Type: "stream", File: "a.log", Params: map[string]SourceParam{"name": {In: "containers.fields.name"}}},
+		"bad param name":       {Type: "merge", Inputs: []string{"logs"}, Params: map[string]SourceParam{"my-name": {In: "containers.fields.name"}}},
+		"no in":                {Type: "merge", Inputs: []string{"logs"}, Params: map[string]SourceParam{"name": {}}},
+		"in without a path":    {Type: "merge", Inputs: []string{"logs"}, Params: map[string]SourceParam{"name": {In: "containers"}}},
+		"in, bad path":         {Type: "merge", Inputs: []string{"logs"}, Params: map[string]SourceParam{"name": {In: "containers.a.b.c"}}},
+		"in, unknown merge":    {Type: "merge", Inputs: []string{"logs"}, Params: map[string]SourceParam{"name": {In: "nope.fields.name"}}},
+		"in, not a merge":      {Type: "merge", Inputs: []string{"logs"}, Params: map[string]SourceParam{"name": {In: "astream.msg"}}},
+		"in, gated merge":      {Type: "merge", Inputs: []string{"logs"}, Params: map[string]SourceParam{"name": {In: "gated.fields.name"}}},
+		"in, itself":           {Type: "merge", Inputs: []string{"logs"}, Params: map[string]SourceParam{"name": {In: "logview.fields.name"}}},
+		"wildcard with params": {Type: "merge", Inputs: []string{"*"}, Params: map[string]SourceParam{"name": {In: "containers.fields.name"}}},
+	} {
+		if err := ValidateStreamSource("logview", src, lookup); err == nil {
+			t.Errorf("%s: want an error", name)
+		}
+	}
+}

@@ -355,10 +355,26 @@ type SourceConfig struct {
 	// Drop (PATH=VALUE), on a keyed merge, removes a key's row when a row
 	// matches, such as fields.state=removed for a removed container.
 	Drop string `yaml:"drop,omitempty"`
+	// Params, on a merge, take values from the page URL's query and start
+	// the merge's inputs with TD_<name>=value. A value is accepted only while
+	// it is in a row of the merge its In names.
+	Params map[string]SourceParam `yaml:"params,omitempty"`
 
 	// Wildcard is set by ExpandInputs on a merge declared with inputs ["*"]:
 	// its Inputs are the sources found, and empty means "no sources yet".
 	Wildcard bool `yaml:"-"`
+}
+
+// SourceParam is one params value. In is MERGE.PATH: the value must equal
+// PATH (NAME or fields.NAME) in a row of merge MERGE on the same page.
+type SourceParam struct {
+	In string `yaml:"in"`
+}
+
+// Gate splits In into the merge and the field path.
+func (p SourceParam) Gate() (merge, path string) {
+	merge, path, _ = strings.Cut(p.In, ".")
+	return merge, path
 }
 
 // SourceAccepts declares the sources a page's ["*"] merge takes. It describes
