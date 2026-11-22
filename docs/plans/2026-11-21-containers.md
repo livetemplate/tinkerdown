@@ -1,6 +1,6 @@
 # Plan: a containers onefile app, with actions and log streams from flags
 
-State — Done: plan merged (#336), Phase 1 (`drop`, #337), Phase 2 (`--action`, #338), Phase 3 (`params`). Next: release, then Phase 4.
+State — Done: plan merged (#336), Phase 1 (`drop`, #337), Phase 2 (`--action`, #338), Phase 3 (`params`, #339), release v0.7.0 with `@livetemplate/client` 0.25.11 (#341). Next: Phase 4 sign-off ([onefile#1](https://github.com/livetemplate/onefile/pull/1)).
 
 ## Context
 
@@ -27,7 +27,7 @@ The audit (2026-11-21) settled these facts:
 |---|---|---|
 | See what's running | one row per container, updating live | `--source docker=…`, keyed merge on `fields.name`, `drop` |
 | Notice a crash | the row turns red: `exited (137)` | `die` event with `exitCode` |
-| Read a container's logs | click its name; logs follow live below the list | `<a href="?name=…">`, merge `params` with `in`, `--source logs=…` |
+| Read a container's logs | click its name; logs follow live in a pane beside the list | `<a href="?name=…">`, merge `params` with `in`, `--source logs=…` |
 | Stop, restart or kill it | buttons on the row; kill asks first | `--action stop=…`, `data-confirm` |
 | Filter | Running / Exited / Paused tabs, name search | `fields.state` tabs, `f.fields.name` |
 
@@ -41,18 +41,16 @@ tinkerdown serve --allow-exec https://raw.githubusercontent.com/livetemplate/one
 ```
 
 ```
-┌ Containers ───────────────────────────────────────────────────┐
-│ [All] [Running] [Exited] [Paused]   [🔍 name     ]  ● live 12 │
-├───────────────────────────────────────────────────────────────┤
-│ ● running  web     nginx:1.27    Up 2 hours    [⟳] [■] [✕]    │
-│ ✗ exited   worker  app:dev       exited (137)  [⟳]            │
-├ worker · logs ────────────────────────────────── ↓ following ─┤
-│ 17:02:11 job 41 started                                       │
-│ 17:02:12 panic: nil map            stderr                     │
-└───────────────────────────────────────────────────────────────┘
+┌ Containers ────────────────────────────────────────────────────────────┐
+│ [All] [Running] [Exited] [Paused]                                      │
+├────────────────────────────────────────────┬───────────────────────────┤
+│ [ container name   ]   12 containers        │ Logs · 37 lines           │
+│ ● running  web     [Stop][Restart][Kill]   │ 17:02:11 job 41 started   │
+│ ✗ exited   worker  exited (137)  [Start]   │ 17:02:12 panic: nil map   │
+└────────────────────────────────────────────┴───────────────────────────┘
 ```
 
-On a phone, each row puts the image and status under the name and the buttons on their own line, and the logs panel sits below the list.
+On a phone, each row puts the image and status under the name and the buttons on their own line, and the logs pane sits below the list. The pane moved beside the list after the 8092 demo (user, 2026-11-22).
 
 ## Decisions
 
@@ -148,14 +146,16 @@ onefile:
 
 | # | Type | Item | Severity | Status |
 |---|---|---|---|---|
-| A1 | assumption | The feed survives `--source NAME='…'` quoting and `sh -c`, with the format strings' double quotes escaped. | high | open (Phase 4) |
+| A1 | assumption | The feed survives `--source NAME='…'` quoting and `sh -c`, with the format strings' double quotes escaped. | high | verified 2026-11-22 (`TestContainers` runs the README command through bash) |
 | A2 | assumption | Removing a keyed row mid-range reaches the page as `["r", key]`. livetemplate's range diff emits `r` ops (`range_ops.go`). | medium | verified 2026-11-21 (`TestKeyedMerge_E2E`) |
 | A3 | assumption | A merge input can't be used by a page both as a plain input and through a params merge; if it can, the plain use must refuse a source whose command reads `TD_*`. | medium | false: `["*"]` took it; fixed by reserving `params` inputs (Phase 3) |
-| A4 | assumption | `data-confirm` works on any button in an lvt block, not only in forms (the PII example uses it on a row button). | low | open (Phase 4) |
+| A4 | assumption | `data-confirm` works on any button in an lvt block, not only in forms (the PII example uses it on a row button). | low | verified 2026-11-22 (`TestContainers`, Kill asks first) |
 | R1 | risk | Anyone can write a link with `?name=`. `in` limits it to a container the page already lists, so the worst a hostile page can do is start logs for one of those; it can't read them (same-origin policy, Host allow-list). | low | mitigated (`in`) |
 | R2 | risk | A rename leaves the old name's row behind. Mitigation if it bites: map `rename` to a drop of `oldName`. | low | accepted |
 | G1 | gap | Remote pages can call flag actions but still can't declare their own. Intended. | low | owned (this plan) |
 | G2 | gap | Page-declared exec actions still paste values with `{{…}}`, so a value can add arguments. | medium | unowned |
+| G3 | gap | A pressed button shows nothing until its action finishes, and the logs pane can't name its container. Both need tinkerdown: an action acknowledgement that names the click, so the client can keep the button `aria-busy`, and the accepted `params` values on the block's state. | medium | follow-up (v0.7.1), awaiting the user |
+| R3 | risk | An action runs on the connection's read loop, so while a `docker stop` runs that tab's search, log links and other buttons wait. Act if it bites: run actions off the read loop; the G3 acknowledgement should name the click so that change needs no new protocol. | medium | open |
 
 ## Acceptance criteria
 
@@ -173,7 +173,7 @@ onefile:
   - `TestParamsMerge_E2E`: `?name=c`, not in the list, runs no command until a `c` row appears
   - `TestParamsMerge_E2E`: clicking a row link switches the logs with no page load (a `window` marker survives) and keeps the list's search text; Back returns to the earlier value
   - `TestKeyedMerge_E2E`: a drop sends `["r", …]`
-- [ ] onefile `cd e2e && go test -run TestContainers ./...`, with containers named `ofe2e-<pid>-*` and the README command plus `--filter name=ofe2e-<pid>`:
+- [ ] onefile `cd e2e && go test -run TestContainers ./...`, with containers named `ofe2e-<pid>-*` and labelled `ofe2e=<pid>`, and the README command plus `--filter label=ofe2e=<pid>`:
   - a running container shows `running`; one that exits with code 3 shows `exited (3)` in the Exited tab
   - Stop moves a row to exited; Kill asks first; `docker rm -f` removes the row
   - clicking a name opens its logs, and a line the container prints afterwards appears
@@ -224,8 +224,8 @@ The feed's JSON line: `{"name", "image", "state", "status"}`. `state` is one of 
 - Audit: A1, A4. Re-read the Contract against what shipped.
 - Implementation: the onefile files, with three findings from the 8092 demo:
   - show only a state's buttons, with CSS on the row's `st-<state>` class, because a per-row `{{if}}` would end row-by-row updates
-  - show a click as in progress until the state changes, because a `docker stop` takes seconds
-  - start a restarted container's logs with `--since`, not `--tail`, so lines aren't repeated
+  - show a click as in progress until the state changes, because a `docker stop` takes seconds: moved to G3, since the page can't tell when an action finishes
+  - start a restarted container's logs with `--since`, not `--tail`, so lines aren't repeated: the logs source reads the container's `StartedAt` before attaching, and on each `start` from `docker events` re-attaches with `--since` set to the new `StartedAt`. `date +%s` repeated the last second's lines, `%N` isn't portable to macOS, and polling `docker inspect` cost a process a second
 - Acceptance: `/simplify`, the onefile criteria, screenshots through chromedp.
 
 ## Delivery
