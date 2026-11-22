@@ -1,6 +1,6 @@
 # Plan: log rows that show every field and link their URLs
 
-State — Done: plan signed off (2026-11-22, #366), Phase 1 (livetemplate#555, v0.25.13), Phase 2 (#367). Next: the nested-alias fix, v0.7.4, then the Phase 3 PR.
+State — Done: plan signed off (2026-11-22, #366), Phase 1 (livetemplate#555, v0.25.13), Phase 2 (#367), the nested-alias fix (#369), v0.7.4, Phase 3 (onefile#6), homebrew-tap#12 (formula 0.7.4); all four issues closed. Next: none; the plan is complete.
 
 ## Context
 
@@ -119,15 +119,15 @@ onefile (worktree `.worktrees/log-fields`):
 
 ## Acceptance criteria
 
-- [ ] `/simplify` has run on each phase's diff.
-- [ ] livetemplate `go test ./...` passes, with new tests:
+- [x] `/simplify` has run on each phase's diff. ✅ (Phase 3's run also covered #369)
+- [x] livetemplate `go test ./...` passes, with new tests: ✅ (livetemplate#555, `range_keys_test.go`, `internal/parse/issue554_test.go`)
   - `{{range}}{{range}}…{{end}}{{end}}` gives each outer item its inner range and a distinct key
   - `split "a a b" " "` gives keys `h(a)`, `h(a)-2`, `h(b)`, with `h(a)` unchanged from v0.25.12, and a later update to that range sends item ops, not a whole-range resend
   - removing the first `a`, or prepending another `a`, sends one remove and one add for the renamed item, and leaves `h(b)` untouched
   - `and` and `or` stop at the deciding argument and return its value, not a bool, so the `slice` example renders `n` without a panic. A nil or missing field as the first argument decides `and` as false, and `or` with no truthy argument returns its last one.
   - a page's own `and` function is still called with every argument
-- [ ] livetemplate's own e2e or client tests pass, covering A1.
-- [ ] tinkerdown `GOWORK=off go test ./...` passes, with:
+- [x] livetemplate's own e2e or client tests pass, covering A1. ✅ (livetemplate#555 CI)
+- [x] tinkerdown `GOWORK=off go test ./...` passes, with: ✅ (#367, #369; `TestModuleZipKeepsEmbeddedFiles`, `TestLinkify`)
   - the `CheckDir` test, which fails on main (A3) and passes after the rename
   - `linkify` table tests:
     - text: plain text, one URL, two URLs, a number value, a map and a slice value (printed by `fmt.Sprint`, then linked and escaped)
@@ -135,16 +135,16 @@ onefile (worktree `.worktrees/log-fields`):
     - URL edges: `((` nested in a URL, `(see https://a.com/x).`, a URL followed by `]` or `}`
     - URL edges, non-ASCII: a URL followed by `”`, `。` or `）`
     - escaping: `<script>`, `javascript:alert(1)`, `JavaScript:alert(1)`, `https://a.com/x"onmouseover=alert(1)` (the link stops at `"`), a `"` inside a URL, `&` in a query, a URL ending in `&`, `&quot;` next to a URL, a `template.HTML` input (still escaped)
-- [ ] After the v0.7.4 tag: `GOMODCACHE=$(mktemp -d) GOFLAGS=-modcacherw go install github.com/livetemplate/tinkerdown/cmd/tinkerdown@v0.7.4` succeeds.
-- [ ] onefile `TestLogViewer` (chromedp) checks, with console logs, server logs, WebSocket frames and HTML captured:
+- [x] After the v0.7.4 tag: `GOMODCACHE=$(mktemp -d) GOFLAGS=-modcacherw go install github.com/livetemplate/tinkerdown/cmd/tinkerdown@v0.7.4` succeeds. ✅
+- [x] onefile `TestLogViewer` (chromedp) checks, with console logs, server logs, WebSocket frames and HTML captured: ✅ (onefile#6)
   - a slog line shows `subject=…`, `to=…` and `body=…` after its message
   - the URL in `body=` is one `<a target="_blank">` with the exact `href` and the whole URL as its text, even where the line wraps
   - a `<script>` in a line renders as text
   - a line appended after the page loads arrives as an append op (A2)
   - searching `sign` shows the row with the matching text visible
   - at 390px the page has no sideways scroll
-- [ ] The full onefile suite passes against released v0.7.4, and pre-commit passes in each repo without `--no-verify`.
-- [ ] `prereview check` passes on the changed docs and READMEs.
+- [x] The full onefile suite passes against released v0.7.4, and pre-commit passes in each repo without `--no-verify`. ✅ (run with the `go install`ed v0.7.4 binary)
+- [x] `prereview check` passes on the changed docs and READMEs. ✅ (CHANGELOG's only findings are sentence length in older entries)
 
 ## Constraints
 
