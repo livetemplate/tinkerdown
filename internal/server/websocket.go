@@ -1344,6 +1344,9 @@ var blockHelperFuncs = template.FuncMap{
 	// split turns a delimited string into a slice — e.g. comma-separated tags
 	// into individual values for a {{range}}.
 	"split": strings.Split,
+	// linkify escapes a value and turns each http(s) URL in it into a link
+	// that opens in a new tab.
+	"linkify": linkify,
 }
 
 // ComponentTemplates returns the livetemplate component template sets Tinkerdown

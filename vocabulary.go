@@ -41,7 +41,6 @@ var knownAttributes = map[string]bool{
 	"lvt-ignore-attrs": true,
 	"lvt-debounce":     true,
 	"lvt-upload":       true,
-	"lvt-spy":          true,
 	"lvt-redact":       true,
 	"lvt-scroll-away":  true,
 }
@@ -83,14 +82,10 @@ var knownDataAttributes = map[string]bool{
 	"data-lvt-scroll-sticky":       true,
 	"data-lvt-targeted-applied":    true,
 	"data-lvt-targeted-skip":       true,
-	"data-lvt-text-caret":          true,
-	"data-lvt-text-select-button":  true,
 	"data-lvt-toast-content":       true,
 	"data-lvt-toast-item":          true,
 	"data-lvt-toast-stack":         true,
 	"data-lvt-upload-preview":      true,
-	"data-lvt-url-hash":            true,
-	"data-lvt-viewport-items":      true,
 }
 
 // UnknownAttribute is an lvt-* attribute a document uses that nothing implements.

@@ -1,6 +1,6 @@
 # Plan: log rows that show every field and link their URLs
 
-State — Done: nothing. Next: plan sign-off, then Phase 1 (livetemplate).
+State — Done: plan signed off (2026-11-22, #366), Phase 1 (livetemplate#555, v0.25.13), Phase 2 built on v0.25.13. Next: the Phase 2 PR, then v0.7.4.
 
 ## Context
 
@@ -71,7 +71,7 @@ A row shows its message, then each other field as `key=value`, with every `http:
   because: a template can't trim punctuation or escape a URL for an `href`
 - tinkerdown: rename `internal/assets/vendor/` to `internal/assets/third_party/`, and update the `//go:embed` lines and `ReadFile` paths in `assets.go`.
   alternative: none considered
-- tinkerdown: a test builds the module's file list with `golang.org/x/mod/zip.CheckDir` and fails if it leaves out any file under `internal/`.
+- tinkerdown: a test builds the module's file list with `golang.org/x/mod/zip.CheckDir` and fails if it leaves out any file a `//go:embed` pattern uses (from `go list -json`).
   alternative: a CI step that runs `go install …@<tag>` from an empty module cache
   because: that runs only after a tag exists, too late to stop a broken release. `CheckDir` applies the same rules as the Go proxy, so the test also catches other omissions, such as a nested `go.mod`.
 - onefile `logs`: each row shows `msg`, then a `<span class="fields">` holding one `<span>` per field, as `key=value`. Field names come from `range` over the map, sorted, as Go templates sort map keys. `msg` and every value go through `linkify`.
@@ -92,7 +92,7 @@ livetemplate (worktree `.worktrees/range-keys`):
 
 tinkerdown (worktree `.worktrees/log-links`):
 - `internal/assets/vendor/` → `internal/assets/third_party/`, and `internal/assets/assets.go`.
-- `internal/assets/module_test.go` new?: the `CheckDir` test.
+- `module_zip_test.go` (module root): the `CheckDir` test. It moved from the planned `internal/assets/module_test.go` and checks the files `go list` reports as embedded, not every file under `internal/`, so the embeds in `cmd/tinkerdown/commands` are covered too.
 - `internal/server/linkify.go` new? and `internal/server/linkify_test.go` new?; `internal/server/websocket.go`: `linkify` in `blockHelperFuncs`.
 - `go.mod`, `go.sum`: livetemplate v0.25.13, and `golang.org/x/mod` (indirect today) as a direct requirement, used only by the test.
 - `client/package.json`, `client/package-lock.json`, `internal/assets/client/*`: `@livetemplate/client` 0.25.12 and the rebuilt bundle (A5).
@@ -109,12 +109,12 @@ onefile (worktree `.worktrees/log-fields`):
 
 | # | Type | Item | Severity | Status |
 |---|---|---|---|---|
-| A1 | assumption | The livetemplate client accepts a key with a `-2` suffix: it treats keys as opaque strings. | high | open (Phase 1 audit) |
-| A2 | assumption | A row with a nested `{{range}}` over `.fields` keeps the outer range in stream mode, so new log lines still arrive as append ops. | high | open (Phase 1 audit, with a livetemplate test before the release; Phase 3 confirms it in WebSocket frames) |
-| A3 | assumption | `golang.org/x/mod/zip.CheckDir` reports `vendor/` files as omitted, so the new test fails before the rename. | medium | open (Phase 2) |
-| A4 | assumption | A field value that isn't a string (a number, bool, nested map, slice or error) prints usefully through `linkify`'s `fmt.Sprint`. That's the intended behavior. | low | open (Phase 2) |
+| A1 | assumption | The livetemplate client accepts a key with a `-2` suffix: it treats keys as opaque strings. | high | holds: the client reads `_k` as an opaque string (`getItemKey`, `findItemByKey` with `cssEscape`) |
+| A2 | assumption | A row with a nested `{{range}}` over `.fields` keeps the outer range in stream mode, so new log lines still arrive as append ops. | high | held only after a fix: a map range visited keys in random order, so every update sent a reorder; livetemplate#555 sorts them |
+| A3 | assumption | `golang.org/x/mod/zip.CheckDir` reports `vendor/` files as omitted, so the new test fails before the rename. | medium | holds: `CheckDir` omits all 18 files under `internal/assets/vendor/`, but reports absolute paths, so the test compares paths relative to the module root |
+| A4 | assumption | A field value that isn't a string (a number, bool, nested map, slice or error) prints usefully through `linkify`'s `fmt.Sprint`. That's the intended behavior. | low | holds: `fmt.Sprint` prints maps (sorted) and slices, and the table tests cover both |
 | R1 | risk | `linkify` returns HTML built from log text, so a bug there is an XSS hole. Mitigation: every piece of output passes through `html.EscapeString`, only `http`/`https` become links, and the tests cover `<script>`, `javascript:`, a quote inside a URL, `&` in a query and a URL ending in `&`. | high | open |
-| A5 | assumption | tinkerdown works on livetemplate v0.25.13 with a client bundle rebuilt from `@livetemplate/client` 0.25.12: its full suite and the onefile suite pass. | medium | open (Phase 2) |
+| A5 | assumption | tinkerdown works on livetemplate v0.25.13 with a client bundle rebuilt from `@livetemplate/client` 0.25.12: its full suite and the onefile suite pass. | medium | holds after removing five allowlist entries the new client no longer implements (Phase 2 Learn) |
 | R2 | risk | Suffixing duplicate keys renames the second and later duplicates, so a connection open across the upgrade sees one remove and add for each. Mitigation: none needed; a server restart already starts new connections. | low | accepted |
 
 ## Acceptance criteria
@@ -163,13 +163,18 @@ onefile (worktree `.worktrees/log-fields`):
   - Check A2 with a test: a stream-mode range whose rows hold a nested range over a map still sends append ops. Because map keys render sorted, an unchanged row produces no diff on a second render.
 - Implementation: per the Files list.
 - Acceptance: `/simplify`, then the livetemplate criteria. PR, sign-off, then v0.25.13 through `scripts/release.sh`.
-- Learn: recorded here.
+- Learn:
+  - A fourth bug: a range over a map visited its keys in Go's random order. livetemplate#555 sorts them like `text/template`.
+  - `Execute` falls back to `html/template` when livetemplate's evaluator fails, so HTML-level tests passed on `main` for `and` and for map order. Tests of the evaluator check the built tree.
+  - The multi-instance docker e2e couldn't start on `main` (Go 1.24 image, gitignored `go.sum`); livetemplate#555 fixes it.
 
 ### Phase 2: tinkerdown#364 and `linkify`
 - Audit: A4, A5, where the docs list template functions, and every other mention of `assets/vendor` or `vendor/` in the repo (Makefile, `.gitignore`, CI workflows, lint config, the client bundle's copy step, docs).
-- Implementation: commit the `CheckDir` test first and show it failing on main (A3), then the rename, then the rest per the Files list, with livetemplate bumped to v0.25.13.
+- Implementation: run the `CheckDir` test on main and show it failing (A3). Because the pre-commit hook runs the suite, a failing test can't be committed alone, so it goes in with the rename. Then the rest per the Files list, with livetemplate bumped to v0.25.13.
 - Acceptance: `/simplify`, then the tinkerdown criteria. PR, sign-off, then v0.7.4 through `release.sh`, the `go install` check and the Homebrew PR.
-- Learn: recorded here.
+- Learn:
+  - The docs listed a `safeHTML` function that doesn't exist; `docs/guides/go-templates.md` now lists `printf`, `split` and `linkify`.
+  - A5 held after one fix: client 0.25.12 no longer ships prereview's attribute handlers, so `TestKnownAttributesAreReal` failed on five allowlist entries (`lvt-spy`, `data-lvt-text-caret`, `data-lvt-text-select-button`, `data-lvt-url-hash`, `data-lvt-viewport-items`). They're removed from `vocabulary.go`.
 
 ### Phase 3: onefile#4 and #5
 - Audit: re-read the `logs` page and its e2e fixtures against this plan.

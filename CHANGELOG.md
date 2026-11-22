@@ -11,6 +11,34 @@ Earlier releases (v0.1.x) are documented in the
 
 ## [Unreleased]
 
+### Added
+
+- **A `linkify` template function.** `{{linkify .msg}}` escapes a value and
+  makes each `http://` or `https://` URL in it a link that opens in a new tab.
+  Trailing punctuation stays outside the link. It's safe on text you don't
+  control, such as log lines.
+
+### Fixed
+
+- **`go install github.com/livetemplate/tinkerdown/cmd/tinkerdown@latest`
+  works again (#364).** Go leaves every directory named `vendor` out of a
+  module's download. The embedded Prism, Mermaid, Chart.js and Pico files
+  lived under `internal/assets/vendor/`, so the build from a download failed.
+  They now live under `internal/assets/third_party/`, and a test checks the
+  module's files against the rules the Go proxy uses.
+- **Live updates for nested ranges, repeated values and maps** (livetemplate
+  v0.25.13). A range whose items are each another range now renders. A word
+  that appears twice in a list no longer makes every update resend the list.
+  A range over a map keeps its keys in sorted order. `and` and `or` stop
+  at the argument that decides them.
+
+### Changed
+
+- The embedded client is now `@livetemplate/client` 0.25.12. It no longer
+  ships prereview's attribute handlers, so `tinkerdown validate` now reports
+  `lvt-spy`, `data-lvt-text-caret`, `data-lvt-text-select-button`,
+  `data-lvt-url-hash` and `data-lvt-viewport-items` as unknown.
+
 ## [v0.7.3] - 2026-11-22
 
 ### Fixed

@@ -72,13 +72,13 @@ Tinkerdown uses Go's `html/template` package for dynamic content rendering.
 
 ### String Functions
 
-```html
-<!-- Print formatted -->
-{{printf "Count: %d" .count}}
+| Function | Description | Example |
+|----------|-------------|---------|
+| `printf` | Formatted text | `{{printf "Count: %d" .count}}` |
+| `split` | Splits text into a list, for `range` | `{{range split .tags ","}}…{{end}}` |
+| `linkify` | Escapes a value and makes each `http://` or `https://` URL in it a link that opens in a new tab | `{{linkify .msg}}` |
 
-<!-- HTML output (use sparingly) -->
-{{.rawHtml | safeHTML}}
-```
+`linkify` escapes everything else in the value, so it's safe on text you don't control, such as log lines. Trailing punctuation, like the period ending a sentence, stays outside the link.
 
 ## When to Use Go Templates vs Auto-Rendering
 

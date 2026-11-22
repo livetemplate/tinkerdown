@@ -1,4 +1,4 @@
-// Package assets embeds the client JavaScript, CSS, and vendor libraries
+// Package assets embeds the client JavaScript, CSS, and third-party libraries
 package assets
 
 import (
@@ -10,16 +10,16 @@ import (
 //go:embed client/*
 var clientFS embed.FS
 
-//go:embed vendor/prism/*
+//go:embed third_party/prism/*
 var prismFS embed.FS
 
-//go:embed vendor/mermaid/*
+//go:embed third_party/mermaid/*
 var mermaidFS embed.FS
 
-//go:embed vendor/chartjs/*
+//go:embed third_party/chartjs/*
 var chartjsFS embed.FS
 
-//go:embed vendor/pico/*
+//go:embed third_party/pico/*
 var picoFS embed.FS
 
 // ClientFS returns the embedded client files
@@ -43,24 +43,24 @@ func GetClientCSS() ([]byte, error) {
 
 // GetPrismJS returns the Prism.js core library
 func GetPrismJS() ([]byte, error) {
-	return prismFS.ReadFile("vendor/prism/prism.min.js")
+	return prismFS.ReadFile("third_party/prism/prism.min.js")
 }
 
 // GetPrismCSS returns the vendored light Prism.js theme CSS.
 func GetPrismCSS() ([]byte, error) {
-	return prismFS.ReadFile("vendor/prism/prism-light.css")
+	return prismFS.ReadFile("third_party/prism/prism-light.css")
 }
 
 // GetPrismLineHighlightJS returns the Prism Line Highlight plugin JS,
 // vendored from prismjs@1.29.0. Used by `LANG include="..." highlight="3-5"`
 // fences to draw an emphasis overlay on selected lines.
 func GetPrismLineHighlightJS() ([]byte, error) {
-	return prismFS.ReadFile("vendor/prism/prism-line-highlight.min.js")
+	return prismFS.ReadFile("third_party/prism/prism-line-highlight.min.js")
 }
 
 // GetPrismLineHighlightCSS returns the Prism Line Highlight plugin CSS.
 func GetPrismLineHighlightCSS() ([]byte, error) {
-	return prismFS.ReadFile("vendor/prism/prism-line-highlight.min.css")
+	return prismFS.ReadFile("third_party/prism/prism-line-highlight.min.css")
 }
 
 // GetPrismLineNumbersJS returns the Prism Line Numbers plugin JS, which
@@ -69,12 +69,12 @@ func GetPrismLineHighlightCSS() ([]byte, error) {
 // (`counter.go:13-35`) and the optional `highlight=` overlay can refer
 // to.
 func GetPrismLineNumbersJS() ([]byte, error) {
-	return prismFS.ReadFile("vendor/prism/prism-line-numbers.min.js")
+	return prismFS.ReadFile("third_party/prism/prism-line-numbers.min.js")
 }
 
 // GetPrismLineNumbersCSS returns the Prism Line Numbers plugin CSS.
 func GetPrismLineNumbersCSS() ([]byte, error) {
-	return prismFS.ReadFile("vendor/prism/prism-line-numbers.min.css")
+	return prismFS.ReadFile("third_party/prism/prism-line-numbers.min.css")
 }
 
 // SupportedPrismLanguages is the whitelist of available Prism language components
@@ -96,20 +96,20 @@ func GetPrismLanguage(lang string) ([]byte, error) {
 	if !SupportedPrismLanguages[lang] {
 		return nil, fmt.Errorf("unsupported prism language: %q", lang)
 	}
-	return prismFS.ReadFile("vendor/prism/prism-" + lang + ".min.js")
+	return prismFS.ReadFile("third_party/prism/prism-" + lang + ".min.js")
 }
 
 // GetMermaidJS returns the Mermaid.js library
 func GetMermaidJS() ([]byte, error) {
-	return mermaidFS.ReadFile("vendor/mermaid/mermaid.min.js")
+	return mermaidFS.ReadFile("third_party/mermaid/mermaid.min.js")
 }
 
 // GetChartJS returns the Chart.js library
 func GetChartJS() ([]byte, error) {
-	return chartjsFS.ReadFile("vendor/chartjs/chart.umd.min.js")
+	return chartjsFS.ReadFile("third_party/chartjs/chart.umd.min.js")
 }
 
 // GetPicoCSS returns the Pico CSS framework
 func GetPicoCSS() ([]byte, error) {
-	return picoFS.ReadFile("vendor/pico/pico.min.css")
+	return picoFS.ReadFile("third_party/pico/pico.min.css")
 }
