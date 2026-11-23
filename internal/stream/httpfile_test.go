@@ -1,0 +1,171 @@
+package stream
+
+import (
+	"os"
+	"path/filepath"
+	"reflect"
+	"strings"
+	"testing"
+	"time"
+)
+
+func TestParseRequestLine(t *testing.T) {
+	for line, want := range map[string][3]string{
+		"GET https://api.test/users":           {"GET", "https://api.test/users", "ok"},
+		"POST {{host}}/users HTTP/1.1":         {"POST", "{{host}}/users", "ok"},
+		"delete https://api.test/users/1":      {"DELETE", "https://api.test/users/1", "ok"},
+		"https://api.test/health":              {"GET", "https://api.test/health", "ok"},
+		"http://localhost:8080/ HTTP/2":        {"GET", "http://localhost:8080/", "ok"},
+		"{{host}}/users":                       {"GET", "{{host}}/users", "ok"},
+		"OPTIONS * HTTP/1.1":                   {"OPTIONS", "*", "ok"},
+		"Content-Type: application/json":       {"", "", ""},
+		"hello world":                          {"", "", ""},
+		"GET":                                  {"", "", ""},
+		"FETCH https://api.test/":              {"", "", ""},
+		"GET https://api.test/ HTTP/1.1 extra": {"", "", ""},
+	} {
+		m, u, ok := parseRequestLine(line)
+		got := [3]string{m, u, ""}
+		if ok {
+			got[2] = "ok"
+		}
+		if got != want {
+			t.Errorf("parseRequestLine(%q) = %q, want %q", line, got, want)
+		}
+	}
+}
+
+const sampleHTTP = `@host = https://api.test
+# a comment
+// another
+
+### List users
+GET {{host}}/users
+Accept: application/json
+
+### Create user
+POST {{host}}/users HTTP/1.1
+Content-Type: application/json
+Authorization: Bearer {{token}}
+
+{
+  "name": "Ada"
+}
+
+###
+# @name health
+{{host}}/health
+`
+
+func TestParseHTTPFile(t *testing.T) {
+	reqs, vars, err := ParseHTTPFile(sampleHTTP)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if vars["host"] != "https://api.test" {
+		t.Fatalf("vars = %v", vars)
+	}
+	want := []HTTPRequest{
+		{Name: "List users", Method: "GET", URL: "{{host}}/users", Headers: "Accept: application/json", Line: 6},
+		{Name: "Create user", Method: "POST", URL: "{{host}}/users", Headers: "Content-Type: application/json\nAuthorization: Bearer {{token}}", Body: "{\n  \"name\": \"Ada\"\n}", Line: 10},
+		{Name: "health", Method: "GET", URL: "{{host}}/health", Line: 20},
+	}
+	if !reflect.DeepEqual(reqs, want) {
+		t.Fatalf("requests:\n%#v\nwant:\n%#v", reqs, want)
+	}
+}
+
+func TestParseHTTPFileErrorNamesTheLine(t *testing.T) {
+	_, _, err := ParseHTTPFile("### a\nGET https://x\nnot a header\n")
+	if err == nil || !strings.HasPrefix(err.Error(), "line 3:") {
+		t.Fatalf("err = %v, want one naming line 3", err)
+	}
+	_, _, err = ParseHTTPFile("hello there\n")
+	if err == nil || !strings.HasPrefix(err.Error(), "line 1:") {
+		t.Fatalf("err = %v, want one naming line 1", err)
+	}
+}
+
+func TestFillUsesFileThenEnvironment(t *testing.T) {
+	t.Setenv("TD_TEST_TOKEN", "s3cret")
+	got, missing := Fill("{{host}}/x?t={{ TD_TEST_TOKEN }}", map[string]string{"host": "https://h"})
+	if got != "https://h/x?t=s3cret" || missing != "" {
+		t.Fatalf("Fill = %q, %q", got, missing)
+	}
+	if _, missing := Fill("{{nope_unset_var}}", nil); missing != "nope_unset_var" {
+		t.Fatalf("missing = %q", missing)
+	}
+}
+
+func TestHTTPReaderFollowsTheFile(t *testing.T) {
+	t.Setenv("token", "abc")
+	path := filepath.Join(t.TempDir(), "api.http")
+	if err := os.WriteFile(path, []byte(sampleHTTP), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h := NewHub()
+	defer h.Close()
+	in, err := h.Input(InputSpec{Name: "api", HTTP: path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, _ := h.Merge("requests", []*Buffer{in}, 0, KeySpec{Paths: []string{"fields.entry"}})
+	sub := m.Subscribe()
+	defer sub.Close()
+	waitFor(t, "three requests", func() bool { return len(m.Snapshot()) == 3 })
+
+	rows := m.Snapshot()
+	f := rows[1]["fields"].(map[string]interface{})
+	if f["entry"] != "2" || f["name"] != "Create user" || f["url"] != "{{host}}/users" {
+		t.Fatalf("row 2 fields = %v", f)
+	}
+	p, _ := h.Private(rows[1])
+	if p.Values["url"] != "https://api.test/users" || !strings.Contains(p.Values["headers"], "Bearer abc") {
+		t.Fatalf("row 2 private = %v", p)
+	}
+	for _, r := range rows {
+		if strings.Contains(strings.ReplaceAll(fmtRow(r), "{{token}}", ""), "abc") {
+			t.Fatalf("a filled-in token is in a row: %v", r)
+		}
+	}
+
+	// A bad edit keeps the rows and reports the line; fixing it clears it.
+	time.Sleep(10 * time.Millisecond) // a new modification time
+	os.WriteFile(path, []byte(sampleHTTP+"\n### broken\nGET https://x\nnot a header\n"), 0o644)
+	waitFor(t, "the parse error", func() bool { return strings.Contains(m.Err(), "line 24:") })
+	if len(m.Snapshot()) != 3 {
+		t.Fatal("a parse error dropped the last good rows")
+	}
+
+	// Deleting a request removes its row.
+	os.WriteFile(path, []byte("### only\nGET https://api.test/only\n"), 0o644)
+	waitFor(t, "one request", func() bool { return len(m.Snapshot()) == 1 && m.Err() == "" })
+}
+
+func TestHTTPRequestWithUnsetVariableHasNoValues(t *testing.T) {
+	reqs, vars, _ := ParseHTTPFile("GET https://x/{{nope_unset_var}}\n")
+	if p := fillRequest(reqs[0], vars); p.Values != nil || p.Err != "unset variable nope_unset_var" {
+		t.Fatalf("private = %v", p)
+	}
+}
+
+func fmtRow(r Row) string {
+	var b strings.Builder
+	for k, v := range r {
+		b.WriteString(k + "=")
+		if m, ok := v.(map[string]interface{}); ok {
+			for fk, fv := range m {
+				b.WriteString(fk + ":" + strings.TrimSpace(strings.ReplaceAll(toString(fv), "\n", " ")) + ";")
+			}
+		} else {
+			b.WriteString(toString(v))
+		}
+		b.WriteString(" ")
+	}
+	return b.String()
+}
+
+func toString(v interface{}) string {
+	s, _ := v.(string)
+	return s
+}

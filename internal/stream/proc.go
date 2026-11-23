@@ -34,13 +34,16 @@ func runCmd(ctx context.Context, spec InputSpec, b *Buffer) {
 			status = err.Error()
 		}
 		if spec.Restart == "never" {
-			b.system("warn", "process "+status)
+			// A manual run is expected to end; only a failure is news.
+			if !spec.Manual || err != nil {
+				b.system(ctx, "warn", "process "+status)
+			}
 			return
 		}
 		if time.Since(started) >= healthyRun {
 			backoff = minBackoff
 		}
-		b.system("warn", fmt.Sprintf("process %s, restarting in %s", status, backoff))
+		b.system(ctx, "warn", fmt.Sprintf("process %s, restarting in %s", status, backoff))
 		select {
 		case <-ctx.Done():
 			return
@@ -75,18 +78,18 @@ func runOnce(ctx context.Context, spec InputSpec, b *Buffer) error {
 	}
 
 	var wg sync.WaitGroup
-	wg.Go(func() { pump(stdout, spec.Format, "stdout", b) })
-	wg.Go(func() { pump(stderr, spec.Format, "stderr", b) })
+	wg.Go(func() { pump(ctx, stdout, spec, "stdout", b) })
+	wg.Go(func() { pump(ctx, stderr, spec, "stderr", b) })
 	wg.Wait() // both pipes hit EOF before Wait closes them
 	return cmd.Wait()
 }
 
 // pump copies r into a line splitter and publishes each read's lines as one
 // batch, so a burst costs one lock and one wake-up.
-func pump(r io.Reader, format, stream string, b *Buffer) {
+func pump(ctx context.Context, r io.Reader, spec InputSpec, stream string, b *Buffer) {
 	var batch []Row
-	split := &lineSplitter{emit: func(line string, truncated bool) {
-		batch = append(batch, newRow(line, truncated, format, b.hub.now()))
+	split := &lineSplitter{max: spec.LineMax, emit: func(line string, truncated bool) {
+		batch = append(batch, newRow(line, truncated, spec.Format, b.hub.now()))
 	}}
 	buf := make([]byte, 32*1024)
 	for {
@@ -95,7 +98,7 @@ func pump(r io.Reader, format, stream string, b *Buffer) {
 		if err != nil {
 			split.Flush()
 		}
-		b.hub.publish(b, stream, batch...)
+		b.hub.publish(ctx, b, stream, batch...)
 		batch = batch[:0]
 		if err != nil {
 			return

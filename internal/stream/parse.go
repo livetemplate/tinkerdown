@@ -12,10 +12,11 @@ import (
 )
 
 // lineSplitter turns written bytes into lines for emit. A line longer than
-// MaxLineBytes is emitted cut, with truncated=true, and the rest of it is
+// max (MaxLineBytes when 0) is emitted cut, with truncated=true, and the rest of it is
 // dropped, so one huge line never stops the stream. A partial last line waits
 // for its newline; Flush emits it.
 type lineSplitter struct {
+	max        int
 	pending    []byte
 	discarding bool // dropping the rest of a line already emitted truncated
 	emit       func(line string, truncated bool)
@@ -44,8 +45,12 @@ func (s *lineSplitter) add(p []byte) {
 		return
 	}
 	s.pending = append(s.pending, p...)
-	if len(s.pending) > MaxLineBytes {
-		s.emit(string(s.pending[:MaxLineBytes]), true)
+	limit := s.max
+	if limit <= 0 {
+		limit = MaxLineBytes
+	}
+	if len(s.pending) > limit {
+		s.emit(string(s.pending[:limit]), true)
 		s.pending, s.discarding = s.pending[:0], true
 	}
 }
