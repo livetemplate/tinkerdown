@@ -5,6 +5,7 @@ import (
 	"maps"
 	"regexp"
 	"slices"
+	"strconv"
 	"time"
 
 	"github.com/livetemplate/tinkerdown/internal/stream"
@@ -52,7 +53,7 @@ func ValidateStreamSource(name string, src SourceConfig, lookup func(string) (So
 			return invalid("%v", err)
 		}
 		if mergeOnly(src) {
-			return invalid("stream source %q: key, collect, collect_reset, drop and params apply to merge sources", name)
+			return invalid("stream source %q: key, collect, collect_reset, drop, sort, params, on and line_max apply to merge sources", name)
 		}
 	case "merge":
 		if err := validateAccepts(name, src); err != nil {
@@ -64,6 +65,12 @@ func ValidateStreamSource(name string, src SourceConfig, lookup func(string) (So
 		if err := validateParams(name, src, lookup); err != nil {
 			return err
 		}
+		if _, err := ParseLineMax(src.LineMax); err != nil {
+			return invalid("merge source %q: %v", name, err)
+		}
+		if src.On != "" && (len(src.Params) == 0 || !onName.MatchString(src.On)) {
+			return invalid("merge source %q: on %q needs params, and must be 1-32 lowercase letters, digits or _, starting with a letter", name, src.On)
+		}
 		if len(src.Inputs) == 0 && !src.Wildcard {
 			return invalid("merge source %q: inputs lists no sources", name)
 		}
@@ -74,6 +81,9 @@ func ValidateStreamSource(name string, src SourceConfig, lookup func(string) (So
 			}
 			if inCfg.Type != "stream" {
 				return invalid("merge source %q: input %q is a %s source, not a stream", name, in, inCfg.Type)
+			}
+			if src.On != "" && inCfg.Cmd == "" {
+				return invalid("merge source %q: input %q must run a command, since a click starts it", name, in)
 			}
 		}
 	default:
@@ -95,17 +105,51 @@ func (s SourceConfig) ParamsMerge() bool {
 	return s.Type == "merge" && len(s.Params) > 0
 }
 
-// Kind is "cmd" or "file" for a stream source, and "" otherwise.
+// StreamKinds lists a stream source's kinds: what it reads.
+var StreamKinds = []string{"cmd", "file", "http"}
+
+// Kind is "cmd", "file" or "http" for a stream source, and "" otherwise.
 func (s SourceConfig) Kind() string {
 	switch {
 	case s.Type != "stream":
 		return ""
 	case s.Cmd != "":
 		return "cmd"
+	case s.HTTP != "":
+		return "http"
 	default:
 		return "file"
 	}
 }
+
+// ParseLineMax reads a line_max value: bytes, or a number with a KiB or MiB
+// suffix. "" is 0, meaning the default.
+func ParseLineMax(v string) (int, error) {
+	if v == "" {
+		return 0, nil
+	}
+	m := lineMaxValue.FindStringSubmatch(v)
+	if m == nil {
+		return 0, fmt.Errorf("line_max %q is not a size such as 65536, 64KiB or 1MiB", v)
+	}
+	n, _ := strconv.Atoi(m[1])
+	switch m[2] {
+	case "KiB":
+		n *= 1 << 10
+	case "MiB":
+		n *= 1 << 20
+	}
+	if n < 1 || n > stream.MaxLineMax {
+		return 0, fmt.Errorf("line_max %q is not between 1 byte and 16MiB", v)
+	}
+	return n, nil
+}
+
+var lineMaxValue = regexp.MustCompile(`^([0-9]{1,9})(KiB|MiB)?$`)
+
+// onName is what On may hold: a button name a page can't confuse with
+// another action.
+var onName = regexp.MustCompile(`^[a-z][a-z0-9_]{0,31}$`)
 
 // AcceptsKind reports whether a merge's accepts block allows a stream source
 // of the given kind. A merge without accepts, or without kinds, takes both.
@@ -173,7 +217,7 @@ func validSort(s string) bool {
 
 // mergeOnly reports whether src sets an option that only a merge uses.
 func mergeOnly(src SourceConfig) bool {
-	return len(src.Key) > 0 || src.Collect != "" || src.CollectReset != "" || src.Drop != "" || src.Sort != "" || len(src.Params) > 0
+	return len(src.Key) > 0 || src.Collect != "" || src.CollectReset != "" || src.Drop != "" || src.Sort != "" || len(src.Params) > 0 || src.On != "" || src.LineMax != ""
 }
 
 // validateParams checks a merge's params: each name is a TD_ name, and each
@@ -211,8 +255,8 @@ func validateAccepts(name string, src SourceConfig) error {
 		return invalid("merge source %q: accepts needs inputs [\"*\"]", name)
 	}
 	for _, k := range a.Kinds {
-		if k != "cmd" && k != "file" {
-			return invalid("merge source %q: accepts kind %q is not cmd or file", name, k)
+		if !slices.Contains(StreamKinds, k) {
+			return invalid("merge source %q: accepts kind %q is not cmd, file or http", name, k)
 		}
 	}
 	if a.Min < 0 {
@@ -228,6 +272,7 @@ func (s SourceConfig) StreamSpec(name string) stream.InputSpec {
 		Name:    name,
 		Cmd:     s.Cmd,
 		File:    s.File,
+		HTTP:    s.HTTP,
 		Env:     s.Env,
 		Format:  s.Format,
 		Buffer:  s.Buffer,

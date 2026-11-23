@@ -274,6 +274,12 @@ func (h *Hub) replace(ctx context.Context, b *Buffer, stream string, rows []Row,
 
 // setErr sets the error b reports in place of its rows, or clears it with "".
 func (h *Hub) setErr(ctx context.Context, b *Buffer, msg string) {
+	h.mu.RLock()
+	same := b.err == msg
+	h.mu.RUnlock()
+	if same { // a reader re-reports its error on every poll
+		return
+	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if ctx.Err() != nil || b.err == msg {
@@ -512,17 +518,27 @@ func (b *Buffer) releaseLocked() {
 			b.stopRun()
 			b.stopRun = nil
 		}
-		for _, seq := range b.privSeqs {
-			delete(b.hub.private, seq)
-		}
-		b.privSeqs, b.err = nil, ""
-		b.ring, b.head = nil, 0
+		b.clearLocked()
+		b.err = ""
 		if b.keyed != nil {
 			b.keyed.rows, b.keyed.index = nil, map[string]int{}
 		}
-		b.snap.Store(nil)
 		b.dropped = b.merge
+		if b.clickOnly() {
+			// Each click's values make a buffer of their own, which can hold
+			// a request body; once idle, nothing reuses it.
+			delete(b.hub.buffers, b.key)
+		}
 	})
+}
+
+// clickOnly reports whether b runs only on a click: a manual input, or a
+// merge of nothing else.
+func (b *Buffer) clickOnly() bool {
+	if !b.merge {
+		return b.manual
+	}
+	return len(b.inputs) > 0 && !slices.ContainsFunc(b.inputs, func(in *Buffer) bool { return !in.manual })
 }
 
 // idleWait is how long b keeps running and its rows after its last holder

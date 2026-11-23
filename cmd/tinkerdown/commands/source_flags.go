@@ -6,6 +6,7 @@ import (
 	"io"
 	"maps"
 	"os"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
@@ -22,29 +23,58 @@ import (
 var sourceName = regexp.MustCompile(`^[A-Za-z0-9_-]{1,32}$`)
 
 // parseSourceFlag parses a --source value: NAME=COMMAND for a stream source
-// that runs COMMAND, or NAME=file:PATH for one that follows PATH. It splits on
-// the first "=" only, so a command may contain "=".
+// that runs COMMAND, NAME=file:PATH for one that follows PATH, or
+// NAME=http:PATH for one that lists the requests in a .http file. It splits
+// on the first "=" only, so a command may contain "=". PATH is kept as
+// given; see absSourcePaths for a page from a URL.
 func parseSourceFlag(v string) (string, config.SourceConfig, error) {
 	name, value, ok := strings.Cut(v, "=")
 	if !ok || value == "" {
-		return "", config.SourceConfig{}, fmt.Errorf("--source %q: want NAME=COMMAND or NAME=file:PATH", v)
+		return "", config.SourceConfig{}, fmt.Errorf("--source %q: want NAME=COMMAND, NAME=file:PATH or NAME=http:PATH", v)
 	}
 	if !sourceName.MatchString(name) {
 		return "", config.SourceConfig{}, fmt.Errorf("--source %q: name %q must be 1-32 letters, digits, _ or -", v, name)
 	}
-	if path, isFile := strings.CutPrefix(value, "file:"); isFile {
-		if path == "" {
-			return "", config.SourceConfig{}, fmt.Errorf("--source %q: file: needs a path", v)
-		}
-		return name, config.SourceConfig{Type: "stream", File: path}, nil
+	if path, ok := strings.CutPrefix(value, "file:"); ok {
+		return name, config.SourceConfig{Type: "stream", File: path}, pathErr(v, "file", path)
+	}
+	if path, ok := strings.CutPrefix(value, "http:"); ok {
+		return name, config.SourceConfig{Type: "stream", HTTP: path}, pathErr(v, "http", path)
 	}
 	return name, config.SourceConfig{Type: "stream", Cmd: value}, nil
 }
 
+// pathErr refuses a file: or http: flag with no path.
+func pathErr(flag, kind, path string) error {
+	if path == "" {
+		return fmt.Errorf("--source %q: %s: needs a path", flag, kind)
+	}
+	return nil
+}
+
+// absSourcePaths makes each relative file and http path in srcs absolute
+// from base. A page from a URL lives in a temporary directory, so serve
+// resolves its flags from the directory it runs in and its --config file's
+// sources from that file's directory; a local page keeps paths relative to
+// its own directory.
+func absSourcePaths(srcs map[string]config.SourceConfig, base string) {
+	for name, src := range srcs {
+		for _, p := range []*string{&src.File, &src.HTTP} {
+			if *p != "" && !filepath.IsAbs(*p) {
+				*p = filepath.Join(base, *p)
+			}
+		}
+		srcs[name] = src
+	}
+}
+
 // sourceFlagValue turns a source back into the value parseSourceFlag reads.
 func sourceFlagValue(name string, src config.SourceConfig) string {
-	if src.File != "" {
+	switch {
+	case src.File != "":
 		return name + "=file:" + src.File
+	case src.HTTP != "":
+		return name + "=http:" + src.HTTP
 	}
 	return name + "=" + src.Cmd
 }

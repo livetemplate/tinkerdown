@@ -340,6 +340,15 @@ type SourceConfig struct {
 	Backlog int      `yaml:"backlog,omitempty"` // For stream with file: lines read from the end on start (default 200)
 	Restart string   `yaml:"restart,omitempty"` // For stream with cmd: on-exit (default) or never
 	Flush   string   `yaml:"flush,omitempty"`   // For stream/merge: minimum time between pushes to one page (default 100ms)
+	HTTP    string   `yaml:"http,omitempty"`    // For stream: a .http file, read whole on change, one row per request
+
+	// On, on a merge with params, makes a click start its inputs: a button
+	// named On sends the params as data-* values, checked like URL values.
+	// The inputs run once per click and never because a page loaded.
+	On string `yaml:"on,omitempty"`
+	// LineMax, on a merge, caps each line its inputs read, in bytes or with a
+	// KiB or MiB suffix (default 16KiB).
+	LineMax string `yaml:"line_max,omitempty"`
 
 	// Accepts, on a merge with inputs ["*"], says which sources the page takes.
 	Accepts *SourceAccepts `yaml:"accepts,omitempty"`

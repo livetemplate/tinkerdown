@@ -48,6 +48,16 @@ type QuerySetter interface {
 
 var _ QuerySetter = (*GenericState)(nil)
 
+// Clicker is a store whose source a button's click starts (a merge with on).
+// ClickOn names the button, "" for any other store.
+type Clicker interface {
+	Store
+	ClickOn() string
+	Click(values map[string]interface{}) error
+}
+
+var _ Clicker = (*GenericState)(nil)
+
 // GenericState holds runtime state for any source type.
 // It replaces the code-generated State structs that were previously compiled as plugins.
 type GenericState struct {
@@ -76,6 +86,9 @@ type GenericState struct {
 
 	// Stream-specific: Pause/Resume set it; pushes skip a paused page.
 	Paused bool `json:"paused"`
+	// Running is true while a click-started merge's command runs, so a
+	// page can show it's busy.
+	Running bool `json:"running"`
 
 	// Inputs are a merge block's input names, with ["*"] expanded, and Accepts
 	// what its page declared it takes, so a template can render an empty state.
@@ -600,6 +613,9 @@ func (s *GenericState) refresh() error {
 	if qs, ok := s.source.(source.QuerySetter); ok {
 		s.Params = qs.Params() // nil for a refused value, so it isn't shown
 	}
+	if r, ok := s.source.(source.Runner); ok {
+		s.Running = r.Running()
+	}
 	if err != nil {
 		s.Error = err.Error()
 		return err
@@ -733,6 +749,37 @@ func (s *GenericState) Subscribe() *stream.Subscription {
 func (s *GenericState) SetQuery(q url.Values) bool {
 	qs, ok := s.source.(source.QuerySetter)
 	return ok && qs.SetQuery(q)
+}
+
+// ClickOn returns the button name whose click starts the state's source, or
+// "" when no click does.
+func (s *GenericState) ClickOn() string {
+	if c, ok := s.source.(source.Clicker); ok {
+		return c.On()
+	}
+	return ""
+}
+
+// Click starts the state's source for a button's values, then refreshes. A
+// refused click sets the state's Error.
+func (s *GenericState) Click(values map[string]interface{}) error {
+	c, ok := s.source.(source.Clicker)
+	if !ok {
+		return fmt.Errorf("source %q is not started by a click", s.sourceName)
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	// A click runs the source's commands, so it meets the same gate as a
+	// builtin write: a manifest app may only start an approved source.
+	if err := s.cfg.EnforceApprovedSource(s.sourceName); err != nil {
+		s.Error = err.Error()
+		return err
+	}
+	clickErr := c.Click(values)
+	if err := s.refresh(); err != nil {
+		return err
+	}
+	return clickErr
 }
 
 // FlushInterval is the minimum time between pushes of a followable source.

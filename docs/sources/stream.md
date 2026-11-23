@@ -1,6 +1,6 @@
 # Stream and Merge Sources
 
-A `stream` source follows a long-running command or a growing file, and the page shows each new line as it arrives. A `merge` source combines several streams into one timeline. Use them for logs: `docker logs -f`, `journalctl -f`, `kubectl logs -f`, a dev server's output, or `/var/log/app.log`.
+A `stream` source follows a long-running command or a growing file, and the page shows each new line as it arrives. A `merge` source combines several streams into one timeline. Use them for logs: `docker logs -f`, `journalctl -f`, `kubectl logs -f`, a dev server's output, or `/var/log/app.log`. A stream can also list the requests in a `.http` file, and a merge can run a command when a button is clicked; see [Runs a click starts](#runs-a-click-starts).
 
 ## Configuration
 
@@ -24,8 +24,9 @@ A command needs `tinkerdown serve --allow-exec`, as an `exec` source does. A fil
 | Option | Applies to | Description |
 |--------|------------|-------------|
 | `type` | both | `stream` or `merge` |
-| `cmd` | stream | Command to follow. Runs with `/bin/sh -c` from the site directory, so pipes, quoting and `./script.sh` work. Set `cmd` or `file`, not both. |
+| `cmd` | stream | Command to follow. Runs with `/bin/sh -c` from the site directory, so pipes, quoting and `./script.sh` work. Set one of `cmd`, `file` and `http`. |
 | `file` | stream | File to follow, absolute or relative to the site directory. |
+| `http` | stream | A `.http` file, absolute or relative to the site directory: one row per request, read again whenever the file changes. See [Requests from a .http file](#requests-from-a-http-file). |
 | `inputs` | merge | Names of the stream sources to combine, or `["*"]` for every stream source the page can see, including `--source` flags. |
 | `key` | merge | Field paths (`NAME` or `fields.NAME`) that make the merge keyed: one row per distinct key, updated in place. See [One row per key](#one-row-per-key). |
 | `collect` | merge | With `key`: a field path whose text is gathered across a key's rows into `collected`. |
@@ -33,7 +34,9 @@ A command needs `tinkerdown serve --allow-exec`, as an `exec` source does. A fil
 | `drop` | merge | With `key`: `PATH=VALUE`, where VALUE may list alternatives as `a\|b` (a value can't contain `\|`, and a number matches as it prints). A row that matches removes its key's row and isn't stored, such as `fields.state=removed` for a removed container. |
 | `sort` | merge | With `key`: a field, or `-` and a field for descending, such as `-fields.createdAt`. Rows show in that field's order instead of first-seen order. |
 | `params` | merge | Values taken from the page URL's query, each with `in: MERGE.PATH`. See [Values from the page URL](#values-from-the-page-url). |
-| `accepts` | merge | With `inputs: ["*"]`: the sources the page takes. `kinds` lists `cmd`, `file` or both (default: both), `min` is how many it needs, and `hint` is one line saying what to pass. |
+| `on` | merge | With `params`: the name of the button whose click starts the inputs, instead of the URL. See [Runs a click starts](#runs-a-click-starts). |
+| `line_max` | merge | The longest line its inputs read, in bytes or with `KiB` or `MiB`, up to `16MiB` (default: `16KiB`). A longer line is cut and its row gets `truncated: true`. |
+| `accepts` | merge | With `inputs: ["*"]`: the sources the page takes. `kinds` lists any of `cmd`, `file` and `http` (default: all), `min` is how many it needs, and `hint` is one line saying what to pass. |
 | `format` | stream | How to parse each line: `auto` (default), `json`, `logfmt` or `lines`. |
 | `env` | stream | Extra environment variables for `cmd`. `$VAR` references are expanded. |
 | `restart` | stream | `on-exit` (default) restarts an exited command after 1s, doubling up to 30s. `never` leaves it stopped. |
@@ -59,7 +62,7 @@ sources:
 tinkerdown serve --allow-exec --source 'api=docker logs -f --timestamps api' --source 'app=file:./logs/app.log'
 ```
 
-`--source NAME=COMMAND` follows a command and needs `--allow-exec`; `--source NAME=file:PATH` follows a file. A flag also replaces a page or `tinkerdown.yaml` source of the same name, but never an approved one. `serve` refuses a flag no page uses, and one of a kind the page's `accepts` leaves out.
+`--source NAME=COMMAND` follows a command and needs `--allow-exec`; `--source NAME=file:PATH` follows a file, and `--source NAME=http:PATH` lists a `.http` file's requests. For a page from a URL, a relative `PATH` is taken from the directory `serve` runs in, and a relative path in a `--config` file from that file's directory. A flag also replaces a page or `tinkerdown.yaml` source of the same name, but never an approved one. `serve` refuses a flag no page uses, and one of a kind the page's `accepts` leaves out.
 
 `["*"]` takes every stream source, sorted by name. An approved merge takes only `tinkerdown.yaml` sources, so neither a page nor a flag can add one. With no sources yet, the merge is empty: the block can show an empty state with `{{if not .Inputs}}`, and `.Accepts.Hint` says what to pass.
 
@@ -131,6 +134,55 @@ Because the page has a `params` merge, clicking a link that only changes the que
 Because anyone can write a link, every param needs `in`. A value is accepted only while it equals `PATH` in a row of `MERGE`, another merge on the same page, so a link opens only what the page already lists. The check runs again when `MERGE`'s rows change: a link opened before its row arrives starts once the row appears. Without every param in the query, the block shows no rows and nothing runs. A value that is empty, over 256 bytes, starts with `-`, or holds a control character sets the block's `.Error` instead, and nothing runs.
 
 Each distinct set of values gets its own buffer and its own commands, which stop 30 seconds after the last page showing them closes. A `["*"]` merge on the page doesn't take the inputs a `params` merge lists, since they need its values. A `params` merge lists its inputs by name. Name it differently from its inputs: a `--source` flag replaces a page source of the same name.
+
+## Requests from a .http file
+
+A stream with `http` reads a `.http` file, the format the VS Code REST Client and JetBrains IDEs use, and shows one row per request. It reads the file again when its size or modification time changes, and each read replaces the rows, so a deleted request leaves the page.
+
+```http
+@host = https://api.example.com
+
+### Create user
+POST {{host}}/users
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{"name": "Ada"}
+```
+
+`###` separates requests, and the text after it names the next one; `# @name x` names it too. `#` and `//` start comments, and `@name = value` defines a variable. A request is its request line (`METHOD URL`, an optional `HTTP/1.1`, or a bare URL for `GET`), then headers up to the first blank line, then the body up to the next `###`.
+
+Each row's `fields` hold the request as written: `entry` (its position, `"1"` first), `name`, `method`, `url`, `headers` (one per line), `body`, and `text` (name, method and URL, for search). `{{name}}` stays as written in them.
+
+The values with variables filled in stay on the server. A variable comes from the file's `@name` lines, or else the environment, so a token can stay out of the file: `token=… tinkerdown serve …`. They reach a command only through a click; see below. A file that doesn't parse sets the block's `.Error`, naming the line, and the last good rows stay.
+
+## Runs a click starts
+
+A merge with `params` and `on: NAME` starts its inputs when a button named NAME is clicked, never because a page loaded. Use it for a command that changes something, such as sending a request, which a reload, Back or a shared link must not repeat.
+
+```yaml
+sources:
+  api: {type: stream, http: ./api.http}
+  requests: {type: merge, inputs: [api], key: [fields.entry]}
+  send: {type: stream, cmd: 'printf "%s" "$TD_headers" | curl -sS -i -X "$TD_method" -H @- ${TD_body:+--data-binary "$TD_body"} -- "$TD_url"'}
+  response:
+    type: merge
+    inputs: [send]
+    on: send
+    line_max: 1MiB
+    params:
+      entry: {in: requests.fields.entry}
+```
+
+```html
+<button name="send" data-entry="{{.fields.entry}}">Send</button>
+```
+
+The button can be in any block on the page. Its `data-*` values are the params, checked like URL values: each must pass the value rules and be in its `in` merge. The command then gets each param as `TD_<name>`, plus the values the row stands for, which the browser never sees. For an `http` row these are `TD_method`, `TD_url`, `TD_headers` and `TD_body`, with variables filled in. These values may span lines. Each may be up to 128 KiB, counted as the whole `TD_name=value`, since Linux refuses a longer environment string. A request with an unset variable, a longer value, or a value holding a NUL byte is refused with the reason in the block's `.Error`, and nothing runs.
+
+The inputs run once per click: an input isn't restarted when it exits, and has no timeout of its own, so give the command one (`curl --max-time 30`). A click while it runs stops the run, clears its rows and starts again. The block's `.Running` is true while it runs. Everyone who clicks the same values shares one run. A clean exit adds no row, and a failed one adds a `system` row with the exit status.
+
+A merge with `on` ignores the page URL's query, and its inputs must run a command. `on` is 1-32 lowercase letters, digits or `_`, and a builtin action name never starts one.
 
 ## Row fields
 

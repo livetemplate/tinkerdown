@@ -1,6 +1,7 @@
 package stream
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -20,7 +21,6 @@ type HTTPRequest struct {
 	URL     string
 	Headers string // one per line
 	Body    string
-	Line    int // the request line's line number, from 1
 }
 
 // ParseHTTPFile reads the subset of the .http format the VS Code REST Client
@@ -33,15 +33,16 @@ func ParseHTTPFile(text string) ([]HTTPRequest, map[string]string, error) {
 	var reqs []HTTPRequest
 	vars := map[string]string{}
 	var cur *HTTPRequest // the request being read, once its request line is seen
-	var body []string
+	var headers, body []string
 	inHeaders := false
 	name := ""
 	finish := func() {
 		if cur != nil {
+			cur.Headers = strings.Join(headers, "\n")
 			cur.Body = strings.TrimRight(strings.Join(body, "\n"), "\n")
 			reqs = append(reqs, *cur)
 		}
-		cur, body, inHeaders = nil, nil, false
+		cur, headers, body, inHeaders = nil, nil, nil, false
 	}
 	for i, line := range strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n") {
 		n := i + 1
@@ -63,7 +64,7 @@ func ParseHTTPFile(text string) ([]HTTPRequest, map[string]string, error) {
 			if !headerLine.MatchString(trimmed) {
 				return nil, nil, fmt.Errorf("line %d: %q is not a header (Name: value); put a blank line before the body", n, trimmed)
 			}
-			cur.Headers += trimmed + "\n"
+			headers = append(headers, trimmed)
 			continue
 		case trimmed == "":
 			continue
@@ -83,13 +84,10 @@ func ParseHTTPFile(text string) ([]HTTPRequest, map[string]string, error) {
 		if !ok {
 			return nil, nil, fmt.Errorf("line %d: %q is not a request line (METHOD URL)", n, trimmed)
 		}
-		cur = &HTTPRequest{Name: name, Method: method, URL: url, Line: n}
+		cur = &HTTPRequest{Name: name, Method: method, URL: url}
 		inHeaders, name = true, ""
 	}
 	finish()
-	for i := range reqs {
-		reqs[i].Headers = strings.TrimSuffix(reqs[i].Headers, "\n")
-	}
 	return reqs, vars, nil
 }
 
@@ -155,6 +153,7 @@ func readHTTPFile(ctx context.Context, spec InputSpec, b *Buffer) {
 	tick := time.NewTicker(pollInterval)
 	defer tick.Stop()
 	var seen os.FileInfo
+	var last []byte // the content last read, so a touch changes nothing
 	for {
 		info, err := os.Stat(spec.HTTP)
 		switch {
@@ -165,7 +164,7 @@ func readHTTPFile(ctx context.Context, spec InputSpec, b *Buffer) {
 			b.hub.setErr(ctx, b, fmt.Sprintf("%s is over %d bytes", spec.HTTP, MaxHTTPFile))
 		case seen == nil || info.Size() != seen.Size() || !info.ModTime().Equal(seen.ModTime()):
 			seen = info
-			readHTTPOnce(ctx, spec, b)
+			last = readHTTPOnce(ctx, spec, b, last)
 		}
 		select {
 		case <-ctx.Done():
@@ -175,16 +174,21 @@ func readHTTPFile(ctx context.Context, spec InputSpec, b *Buffer) {
 	}
 }
 
-func readHTTPOnce(ctx context.Context, spec InputSpec, b *Buffer) {
+// readHTTPOnce reads the file and, unless its content is last's, replaces
+// the rows. It returns the content it read.
+func readHTTPOnce(ctx context.Context, spec InputSpec, b *Buffer, last []byte) []byte {
 	data, err := os.ReadFile(spec.HTTP)
 	if err != nil {
 		b.hub.setErr(ctx, b, err.Error())
-		return
+		return nil
+	}
+	if last != nil && bytes.Equal(data, last) {
+		return last
 	}
 	reqs, vars, err := ParseHTTPFile(string(data))
 	if err != nil {
 		b.hub.setErr(ctx, b, err.Error())
-		return
+		return data
 	}
 	now := b.hub.now()
 	rows := make([]Row, len(reqs))
@@ -205,6 +209,7 @@ func readHTTPOnce(ctx context.Context, spec InputSpec, b *Buffer) {
 	}
 	b.hub.replace(ctx, b, "file", rows, privs)
 	b.hub.setErr(ctx, b, "")
+	return data
 }
 
 // fillRequest fills a request's variables into the values a command gets.

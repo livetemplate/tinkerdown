@@ -178,3 +178,20 @@ func TestInputErrReachesItsMerge(t *testing.T) {
 		t.Fatalf("cleared Err = %q", got)
 	}
 }
+
+func TestIdleClickBuffersAreForgotten(t *testing.T) {
+	h := NewHub()
+	defer h.Close()
+	h.IdleStop = 50 * time.Millisecond
+	in, _ := h.Input(InputSpec{Name: "send", Cmd: "echo hi", Manual: true, Env: map[string]string{"TD_body": strings.Repeat("x", 1000)}})
+	m, _ := h.Merge("response", []*Buffer{in}, 0, KeySpec{})
+	sub := m.Subscribe()
+	h.Restart(m)
+	waitFor(t, "the run", func() bool { return !m.Running() && len(m.Snapshot()) == 1 })
+	sub.Close()
+	waitFor(t, "the idle buffers to go", func() bool {
+		h.mu.RLock()
+		defer h.mu.RUnlock()
+		return len(h.buffers) == 0
+	})
+}

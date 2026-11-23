@@ -227,9 +227,21 @@ func checkRemotePage(page *tinkerdown.Page) error {
 
 // remoteConfig is the config for a page from a URL: only what --config names,
 // never a tinkerdown.yaml that happens to sit in the current directory.
+//
+// A relative file or http path in that config is taken from the config
+// file's directory, since the page's own directory is a temporary one.
 func remoteConfig(configPath, dir string) (*config.Config, error) {
-	if configPath != "" {
-		return config.Load(configPath)
+	if configPath == "" {
+		return config.LoadFromDir(dir) // dir is the fresh temp directory: defaults
 	}
-	return config.LoadFromDir(dir) // dir is the fresh temp directory: defaults
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		return nil, err
+	}
+	base, err := filepath.Abs(filepath.Dir(configPath))
+	if err != nil {
+		return nil, err
+	}
+	absSourcePaths(cfg.Sources, base)
+	return cfg, nil
 }

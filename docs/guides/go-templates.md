@@ -77,6 +77,7 @@ Tinkerdown uses Go's `html/template` package for dynamic content rendering.
 | `printf` | Formatted text | `{{printf "Count: %d" .count}}` |
 | `split` | Splits text into a list, for `range` | `{{range split .tags ","}}…{{end}}` |
 | `linkify` | Escapes a value and makes each `http://` or `https://` URL in it a link that opens in a new tab | `{{linkify .msg}}` |
+| `jsonindent` | Indents text that is a JSON object or array, two spaces per level, and returns any other text unchanged | `{{linkify (jsonindent .line)}}` |
 
 `linkify` escapes everything else in the value, even a value that is already HTML, so it's safe on text you don't control, such as log lines. Trailing punctuation, like the period ending a sentence, stays outside the link.
 

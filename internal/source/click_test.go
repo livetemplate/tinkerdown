@@ -1,0 +1,150 @@
+package source
+
+import (
+	"context"
+	"errors"
+	"net/url"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/livetemplate/tinkerdown/internal/config"
+	"github.com/livetemplate/tinkerdown/internal/stream"
+)
+
+// clickSetup serves a .http file as requests and a click merge whose command
+// prints what it gets, and returns the click source, subscribed.
+func clickSetup(t *testing.T, httpText string) (*StreamSource, *stream.Hub, string) {
+	t.Helper()
+	orig := config.IsExecAllowed()
+	config.SetAllowExec(true)
+	t.Cleanup(func() { config.SetAllowExec(orig) })
+	hub := stream.NewHub()
+	t.Cleanup(func() { hub.Close() })
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "api.http"), []byte(httpText), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	runs := filepath.Join(dir, "runs")
+	sources := map[string]config.SourceConfig{
+		"api":      {Type: "stream", HTTP: "api.http"},
+		"requests": {Type: "merge", Inputs: []string{"api"}, Key: []string{"fields.entry"}},
+		"send": {Type: "stream", Format: "lines",
+			Cmd: `echo run >> ` + runs + `; printf '%s %s|%s|%s\n' "$TD_method" "$TD_url" "$TD_headers" "$TD_body" | tr '\n' ' '; echo`},
+		"response": {Type: "merge", Inputs: []string{"send"}, On: "send", Params: map[string]config.SourceParam{"entry": {In: "requests.fields.entry"}}},
+	}
+	lookup := func(n string) (config.SourceConfig, bool) { s, ok := sources[n]; return s, ok }
+	page := &Page{Query: url.Values{"entry": {"1"}}, Resolve: lookup, InputLookup: func(string) func(string) (config.SourceConfig, bool) { return lookup }}
+	reqs, err := NewStreamSource(hub, "requests", sources["requests"], dir, lookup, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rsub := reqs.Subscribe()
+	t.Cleanup(rsub.Close)
+	src, err := NewStreamSource(hub, "response", sources["response"], dir, lookup, page)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sub := src.Subscribe()
+	t.Cleanup(sub.Close)
+	deadline := time.Now().Add(5 * time.Second)
+	for len(reqs.buf.Snapshot()) == 0 && time.Now().Before(deadline) {
+		time.Sleep(20 * time.Millisecond)
+	}
+	return src, hub, runs
+}
+
+func rowsOf(t *testing.T, src *StreamSource, n int) []map[string]interface{} {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		rows, _ := src.Fetch(context.Background())
+		if len(rows) == n && !src.Running() {
+			return rows
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	rows, err := src.Fetch(context.Background())
+	t.Fatalf("want %d rows, got %v (err %v)", n, rows, err)
+	return nil
+}
+
+func TestClickRunsWithTheRowsPrivateValues(t *testing.T) {
+	t.Setenv("TD_TEST_TOKEN", "s3cret")
+	src, _, runs := clickSetup(t, "@host = https://api.test\n### Create\nPOST {{host}}/users\nAuthorization: Bearer {{TD_TEST_TOKEN}}\n\n{\"a\": 1}\n")
+
+	// The URL holds entry=1, but only a click starts the run.
+	time.Sleep(300 * time.Millisecond)
+	if rows, _ := src.Fetch(context.Background()); len(rows) != 0 {
+		t.Fatalf("rows before a click: %v", rows)
+	}
+	if _, err := os.Stat(runs); err == nil {
+		t.Fatal("the page's URL started the command")
+	}
+
+	if err := src.Click(map[string]interface{}{"entry": "1"}); err != nil {
+		t.Fatal(err)
+	}
+	rows := rowsOf(t, src, 1)
+	want := `POST https://api.test/users|Authorization: Bearer s3cret|{"a": 1}`
+	if got := strings.TrimSpace(rows[0]["line"].(string)); got != want {
+		t.Fatalf("command got %q, want %q", got, want)
+	}
+	if p := src.Params(); p["entry"] != "1" || len(p) != 1 {
+		t.Fatalf("Params() = %v; private values must not be there", p)
+	}
+}
+
+func TestClickRefusals(t *testing.T) {
+	src, _, runs := clickSetup(t, "### a\nGET https://api.test/{{nope_unset_var}}\n### b\nGET https://api.test/b\n")
+	var ve *ValidationError
+	for name, values := range map[string]map[string]interface{}{
+		"not listed":     {"entry": "99"},
+		"missing":        {},
+		"option":         {"entry": "-1"},
+		"unset variable": {"entry": "1"},
+	} {
+		err := src.Click(values)
+		if !errors.As(err, &ve) {
+			t.Errorf("%s: err = %v, want a ValidationError", name, err)
+		}
+		if _, ferr := src.Fetch(context.Background()); ferr == nil {
+			t.Errorf("%s: Fetch didn't report the refusal", name)
+		}
+	}
+	if _, err := os.Stat(runs); err == nil {
+		t.Fatal("a refused click ran the command")
+	}
+	if err := src.Click(map[string]interface{}{"entry": "2"}); err != nil {
+		t.Fatal(err)
+	}
+	rowsOf(t, src, 1)
+	if _, err := src.Fetch(context.Background()); err != nil {
+		t.Fatalf("a good click left the old refusal: %v", err)
+	}
+}
+
+func TestClickValueSizeLimit(t *testing.T) {
+	// The whole TD_body=… string with its NUL may be MaxClickValue bytes.
+	fits := strings.Repeat("x", MaxClickValue-len("TD_body=")-1)
+	src, _, _ := clickSetup(t, "### a\nPOST https://api.test/\n\n"+fits+"\n### b\nPOST https://api.test/\n\n"+fits+"y\n")
+	if err := src.Click(map[string]interface{}{"entry": "1"}); err != nil {
+		t.Fatalf("a body at the limit was refused: %v", err)
+	}
+	// One stdout row means the command ran: an E2BIG would be a system row.
+	if r := rowsOf(t, src, 1)[0]; r["stream"] != "stdout" || !strings.Contains(r["line"].(string), "xxxx") {
+		t.Fatalf("at the limit, the command didn't run: %v", r["line"])
+	}
+	if err := src.Click(map[string]interface{}{"entry": "2"}); err == nil || !strings.Contains(err.Error(), "over 128 KiB") {
+		t.Fatalf("a body one byte over: err = %v", err)
+	}
+}
+
+func TestClickMergeIgnoresTheQuery(t *testing.T) {
+	src, _, _ := clickSetup(t, "### a\nGET https://api.test/a\n")
+	if src.SetQuery(url.Values{"entry": {"1"}}) {
+		t.Fatal("a click merge took values from the URL")
+	}
+}

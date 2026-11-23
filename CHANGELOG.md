@@ -11,6 +11,30 @@ Earlier releases (v0.1.x) are documented in the
 
 ## [Unreleased]
 
+### Added
+
+- **Runs a click starts.** A merge with `params` and `on: NAME` starts its
+  inputs when a button named NAME is clicked, never when a page loads. So a
+  reload, Back or a shared link can't repeat a command that changes
+  something. The inputs run once per click, a click mid-run starts them
+  again, and the block's `.Running` is true while they run.
+- **`.http` files as a stream source.** `http: PATH` in config, or
+  `--source NAME=http:PATH`, lists the requests in a `.http` file, one row
+  per request, and follows the file as it's edited. Each request's filled-in
+  method, URL, headers and body stay on the server and reach a command only
+  through a click, as `TD_method`, `TD_url`, `TD_headers` and `TD_body`.
+  Variables come from the file's `@name` lines or the environment.
+- **`line_max` on merges** raises the 16 KiB line cap, up to 16 MiB.
+- **A `jsonindent` template function** indents a JSON object or array and
+  returns other text unchanged.
+
+### Fixed
+
+- **Relative paths for a page from a URL.** A relative `file:` path in a
+  `--source` flag pointed into the page's temporary directory. It's now taken
+  from the directory `serve` runs in, and a relative path in a `--config`
+  file from that file's directory.
+
 ## [v0.7.5] - 2026-11-22
 
 ### Fixed

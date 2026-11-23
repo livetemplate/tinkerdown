@@ -66,9 +66,9 @@ func TestParseHTTPFile(t *testing.T) {
 		t.Fatalf("vars = %v", vars)
 	}
 	want := []HTTPRequest{
-		{Name: "List users", Method: "GET", URL: "{{host}}/users", Headers: "Accept: application/json", Line: 6},
-		{Name: "Create user", Method: "POST", URL: "{{host}}/users", Headers: "Content-Type: application/json\nAuthorization: Bearer {{token}}", Body: "{\n  \"name\": \"Ada\"\n}", Line: 10},
-		{Name: "health", Method: "GET", URL: "{{host}}/health", Line: 20},
+		{Name: "List users", Method: "GET", URL: "{{host}}/users", Headers: "Accept: application/json"},
+		{Name: "Create user", Method: "POST", URL: "{{host}}/users", Headers: "Content-Type: application/json\nAuthorization: Bearer {{token}}", Body: "{\n  \"name\": \"Ada\"\n}"},
+		{Name: "health", Method: "GET", URL: "{{host}}/health"},
 	}
 	if !reflect.DeepEqual(reqs, want) {
 		t.Fatalf("requests:\n%#v\nwant:\n%#v", reqs, want)

@@ -497,6 +497,9 @@ func pageSourceConfig(src tinkerdown.SourceConfig) config.SourceConfig {
 		CollectReset: src.CollectReset,
 		Drop:         src.Drop,
 		Sort:         src.Sort,
+		HTTP:         src.HTTP,
+		On:           src.On,
+		LineMax:      src.LineMax,
 	}
 	if a := src.Accepts; a != nil {
 		cfg.Accepts = &config.SourceAccepts{Kinds: a.Kinds, Min: a.Min, Hint: a.Hint}
@@ -759,6 +762,12 @@ func (h *WebSocketHandler) handleMessage(conn *websocket.Conn, message []byte) {
 		return
 	}
 
+	// A button named by a merge's on starts that merge, wherever the button is.
+	if h.clickRun(envelope.Action, envelope.Data) {
+		h.sendUpdateRef(instance, envelope.Ref)
+		return
+	}
+
 	// Handle action
 	if err := h.handleAction(instance, envelope.Action, envelope.Data); err != nil {
 		log.Printf("[WS] Error handling action: %v", err)
@@ -792,6 +801,45 @@ func (h *WebSocketHandler) handleMessage(conn *websocket.Conn, message []byte) {
 	if actionLower == "add" || actionLower == "delete" || actionLower == "update" || actionLower == "toggle" {
 		h.refreshDependentComputedSources(instance, conn)
 	}
+}
+
+// clickRun starts every block on the page whose merge a click on a button
+// named action starts (on: action), with the button's values, and sends each
+// its update. It reports whether any block took the click. A builtin action
+// never starts one.
+func (h *WebSocketHandler) clickRun(action string, data json.RawMessage) bool {
+	if action == "" || runtime.IsBuiltinAction(action) {
+		return false
+	}
+	h.mu.RLock()
+	var targets []*BlockInstance
+	for _, inst := range h.instances {
+		if c, ok := inst.state.(runtime.Clicker); ok && c.ClickOn() == action {
+			targets = append(targets, inst)
+		}
+	}
+	h.mu.RUnlock()
+	if len(targets) == 0 {
+		return false
+	}
+	values := map[string]interface{}{}
+	if len(data) > 0 {
+		if err := json.Unmarshal(data, &values); err != nil {
+			log.Printf("[WS] Bad click values for %s: %v", action, err)
+			return true
+		}
+	}
+	for _, inst := range targets {
+		func() {
+			inst.mu.Lock()
+			defer inst.mu.Unlock()
+			if err := inst.state.(runtime.Clicker).Click(values); err != nil {
+				log.Printf("[WS] Click %s on block %s refused: %v", action, inst.blockID, err)
+			}
+		}()
+		h.sendUpdate(inst)
+	}
+	return true
 }
 
 // handlePageAction runs a message for the whole page rather than one block.
@@ -1347,6 +1395,9 @@ var blockHelperFuncs = template.FuncMap{
 	// linkify escapes a value and turns each http(s) URL in it into a link
 	// that opens in a new tab.
 	"linkify": linkify,
+	// jsonindent indents a JSON object or array, such as a response body,
+	// and returns any other text unchanged.
+	"jsonindent": jsonindent,
 }
 
 // ComponentTemplates returns the livetemplate component template sets Tinkerdown
