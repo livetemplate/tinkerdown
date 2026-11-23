@@ -11,6 +11,8 @@ Earlier releases (v0.1.x) are documented in the
 
 ## [Unreleased]
 
+## [v0.8.0] - 2026-11-23
+
 ### Added
 
 - **Runs a click starts.** A merge with `params` and `on: NAME` starts its
@@ -25,7 +27,8 @@ Earlier releases (v0.1.x) are documented in the
   method, URL, headers and body stay on the server and reach a command only
   through a click, as `TD_method`, `TD_url`, `TD_headers` and `TD_body`.
   Variables come from the file's `@name` lines, and environment variables
-  only when named as `{{$processEnv NAME}}`.
+  only when named as `{{$processEnv NAME}}`. A variable's value can use
+  other variables, so `@token = {{$processEnv TOKEN}}` works.
 - **`line_max` on merges** raises the 16 KiB line cap, up to 16 MiB.
 - **A `jsonindent` template function** indents a JSON object or array and
   returns other text unchanged.
