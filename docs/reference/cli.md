@@ -45,6 +45,7 @@ To run a page that needs more, download it, review it, and serve the local copy 
 |------|-------------|---------|
 | `--source NAME=COMMAND` | Add a stream source that follows a command's output. Needs `--allow-exec`. Repeatable. | none |
 | `--source NAME=file:PATH` | Add a stream source that follows a file. Repeatable. | none |
+| `--source NAME=http:PATH` | Add a stream source that lists the requests in a `.http` file. Repeatable. | none |
 | `--action NAME=COMMAND` | Run COMMAND when a button named NAME is clicked, on any page. Needs `--allow-exec`. Repeatable. | none |
 | `--allow-exec` | Let sources and actions run commands | off |
 | `--port`, `-p` | Server port | `8080` |
@@ -55,7 +56,7 @@ To run a page that needs more, download it, review it, and serve the local copy 
 | `--headless` | Serve only the API, webhooks and schedules | off |
 | `--help`, `-h` | Print serve's usage and exit | |
 
-A `--source` flag reaches a page through a merge source with `inputs: ["*"]`, or by replacing a page source with the same name. `serve` refuses a flag no page uses, and a flag of a kind the page's `accepts` leaves out. See [stream sources](../sources/stream.md#sources-from-the-command-line).
+A `--source` flag reaches a page through a merge source with `inputs: ["*"]`, or by replacing a page source with the same name. `serve` refuses a flag no page uses, and a flag of a kind the page's `accepts` leaves out. For a page from a URL, a relative `file:` or `http:` path is taken from the directory `serve` runs in. See [stream sources](../sources/stream.md#sources-from-the-command-line).
 
 When a page needs sources and has none, `serve` asks for them if it runs in a terminal, then prints the `--source` flags to reuse. Without a terminal it never waits: it prints what to pass and serves the page's empty state.
 

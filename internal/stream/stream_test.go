@@ -11,6 +11,9 @@ import (
 	"time"
 )
 
+// bg is the run context for rows a test publishes directly.
+var bg = context.Background()
+
 func waitFor(t *testing.T, what string, cond func() bool) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
@@ -36,7 +39,7 @@ func TestRingEvictsOldest(t *testing.T) {
 	defer h.Close()
 	b := newBuffer(h, "k", "s", 3)
 	for i := 1; i <= 5; i++ {
-		h.publish(b, "stdout", Row{"msg": fmt.Sprint(i)})
+		h.publish(bg, b, "stdout", Row{"msg": fmt.Sprint(i)})
 	}
 	if got := strings.Join(msgs(b.Snapshot()), ","); got != "3,4,5" {
 		t.Fatalf("snapshot = %s, want 3,4,5", got)
@@ -47,14 +50,14 @@ func TestMergeKeepsSeqOrderAndSeedsHistory(t *testing.T) {
 	h := NewHub()
 	defer h.Close()
 	a, c := newBuffer(h, "ka", "a", 10), newBuffer(h, "kc", "c", 10)
-	h.publish(a, "stdout", Row{"msg": "a1"})
-	h.publish(c, "stdout", Row{"msg": "c1"})
+	h.publish(bg, a, "stdout", Row{"msg": "a1"})
+	h.publish(bg, c, "stdout", Row{"msg": "c1"})
 	m, err := h.Merge("m", []*Buffer{a, c}, 10, KeySpec{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	h.publish(c, "stdout", Row{"msg": "c2"})
-	h.publish(a, "stdout", Row{"msg": "a2"})
+	h.publish(bg, c, "stdout", Row{"msg": "c2"})
+	h.publish(bg, a, "stdout", Row{"msg": "a2"})
 
 	rows := m.Snapshot()
 	if got := strings.Join(msgs(rows), ","); got != "a1,c1,c2,a2" {
@@ -76,13 +79,13 @@ func TestSubscriptionCoalescesWakeups(t *testing.T) {
 	b := newBuffer(h, "k", "s", 10)
 	s := b.Subscribe()
 	for i := 0; i < 100; i++ {
-		h.publish(b, "stdout", Row{}) // must never block
+		h.publish(bg, b, "stdout", Row{}) // must never block
 	}
 	if len(s.C) != 1 {
 		t.Fatalf("pending wake-ups = %d, want 1", len(s.C))
 	}
 	s.Close()
-	h.publish(b, "stdout", Row{})
+	h.publish(bg, b, "stdout", Row{})
 }
 
 func TestLineSplitterTruncatesHugeLineAcrossChunks(t *testing.T) {
@@ -401,11 +404,11 @@ func TestKeyedMergeKeepsOneRowPerKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h.publish(in, "stdout", event("api", "TestA", "run", ""))
-	h.publish(in, "stdout", event("api", "TestB", "run", ""))
-	h.publish(in, "stdout", event("api", "TestA", "output", "a says hi\n"))
-	h.publish(in, "stdout", event("api", "TestA", "pass", ""))
-	h.publish(in, "stdout", event("api", "", "pass", "")) // the package's own row
+	h.publish(bg, in, "stdout", event("api", "TestA", "run", ""))
+	h.publish(bg, in, "stdout", event("api", "TestB", "run", ""))
+	h.publish(bg, in, "stdout", event("api", "TestA", "output", "a says hi\n"))
+	h.publish(bg, in, "stdout", event("api", "TestA", "pass", ""))
+	h.publish(bg, in, "stdout", event("api", "", "pass", "")) // the package's own row
 
 	rows := m.Snapshot()
 	if got := strings.Join(msgs(rows), ","); got != "pass,run,pass" {
@@ -415,13 +418,13 @@ func TestKeyedMergeKeepsOneRowPerKey(t *testing.T) {
 		t.Fatalf("collected = %q, %q", rows[0]["collected"], rows[1]["collected"])
 	}
 	firstKey := rows[0]["key"]
-	h.publish(in, "stdout", event("api", "TestA", "output", "again\n"))
+	h.publish(bg, in, "stdout", event("api", "TestA", "output", "again\n"))
 	if rows = m.Snapshot(); rows[0]["key"] != firstKey || rows[0]["collected"] != "a says hi\nagain\n" {
 		t.Fatalf("update in place: key %v (was %v), collected %q", rows[0]["key"], firstKey, rows[0]["collected"])
 	}
 
 	// Past buffer (3 keys), the key updated least recently goes: TestB.
-	h.publish(in, "stdout", event("api", "TestC", "run", ""))
+	h.publish(bg, in, "stdout", event("api", "TestC", "run", ""))
 	if got := strings.Join(keysTests(m.Snapshot()), ","); got != "TestA,,TestC" {
 		t.Fatalf("after eviction = %s, want TestA, the package row, TestC", got)
 	}
@@ -432,8 +435,8 @@ func TestKeyedCollectKeepsTheEnd(t *testing.T) {
 	defer h.Close()
 	in := newBuffer(h, "kin2", "go", 10)
 	m, _ := h.Merge("t", []*Buffer{in}, 10, KeySpec{Paths: []string{"fields.Test"}, Collect: "fields.Output"})
-	h.publish(in, "stdout", event("p", "T", "output", strings.Repeat("x", MaxCollected)))
-	h.publish(in, "stdout", event("p", "T", "output", "END"))
+	h.publish(bg, in, "stdout", event("p", "T", "output", strings.Repeat("x", MaxCollected)))
+	h.publish(bg, in, "stdout", event("p", "T", "output", "END"))
 	c := m.Snapshot()[0]["collected"].(string)
 	if len(c) != MaxCollected || !strings.HasSuffix(c, "END") {
 		t.Fatalf("collected is %d bytes ending %q", len(c), c[len(c)-3:])
@@ -468,9 +471,9 @@ func TestKeyedCollectReset(t *testing.T) {
 	in := newBuffer(h, "kin3", "go", 10)
 	m, _ := h.Merge("t", []*Buffer{in}, 10, KeySpec{Paths: []string{"fields.Test"}, Collect: "fields.Output", Reset: Match{Path: "fields.Action", Values: []string{"run", "start"}}})
 	for _, run := range []string{"first\n", "second\n"} {
-		h.publish(in, "stdout", event("p", "T", "run", ""))
-		h.publish(in, "stdout", event("p", "T", "output", run))
-		h.publish(in, "stdout", event("p", "T", "fail", ""))
+		h.publish(bg, in, "stdout", event("p", "T", "run", ""))
+		h.publish(bg, in, "stdout", event("p", "T", "output", run))
+		h.publish(bg, in, "stdout", event("p", "T", "fail", ""))
 	}
 	if got := m.Snapshot()[0]["collected"]; got != "second\n" {
 		t.Fatalf("collected = %q, want only the latest run", got)
@@ -483,8 +486,8 @@ func TestKeyedCollectResetAlternatives(t *testing.T) {
 	in := newBuffer(h, "kin4", "go", 10)
 	m, _ := h.Merge("t", []*Buffer{in}, 10, KeySpec{Paths: []string{"fields.Test"}, Collect: "fields.Output", Reset: Match{Path: "fields.Action", Values: []string{"run", "start"}}})
 	for _, run := range []string{"FAIL one\n", "FAIL two\n"} {
-		h.publish(in, "stdout", event("p", "", "start", "")) // a package row: no run event
-		h.publish(in, "stdout", event("p", "", "output", run))
+		h.publish(bg, in, "stdout", event("p", "", "start", "")) // a package row: no run event
+		h.publish(bg, in, "stdout", event("p", "", "output", run))
 	}
 	if got := m.Snapshot()[0]["collected"]; got != "FAIL two\n" {
 		t.Fatalf("package collected = %q, want only the latest run", got)
@@ -498,8 +501,8 @@ func TestKeyedRowKeyIsHex(t *testing.T) {
 	defer h.Close()
 	in := newBuffer(h, "kin5", "go", 10)
 	m, _ := h.Merge("t", []*Buffer{in}, 10, KeySpec{Paths: []string{"fields.Test"}})
-	h.publish(in, "stdout", event("p", `TestParseValue/"hello"`, "pass", ""))
-	h.publish(in, "stdout", event("p", `TestParseValue/'world'`, "pass", ""))
+	h.publish(bg, in, "stdout", event("p", `TestParseValue/"hello"`, "pass", ""))
+	h.publish(bg, in, "stdout", event("p", `TestParseValue/'world'`, "pass", ""))
 	rows := m.Snapshot()
 	for _, r := range rows {
 		if k := r["key"].(string); strings.Trim(k, "0123456789abcdef") != "" || k == "" {
@@ -528,17 +531,17 @@ func TestKeyedDrop(t *testing.T) {
 		}
 		return strings.Join(out, ",")
 	}
-	h.publish(in, "stdout", ctr("web", "running"), ctr("db", "running"), ctr("cache", "running"))
-	h.publish(in, "stdout", ctr("web", "removed"), ctr("nope", "gone"))
+	h.publish(bg, in, "stdout", ctr("web", "running"), ctr("db", "running"), ctr("cache", "running"))
+	h.publish(bg, in, "stdout", ctr("web", "removed"), ctr("nope", "gone"))
 	if got := names(); got != "db:running,cache:running" {
 		t.Fatalf("after drop: %s", got)
 	}
-	h.publish(in, "stdout", ctr("web", "created"), ctr("db", "exited"))
+	h.publish(bg, in, "stdout", ctr("web", "created"), ctr("db", "exited"))
 	if got := names(); got != "db:exited,cache:running,web:created" {
 		t.Fatalf("after re-add: %s", got)
 	}
 	// The index still points at the right rows after a removal mid-list.
-	h.publish(in, "stdout", ctr("cache", "removed"), ctr("web", "running"))
+	h.publish(bg, in, "stdout", ctr("cache", "removed"), ctr("web", "running"))
 	if got := names(); got != "db:exited,web:running" {
 		t.Fatalf("after second drop: %s", got)
 	}
@@ -549,7 +552,7 @@ func TestKeyedDropSeed(t *testing.T) {
 	h := NewHub()
 	defer h.Close()
 	in := newBuffer(h, "kin7", "docker", 10)
-	h.publish(in, "stdout", Row{"fields": map[string]interface{}{"name": "a", "state": "running"}}, Row{"fields": map[string]interface{}{"name": "a", "state": "removed"}})
+	h.publish(bg, in, "stdout", Row{"fields": map[string]interface{}{"name": "a", "state": "running"}}, Row{"fields": map[string]interface{}{"name": "a", "state": "removed"}})
 	m, _ := h.Merge("c", []*Buffer{in}, 10, KeySpec{Paths: []string{"fields.name"}, Drop: Match{Path: "fields.state", Values: []string{"removed"}}})
 	if n := len(m.Snapshot()); n != 0 {
 		t.Fatalf("rows = %d, want 0", n)
@@ -585,7 +588,7 @@ func TestSubscriptionAttachDetach(t *testing.T) {
 
 	sub := h.NewSubscription()
 	sub.Attach(gate)
-	h.publish(gate, "stdout", Row{"msg": "x"})
+	h.publish(bg, gate, "stdout", Row{"msg": "x"})
 	select {
 	case <-sub.C:
 	case <-time.After(2 * time.Second):
@@ -633,20 +636,20 @@ func TestKeyedSort(t *testing.T) {
 		return Row{"fields": f}
 	}
 	ids := func() string { return keyedIDs(m.Snapshot()) }
-	h.publish(in, "stdout", run("a", "2"), run("b", "1"), run("c", "3"))
+	h.publish(bg, in, "stdout", run("a", "2"), run("b", "1"), run("c", "3"))
 	if got := ids(); got != "c,a,b" {
 		t.Fatalf("newest first: %s", got)
 	}
-	h.publish(in, "stdout", run("d", "5"), run("e", "3"), run("x", nil))
+	h.publish(bg, in, "stdout", run("d", "5"), run("e", "3"), run("x", nil))
 	if got := ids(); got != "d,c,e,a,b,x" {
 		t.Fatalf("a new row first, a tie after the earlier row, a missing value last: %s", got)
 	}
-	h.publish(in, "stdout", run("a", "2"), run("b", "9"))
+	h.publish(bg, in, "stdout", run("a", "2"), run("b", "9"))
 	if got := ids(); got != "b,d,c,e,a,x" {
 		t.Fatalf("an unchanged value stays, a changed one moves: %s", got)
 	}
 	// The index follows the moves: updating rows lands on the right ones.
-	h.publish(in, "stdout", run("e", "0"), run("c", "3"))
+	h.publish(bg, in, "stdout", run("e", "0"), run("c", "3"))
 	if got := ids(); got != "b,d,c,a,e,x" {
 		t.Fatalf("after more moves: %s", got)
 	}
@@ -660,21 +663,21 @@ func TestKeyedSortNumbersAndEviction(t *testing.T) {
 	m, _ := h.Merge("jobs", []*Buffer{in}, 3, KeySpec{Paths: []string{"fields.id"}, Sort: order})
 	job := func(id string, n float64) Row { return Row{"fields": map[string]interface{}{"id": id, "n": n}} }
 	ids := func() string { return keyedIDs(m.Snapshot()) }
-	h.publish(in, "stdout", job("ten", 10), job("nine", 9), job("hundred", 100))
+	h.publish(bg, in, "stdout", job("ten", 10), job("nine", 9), job("hundred", 100))
 	if got := ids(); got != "nine,ten,hundred" {
 		t.Fatalf("numbers compare as numbers: %s", got)
 	}
 	// Full: the least recently updated key (ten, after nine and hundred are
 	// refreshed) makes room, and the order holds.
-	h.publish(in, "stdout", job("nine", 9), job("hundred", 100), job("one", 1))
+	h.publish(bg, in, "stdout", job("nine", 9), job("hundred", 100), job("one", 1))
 	if got := ids(); got != "one,nine,hundred" {
 		t.Fatalf("after eviction: %s", got)
 	}
-	h.publish(in, "stdout", job("nine", 50))
+	h.publish(bg, in, "stdout", job("nine", 50))
 	if got := ids(); got != "one,nine,hundred" {
 		t.Fatalf("a move within the same place: %s", got)
 	}
-	h.publish(in, "stdout", job("one", 500))
+	h.publish(bg, in, "stdout", job("one", 500))
 	if got := ids(); got != "nine,hundred,one" {
 		t.Fatalf("a move to the end: %s", got)
 	}
@@ -698,7 +701,7 @@ func TestKeyedSortNumericText(t *testing.T) {
 	order, _ := ParseOrder("fields.ms")
 	m, _ := h.Merge("jobs", []*Buffer{in}, 10, KeySpec{Paths: []string{"fields.id"}, Sort: order})
 	job := func(id string, ms interface{}) Row { return Row{"fields": map[string]interface{}{"id": id, "ms": ms}} }
-	h.publish(in, "stdout", job("ten", "10"), job("nine", "9"), job("slow", "n/a"), job("five", 5.0), job("fast", "fast"),
+	h.publish(bg, in, "stdout", job("ten", "10"), job("nine", "9"), job("slow", "n/a"), job("five", 5.0), job("fast", "fast"),
 		job("inf", "inf"), job("hex", "0x10"), job("year", "2026"), job("iso", "2026-11-22T10:00:00Z"))
 	if got := keyedIDs(m.Snapshot()); got != "five,nine,ten,year,hex,iso,fast,inf,slow" {
 		t.Fatalf("plain numbers first, then text (inf and hex are text, a year before an ISO time): %s", got)
@@ -716,8 +719,8 @@ func TestKeyedSortMoveKeepsCollected(t *testing.T) {
 	job := func(id, t, out string) Row {
 		return Row{"fields": map[string]interface{}{"id": id, "t": t, "out": out}}
 	}
-	h.publish(in, "stdout", job("a", "1", "one "), job("b", "2", "x"))
-	h.publish(in, "stdout", job("a", "3", "two"))
+	h.publish(bg, in, "stdout", job("a", "1", "one "), job("b", "2", "x"))
+	h.publish(bg, in, "stdout", job("a", "3", "two"))
 	rows := m.Snapshot()
 	if got := keyedIDs(rows); got != "a,b" {
 		t.Fatalf("a moved first: %s", got)

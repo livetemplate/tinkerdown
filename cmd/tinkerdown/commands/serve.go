@@ -38,7 +38,7 @@ func ServeCommand(args []string) error {
 			return nil
 		} else if arg == "--source" {
 			if i+1 >= len(args) {
-				return fmt.Errorf("--source needs a value: NAME=COMMAND or NAME=file:PATH")
+				return fmt.Errorf("--source needs a value: NAME=COMMAND, NAME=file:PATH or NAME=http:PATH")
 			}
 			i++
 			sourceValues = append(sourceValues, args[i])
@@ -226,8 +226,16 @@ func ServeCommand(args []string) error {
 				fmt.Printf("Next time, run:\n  %s\n", reuseLine(args, given))
 			}
 		} else {
-			fmt.Println("No terminal, so no prompt. Pass each source as --source NAME=COMMAND or --source NAME=file:PATH; see tinkerdown serve --help.")
+			fmt.Println("No terminal, so no prompt. Pass each source as --source NAME=COMMAND, NAME=file:PATH or NAME=http:PATH; see tinkerdown serve --help.")
 		}
+	}
+	if target.url != "" {
+		// After any prompt: every flag source is in by now.
+		wd, err := os.Getwd()
+		if err != nil {
+			return err
+		}
+		absSourcePaths(cfg.FlagSources, wd)
 	}
 
 	// Print discovered pages (only in non-headless mode)
@@ -361,6 +369,7 @@ the local copy.
 Flags:
   --source NAME=COMMAND    Follow a command's output as stream source NAME (needs --allow-exec)
   --source NAME=file:PATH  Follow a file as stream source NAME
+  --source NAME=http:PATH  List the requests in a .http file as stream source NAME
   --action NAME=COMMAND    Run COMMAND when a page's button named NAME is clicked (needs --allow-exec)
   --allow-exec             Let sources and actions run commands
   --port N, -p N           Port to listen on (default 8080)
@@ -381,6 +390,16 @@ argument: --action 'stop=docker stop -- "$TD_name"'. A --source read by a
 merge with params gets the page URL's values the same way (?name=web). A
 value is refused when it is empty, over 256 bytes, starts with -, or holds a
 control character.
+
+A merge with on: NAME starts its inputs only when a button named NAME is
+clicked, never from the URL, and runs them once per click. They get the
+button's params, plus the private values of the row the params name: for an
+http: source, the request's TD_method, TD_url, TD_headers and TD_body, with
+{{variables}} filled from the file and the environment.
+
+For a page from a URL, a relative file: or http: path in a flag is taken
+from the directory serve runs in, and one in a --config file from that
+file's directory.
 
 With a terminal, serve asks for sources a page needs; without one it never
 prompts, so pass every source as a flag. A page's hint is the page's text, not

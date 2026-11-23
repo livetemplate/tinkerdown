@@ -258,3 +258,38 @@ func TestCheckFlagActionsRefusesApproved(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestHTTPSourceFlagAndAbsPaths(t *testing.T) {
+	name, src, err := parseSourceFlag("api=http:./api.http")
+	if err != nil || name != "api" || src.HTTP != "./api.http" || src.Kind() != "http" {
+		t.Fatalf("parseSourceFlag = %q, %+v, %v", name, src, err)
+	}
+	if got := sourceFlagValue(name, src); got != "api=http:./api.http" {
+		t.Fatalf("sourceFlagValue = %q", got)
+	}
+	if _, _, err := parseSourceFlag("api=http:"); err == nil {
+		t.Fatal("http: without a path was accepted")
+	}
+	wd, _ := os.Getwd()
+	flags := map[string]config.SourceConfig{"api": src, "log": {Type: "stream", File: "/var/log/x"}, "cmd": {Type: "stream", Cmd: "echo ./x"}}
+	absSourcePaths(flags, wd)
+	if flags["api"].HTTP != filepath.Join(wd, "api.http") || flags["log"].File != "/var/log/x" || flags["cmd"].Cmd != "echo ./x" {
+		t.Fatalf("absSourcePaths = %+v", flags)
+	}
+}
+
+func TestRemoteConfigPathsFollowTheConfigFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "http.yaml")
+	os.WriteFile(path, []byte("sources:\n  api: {type: stream, http: ./api.http}\n  abs: {type: stream, file: /var/log/x}\n"), 0o644)
+	cfg, err := remoteConfig(path, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg.Sources["api"].HTTP; got != filepath.Join(dir, "api.http") {
+		t.Fatalf("http path = %q, want it next to the config", got)
+	}
+	if got := cfg.Sources["abs"].File; got != "/var/log/x" {
+		t.Fatalf("absolute path changed to %q", got)
+	}
+}

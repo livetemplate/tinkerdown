@@ -29,6 +29,7 @@ const (
 	DefaultBufferSize = 2000
 	DefaultBacklog    = 200
 	MaxLineBytes      = 16 * 1024
+	MaxLineMax        = 16 * 1024 * 1024 // the largest line_max
 
 	// DefaultIdleStop is how long an input keeps running with no page
 	// subscribed. Short tab closes keep history; an abandoned input (a page
@@ -38,9 +39,13 @@ const (
 
 // Hub owns every Buffer of one server.
 type Hub struct {
-	mu      sync.RWMutex // guards seq, buffers, and every buffer's ring and subscribers
+	mu      sync.RWMutex // guards seq, buffers, private, and every buffer's ring and subscribers
 	seq     int64
 	buffers map[string]*Buffer
+	// private holds values published with a row but kept out of it, by the
+	// row's seq. Rows become template state, so a value a page must never see
+	// (a filled-in token) lives here; see Private.
+	private map[int64]Private
 
 	ctx    context.Context // cancelled by Close
 	cancel context.CancelFunc
@@ -54,20 +59,44 @@ type Hub struct {
 // NewHub returns an empty hub. Inputs start lazily on their first Subscribe.
 func NewHub() *Hub {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &Hub{buffers: map[string]*Buffer{}, ctx: ctx, cancel: cancel, now: time.Now, IdleStop: DefaultIdleStop}
+	return &Hub{buffers: map[string]*Buffer{}, private: map[int64]Private{}, ctx: ctx, cancel: cancel, now: time.Now, IdleStop: DefaultIdleStop}
 }
 
-// InputSpec describes one stream input. Exactly one of Cmd or File is set.
+// Private is what an input published alongside a row without putting it in
+// the row: Values, or Err saying why it has none.
+type Private struct {
+	Values map[string]string
+	Err    string
+}
+
+// Private returns what was published privately with r, by its seq. A keyed
+// merge's copy of a row keeps the seq, so it finds the same values.
+func (h *Hub) Private(r Row) (Private, bool) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	p, ok := h.private[seqOf(r)]
+	return p, ok
+}
+
+// InputSpec describes one stream input. Exactly one of Cmd, File or HTTP is
+// set.
 type InputSpec struct {
-	Name    string            `json:"name"` // source name, copied into each row's "source"
-	Cmd     string            `json:"cmd"`  // run with /bin/sh -c
-	Dir     string            `json:"dir"`  // working directory for Cmd
-	Env     map[string]string `json:"env"`  // extra environment for Cmd
-	File    string            `json:"file"` // absolute path to tail
-	Format  string            `json:"format"`
-	Buffer  int               `json:"buffer"`  // rows kept
-	Backlog int               `json:"backlog"` // lines read from the end of File on start
-	Restart string            `json:"restart"` // on-exit or never
+	Name string            `json:"name"` // source name, copied into each row's "source"
+	Cmd  string            `json:"cmd"`  // run with /bin/sh -c
+	Dir  string            `json:"dir"`  // working directory for Cmd
+	Env  map[string]string `json:"env"`  // extra environment for Cmd
+	File string            `json:"file"` // absolute path to tail
+	HTTP string            `json:"http"` // absolute path of a .http file, re-read whole on change
+	// Manual makes a Cmd start only when Restart is called, never when a page
+	// attaches, and run once. A command that changes something (sends a
+	// request) must not run again because a page reloaded.
+	Manual bool `json:"manual"`
+	// LineMax caps a line's length in bytes; 0 means MaxLineBytes.
+	LineMax int    `json:"line_max"`
+	Format  string `json:"format"`
+	Buffer  int    `json:"buffer"`  // rows kept
+	Backlog int    `json:"backlog"` // lines read from the end of File on start
+	Restart string `json:"restart"` // on-exit or never
 	// IdleStop, when set, replaces the hub's IdleStop for this input.
 	IdleStop time.Duration `json:"idle_stop"`
 }
@@ -78,8 +107,20 @@ var Formats = []string{"auto", "json", "logfmt", "lines"}
 // Normalize fills defaults and rejects invalid specs. Input calls it, and
 // config validation can call it to report errors before serving.
 func (s InputSpec) Normalize() (InputSpec, error) {
-	if (s.Cmd == "") == (s.File == "") {
-		return s, fmt.Errorf("stream %q: set exactly one of cmd or file", s.Name)
+	if set := boolInt(s.Cmd != "") + boolInt(s.File != "") + boolInt(s.HTTP != ""); set != 1 {
+		return s, fmt.Errorf("stream %q: set exactly one of cmd, file or http", s.Name)
+	}
+	if s.Manual {
+		if s.Cmd == "" {
+			return s, fmt.Errorf("stream %q: only a cmd can be started by a click", s.Name)
+		}
+		s.Restart = "never"
+	}
+	switch {
+	case s.LineMax == 0:
+		s.LineMax = MaxLineBytes
+	case s.LineMax < 0 || s.LineMax > MaxLineMax:
+		return s, fmt.Errorf("stream %q: line_max %d is not between 1 and %d", s.Name, s.LineMax, MaxLineMax)
 	}
 	if s.Format == "" {
 		s.Format = "auto"
@@ -120,10 +161,14 @@ func (h *Hub) Input(spec InputSpec) (*Buffer, error) {
 	}
 	b := newBuffer(h, key, spec.Name, spec.Buffer)
 	b.idleStop = spec.IdleStop
+	b.manual = spec.Manual
 	b.run = func(ctx context.Context) {
-		if spec.Cmd != "" {
+		switch {
+		case spec.Cmd != "":
 			runCmd(ctx, spec, b)
-		} else {
+		case spec.HTTP != "":
+			readHTTPFile(ctx, spec, b)
+		default:
 			tailFile(ctx, spec, b)
 		}
 	}
@@ -198,28 +243,116 @@ func (b *Buffer) seedLocked() {
 }
 
 // publish stamps rows with seq, source and stream, appends them to b and to
-// every merge fed by b, and wakes their subscribers.
-func (h *Hub) publish(b *Buffer, stream string, rows ...Row) {
+// every merge fed by b, and wakes their subscribers. ctx is the run that
+// produced them: once Restart or an idle stop has ended that run, its late
+// rows are dropped. Checking under h.mu makes that race-free, since both
+// cancel under it too.
+func (h *Hub) publish(ctx context.Context, b *Buffer, stream string, rows ...Row) {
 	if len(rows) == 0 {
 		return
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	if h.ctx.Err() != nil {
+	if ctx.Err() != nil {
 		return
 	}
-	for _, r := range rows {
+	h.appendRowsLocked(b, stream, rows, nil)
+}
+
+// replace swaps every row b has published, in b and in the merges it feeds,
+// for rows, in one step and one wake-up, so a page gets a single update.
+// privs, when set, holds each row's private values, in order.
+func (h *Hub) replace(ctx context.Context, b *Buffer, stream string, rows []Row, privs []Private) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if ctx.Err() != nil {
+		return
+	}
+	b.clearLocked()
+	h.appendRowsLocked(b, stream, rows, privs)
+}
+
+// setErr sets the error b reports in place of its rows, or clears it with "".
+func (h *Hub) setErr(ctx context.Context, b *Buffer, msg string) {
+	h.mu.RLock()
+	same := b.err == msg
+	h.mu.RUnlock()
+	if same { // a reader re-reports its error on every poll
+		return
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if ctx.Err() != nil || b.err == msg {
+		return
+	}
+	b.err = msg
+	b.wakeAllLocked()
+}
+
+func (h *Hub) appendRowsLocked(b *Buffer, stream string, rows []Row, privs []Private) {
+	for i, r := range rows {
 		h.seq++
 		r["seq"], r["source"], r["stream"] = h.seq, b.name, stream
+		if i < len(privs) {
+			h.private[h.seq] = privs[i]
+			b.privSeqs = append(b.privSeqs, h.seq)
+		}
 		b.appendLocked(r)
 		for _, m := range b.merges {
 			m.appendLocked(r)
 		}
 	}
-	b.wakeLocked()
-	for _, m := range b.merges {
-		m.wakeLocked()
+	b.wakeAllLocked()
+}
+
+// Restart ends the runs of b's manual inputs (b's own, for an input), drops
+// the rows they published, and starts each again. It is the only way a manual
+// input starts, so a click runs its command exactly once.
+func (h *Hub) Restart(b *Buffer) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	inputs := b.inputs
+	if !b.merge {
+		inputs = []*Buffer{b}
 	}
+	for _, in := range inputs {
+		if !in.manual || h.ctx.Err() != nil {
+			continue
+		}
+		if in.stopRun != nil {
+			in.stopRun()
+			in.stopRun = nil
+		}
+		in.clearLocked()
+		in.startLocked()
+	}
+}
+
+// Running reports whether b's input, or any of a merge's inputs, is running
+// its command or reading its file.
+func (b *Buffer) Running() bool {
+	b.hub.mu.RLock()
+	defer b.hub.mu.RUnlock()
+	if !b.merge {
+		return b.running > 0
+	}
+	return slices.ContainsFunc(b.inputs, func(in *Buffer) bool { return in.running > 0 })
+}
+
+// Err returns the error b, or the first of a merge's inputs, reports in place
+// of its rows, such as a file that doesn't parse; "" when there is none.
+func (b *Buffer) Err() string {
+	b.hub.mu.RLock()
+	defer b.hub.mu.RUnlock()
+	if b.err != "" || !b.merge {
+		return b.err
+	}
+	for _, in := range b.inputs {
+		if in.err != "" {
+			return in.name + ": " + in.err
+		}
+	}
+	return ""
 }
 
 // Close stops every input, kills their process groups and waits for them.
@@ -249,6 +382,10 @@ type Buffer struct {
 	merges []*Buffer  // merges this input feeds
 	inputs []*Buffer  // for a merge: the inputs it holds while subscribed
 	keyed  *keyedRows // for a keyed merge: one row per key, in place of ring
+	err    string     // reported in place of rows; see Err
+	// privSeqs are the seqs of rows b published with private values, so
+	// they go from hub.private along with the rows.
+	privSeqs []int64
 
 	// snap caches the oldest-first view until the next append, so every
 	// connection refreshing after one publish shares a single copy.
@@ -263,6 +400,8 @@ type Buffer struct {
 	idleSeen int           // refs epoch, so a stale idle timer doesn't stop a re-used input
 	idleStop time.Duration // overrides hub.IdleStop when set
 	dropped  bool          // a merge's rows went at an idle stop; reseed on the next holder
+	manual   bool          // starts only by Restart; see InputSpec.Manual
+	running  int           // runs in progress: 1, or briefly 2 while a restarted run winds down
 }
 
 func newBuffer(h *Hub, key, name string, size int) *Buffer {
@@ -287,20 +426,73 @@ func (b *Buffer) retainLocked() {
 		b.dropped = false
 		b.seedLocked()
 	}
-	if b.run != nil && b.stopRun == nil && b.hub.ctx.Err() == nil {
-		ctx, cancel := context.WithCancel(b.hub.ctx)
-		b.stopRun = cancel
-		run := b.run
-		b.hub.wg.Go(func() {
-			// A bug in one input must not take down the server: report it on
-			// the input and stop. The next subscriber after IdleStop restarts it.
-			defer func() {
-				if r := recover(); r != nil {
-					b.system("error", fmt.Sprintf("input stopped after an internal error: %v", r))
-				}
-			}()
-			run(ctx)
-		})
+	if b.run != nil && b.stopRun == nil && !b.manual {
+		b.startLocked()
+	}
+}
+
+// startLocked starts b's run. b.running counts it until it returns, and its
+// subscribers wake on both edges, so a page's .Running follows the run.
+func (b *Buffer) startLocked() {
+	if b.run == nil || b.hub.ctx.Err() != nil {
+		return
+	}
+	ctx, cancel := context.WithCancel(b.hub.ctx)
+	b.stopRun = cancel
+	b.running++
+	b.wakeAllLocked()
+	run := b.run
+	b.hub.wg.Go(func() {
+		defer func() {
+			b.hub.mu.Lock()
+			b.running--
+			b.wakeAllLocked()
+			b.hub.mu.Unlock()
+		}()
+		// A bug in one input must not take down the server: report it on
+		// the input and stop. The next subscriber after IdleStop restarts it.
+		defer func() {
+			if r := recover(); r != nil {
+				b.system(ctx, "error", fmt.Sprintf("input stopped after an internal error: %v", r))
+			}
+		}()
+		run(ctx)
+	})
+}
+
+// clearLocked drops every row b published, from b and from the merges it
+// feeds, with their private values.
+func (b *Buffer) clearLocked() {
+	b.ring, b.head = nil, 0
+	b.snap.Store(nil)
+	for _, seq := range b.privSeqs {
+		delete(b.hub.private, seq)
+	}
+	b.privSeqs = nil
+	for _, m := range b.merges {
+		m.removeSourceLocked(b.name)
+	}
+}
+
+// removeSourceLocked drops a merge's rows from the input named name.
+func (b *Buffer) removeSourceLocked(name string) {
+	fromName := func(r Row) bool { return r["source"] == name }
+	b.snap.Store(nil)
+	if b.keyed != nil {
+		b.keyed.rows = slices.DeleteFunc(b.keyed.rows, fromName)
+		clear(b.keyed.index)
+		b.keyed.reindex(0)
+		return
+	}
+	rows := b.snapshotOrderLocked()
+	b.ring, b.head = slices.DeleteFunc(rows, fromName), 0
+}
+
+// wakeAllLocked wakes b's subscribers and those of the merges it feeds.
+func (b *Buffer) wakeAllLocked() {
+	b.wakeLocked()
+	for _, m := range b.merges {
+		m.wakeLocked()
 	}
 }
 
@@ -326,13 +518,27 @@ func (b *Buffer) releaseLocked() {
 			b.stopRun()
 			b.stopRun = nil
 		}
-		b.ring, b.head = nil, 0
+		b.clearLocked()
+		b.err = ""
 		if b.keyed != nil {
 			b.keyed.rows, b.keyed.index = nil, map[string]int{}
 		}
-		b.snap.Store(nil)
 		b.dropped = b.merge
+		if b.clickOnly() {
+			// Each click's values make a buffer of their own, which can hold
+			// a request body; once idle, nothing reuses it.
+			delete(b.hub.buffers, b.key)
+		}
 	})
+}
+
+// clickOnly reports whether b runs only on a click: a manual input, or a
+// merge of nothing else.
+func (b *Buffer) clickOnly() bool {
+	if !b.merge {
+		return b.manual
+	}
+	return len(b.inputs) > 0 && !slices.ContainsFunc(b.inputs, func(in *Buffer) bool { return !in.manual })
 }
 
 // idleWait is how long b keeps running and its rows after its last holder
@@ -381,12 +587,17 @@ func (b *Buffer) snapshotLocked() []Row {
 	if b.keyed != nil {
 		out = slices.Clone(b.keyed.rows)
 	} else {
-		out = make([]Row, 0, len(b.ring))
-		out = append(out, b.ring[b.head:]...)
-		out = append(out, b.ring[:b.head]...)
+		out = b.snapshotOrderLocked()
 	}
 	b.snap.Store(&out)
 	return out
+}
+
+// snapshotOrderLocked copies the ring oldest first.
+func (b *Buffer) snapshotOrderLocked() []Row {
+	out := make([]Row, 0, len(b.ring))
+	out = append(out, b.ring[b.head:]...)
+	return append(out, b.ring[:b.head]...)
 }
 
 // Snapshot returns the buffered rows, oldest first. The slice and its rows are
@@ -398,8 +609,8 @@ func (b *Buffer) Snapshot() []Row {
 }
 
 // system publishes a row that reports on the input itself, such as a restart.
-func (b *Buffer) system(level, msg string) {
-	b.hub.publish(b, "system", makeRow(b.hub.now(), level, msg, msg, false, nil))
+func (b *Buffer) system(ctx context.Context, level, msg string) {
+	b.hub.publish(ctx, b, "system", makeRow(b.hub.now(), level, msg, msg, false, nil))
 }
 
 // Subscription delivers a wake-up on C whenever its buffer gains rows.

@@ -2,6 +2,7 @@ package source
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"net/url"
@@ -32,7 +33,28 @@ type QuerySetter interface {
 	Params() map[string]string
 }
 
-var _ QuerySetter = (*StreamSource)(nil)
+// Clicker is a source whose inputs a click starts: a merge with on. On names
+// the button; Click starts the run for the button's values.
+type Clicker interface {
+	On() string
+	Click(values map[string]interface{}) error
+}
+
+// Runner is a source that reports whether its inputs are running.
+type Runner interface {
+	Running() bool
+}
+
+var (
+	_ QuerySetter = (*StreamSource)(nil)
+	_ Clicker     = (*StreamSource)(nil)
+	_ Runner      = (*StreamSource)(nil)
+)
+
+// MaxClickValue caps one value a click passes to a command from a row's
+// private values, counted as the whole TD_NAME=value environment string with
+// its terminating NUL: Linux refuses a longer one (MAX_ARG_STRLEN).
+const MaxClickValue = 128 * 1024
 
 // StreamSource is a Source backed by a stream.Buffer shared with every other
 // page showing the same input. Fetch returns the buffer's current rows.
@@ -53,7 +75,8 @@ type StreamSource struct {
 	build    func(env map[string]string) (*stream.Buffer, error) // a gated source's buffer, on first open
 	env      map[string]string                                   // TD_ values; nil while a param is missing or refused
 	params   map[string]string                                   // env by param name, without TD_; nil with env
-	valueErr error                                               // why the query's values were refused
+	valueErr error                                               // why the query's values, or the last click's, were refused
+	on       string                                              // the button that starts the inputs; "" when the URL does
 	sub      *stream.Subscription                                // the page's subscription, once Subscribe ran
 	attached bool                                                // buf is attached to sub
 }
@@ -92,6 +115,10 @@ func (s *StreamSource) Fetch(ctx context.Context) ([]map[string]interface{}, err
 		if s.buf == nil {
 			return nil, nil
 		}
+		if msg := s.buf.Err(); msg != "" {
+			// The page keeps its last rows and shows why they aren't current.
+			return nil, &ValidationError{Source: s.name, Field: "input", Reason: msg}
+		}
 		return s.buf.Snapshot(), nil
 	}
 	s.mu.Lock()
@@ -106,6 +133,9 @@ func (s *StreamSource) Fetch(ctx context.Context) ([]map[string]interface{}, err
 	if err != nil || !open {
 		return nil, err
 	}
+	if msg := buf.Err(); msg != "" {
+		return nil, &ValidationError{Source: s.name, Field: "input", Reason: msg}
+	}
 	return buf.Snapshot(), nil
 }
 
@@ -114,7 +144,9 @@ func (s *StreamSource) Fetch(ctx context.Context) ([]map[string]interface{}, err
 // which stops once no page shows it. A refused value is returned by the next
 // Fetch. A source without params ignores the query.
 func (s *StreamSource) SetQuery(q url.Values) bool {
-	if s.gates == nil {
+	// A merge started by a click ignores the URL: a reload, Back or a shared
+	// link must not show, or start, a run nobody clicked here.
+	if s.gates == nil || s.on != "" {
 		return false
 	}
 	var env map[string]string // stays nil while a value is missing or refused
@@ -205,6 +237,91 @@ func (s *StreamSource) openLocked() bool {
 	return true
 }
 
+// On returns the name of the button whose click starts the inputs, or "".
+func (s *StreamSource) On() string { return s.on }
+
+// Click starts the inputs for a button's values. Each param must pass the
+// value rules and be in its gate merge, as a URL value must. The gate row it
+// names adds its private values (stream.Hub.Private) as TD_ variables, so a
+// command gets what the row stands for without the browser sending it. The
+// run is shared by everyone who clicks the same values, and a click while it
+// runs starts it again. A refused click is reported by the next Fetch.
+func (s *StreamSource) Click(values map[string]interface{}) error {
+	if s.on == "" {
+		return fmt.Errorf("source %q is not started by a click", s.name)
+	}
+	env, params, err := s.clickEnv(values)
+	s.mu.Lock()
+	if err != nil {
+		s.valueErr = &ValidationError{Source: s.name, Field: "click", Reason: err.Error()}
+		s.mu.Unlock()
+		return s.valueErr
+	}
+	if s.buf == nil || !maps.Equal(env, s.env) { // the same values keep their run's buffer
+		if s.attached {
+			s.sub.Detach(s.buf)
+		}
+		s.buf, s.attached, s.env, s.params = nil, false, env, params
+	}
+	s.valueErr = nil
+	err = s.syncLocked(true)
+	buf := s.buf
+	s.mu.Unlock()
+	if err != nil {
+		return err
+	}
+	s.hub.Restart(buf)
+	return nil
+}
+
+// clickEnv checks a click's values and builds the run's TD_ variables: each
+// param's value, plus the private values of the gate row it names.
+func (s *StreamSource) clickEnv(values map[string]interface{}) (env, params map[string]string, err error) {
+	env, params = map[string]string{}, map[string]string{}
+	for _, g := range s.gates {
+		v := ""
+		if values[g.param] != nil {
+			v = fmt.Sprint(values[g.param])
+		}
+		if err := config.CheckTDValue(g.param, v); err != nil {
+			return nil, nil, err
+		}
+		m := stream.Match{Path: g.path, Values: []string{v}}
+		rows := g.buf.Snapshot()
+		i := slices.IndexFunc(rows, m.Matches)
+		if i < 0 {
+			return nil, nil, fmt.Errorf("value %s is not listed", g.param)
+		}
+		if p, ok := s.hub.Private(rows[i]); ok {
+			if p.Err != "" {
+				return nil, nil, errors.New(p.Err)
+			}
+			for _, k := range slices.Sorted(maps.Keys(p.Values)) {
+				pv := p.Values[k]
+				switch {
+				case !config.TDName.MatchString(k):
+					return nil, nil, fmt.Errorf("value name %q is not 1-32 letters, digits or _", k)
+				case len("TD_"+k+"=")+len(pv)+1 > MaxClickValue:
+					return nil, nil, fmt.Errorf("value %s is over %d KiB", k, MaxClickValue/1024)
+				case strings.IndexByte(pv, 0) >= 0:
+					return nil, nil, fmt.Errorf("value %s holds a NUL byte", k)
+				}
+				env["TD_"+k] = pv
+			}
+		}
+		env["TD_"+g.param], params[g.param] = v, v
+	}
+	return env, params, nil
+}
+
+// Running reports whether the source's inputs are running.
+func (s *StreamSource) Running() bool {
+	s.mu.Lock()
+	buf := s.buf
+	s.mu.Unlock()
+	return buf != nil && buf.Running()
+}
+
 // Close is a no-op: the input belongs to the hub and outlives one page.
 func (s *StreamSource) Close() error { return nil }
 
@@ -249,9 +366,10 @@ func NewStreamSource(hub *stream.Hub, name string, cfg config.SourceConfig, site
 		return nil, err
 	}
 
-	src := &StreamSource{name: name, hub: hub, flush: flush}
+	lineMax, _ := config.ParseLineMax(cfg.LineMax) // ValidateStreamSource checked it
+	src := &StreamSource{name: name, hub: hub, flush: flush, on: cfg.On}
 	if cfg.Type == "stream" {
-		if src.buf, err = streamInput(hub, name, cfg, dir, nil, 0); err != nil {
+		if src.buf, err = streamInput(hub, name, cfg, dir, nil, inputOpts{}); err != nil {
 			return nil, err
 		}
 		return src, nil
@@ -282,7 +400,7 @@ func NewStreamSource(hub *stream.Hub, name string, cfg config.SourceConfig, site
 		inputs := make([]*stream.Buffer, 0, len(cfg.Inputs))
 		for _, in := range cfg.Inputs {
 			inCfg, _ := lookup(in) // ValidateStreamSource checked it exists and is a stream
-			b, err := streamInput(hub, in, inCfg, dir, env, idle)
+			b, err := streamInput(hub, in, inCfg, dir, env, inputOpts{idle: idle, lineMax: lineMax, manual: cfg.On != ""})
 			if err != nil {
 				return nil, fmt.Errorf("merge source %q: %w", name, err)
 			}
@@ -301,7 +419,7 @@ func NewStreamSource(hub *stream.Hub, name string, cfg config.SourceConfig, site
 			}
 		}
 		src.build = build
-		src.SetQuery(page.Query)
+		src.SetQuery(page.Query) // a click merge ignores it
 		return src, nil
 	}
 	if src.buf, err = build(nil); err != nil {
@@ -328,19 +446,30 @@ func sameMerge(want, got config.SourceConfig) bool {
 //
 // params, from a params merge, are TD_ variables added to a command's
 // environment after $VAR expansion, so a value is never expanded; they give
-// the input a buffer of its own. idle, when set, replaces the hub's idle stop.
-func streamInput(hub *stream.Hub, name string, cfg config.SourceConfig, dir string, params map[string]string, idle time.Duration) (*stream.Buffer, error) {
+// the input a buffer of its own. opts are what the merge sets on its inputs.
+func streamInput(hub *stream.Hub, name string, cfg config.SourceConfig, dir string, params map[string]string, opts inputOpts) (*stream.Buffer, error) {
 	spec := cfg.StreamSpec(name)
-	if spec.Cmd != "" {
+	spec.LineMax, spec.Manual = opts.lineMax, opts.manual
+	switch {
+	case spec.HTTP != "":
+		spec.HTTP = resolveSitePath(dir, spec.HTTP)
+	case spec.Cmd != "":
 		if err := requireExec(name, "cmd", "stream sources that run a command"); err != nil {
 			return nil, err
 		}
 		spec.Dir = dir
 		spec.Env = expandEnv(spec.Env)
 		maps.Copy(spec.Env, params)
-	} else {
+	default:
 		spec.File = resolveSitePath(dir, spec.File)
 	}
-	spec.IdleStop = idle
+	spec.IdleStop = opts.idle
 	return hub.Input(spec)
+}
+
+// inputOpts are what a merge sets on the inputs it starts.
+type inputOpts struct {
+	idle    time.Duration // replaces the hub's idle stop when set
+	lineMax int           // replaces the 16 KiB line cap when set
+	manual  bool          // a click starts the input (on)
 }

@@ -59,6 +59,7 @@ type SourceConfig struct {
 	Backlog int      `yaml:"backlog,omitempty"` // For file streams: lines read from the end on start
 	Restart string   `yaml:"restart,omitempty"` // For cmd streams: on-exit (default) or never
 	Flush   string   `yaml:"flush,omitempty"`   // Minimum time between pushes to one page (default 100ms)
+	HTTP    string   `yaml:"http,omitempty"`    // For streams: a .http file, one row per request
 
 	// Accepts, on a merge with inputs ["*"], says which sources the page takes
 	Accepts *SourceAccepts `yaml:"accepts,omitempty"`
@@ -71,6 +72,8 @@ type SourceConfig struct {
 	Drop         string                 `yaml:"drop,omitempty"`
 	Sort         string                 `yaml:"sort,omitempty"`
 	Params       map[string]SourceParam `yaml:"params,omitempty"`
+	On           string                 `yaml:"on,omitempty"`       // On a params merge: the button whose click starts its inputs
+	LineMax      string                 `yaml:"line_max,omitempty"` // On a merge: the longest line its inputs read
 }
 
 // SourceParam mirrors config.SourceParam for page frontmatter.

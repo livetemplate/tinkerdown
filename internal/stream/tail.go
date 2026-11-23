@@ -17,7 +17,8 @@ const readChunk = 64 * 1024
 // when it is replaced (rotation) and rereads it from the start when it shrinks
 // (truncation).
 func tailFile(ctx context.Context, spec InputSpec, b *Buffer) {
-	t := &tailer{spec: spec, b: b, buf: make([]byte, readChunk)}
+	t := &tailer{ctx: ctx, spec: spec, b: b, buf: make([]byte, readChunk)}
+	t.split.max = spec.LineMax
 	t.split.emit = func(line string, truncated bool) {
 		t.batch = append(t.batch, newRow(line, truncated, spec.Format, b.hub.now()))
 	}
@@ -35,6 +36,7 @@ func tailFile(ctx context.Context, spec InputSpec, b *Buffer) {
 }
 
 type tailer struct {
+	ctx     context.Context // the run, for publish
 	spec    InputSpec
 	b       *Buffer
 	f       *os.File
@@ -62,7 +64,7 @@ func (t *tailer) poll(first bool) {
 	if err != nil {
 		if !t.missing {
 			t.missing = true
-			t.b.system("warn", "waiting for "+t.spec.File)
+			t.b.system(t.ctx, "warn", "waiting for "+t.spec.File)
 		}
 		return
 	}
@@ -80,13 +82,13 @@ func (t *tailer) poll(first bool) {
 		t.f = f
 		t.reset(0)
 		if rotated {
-			t.b.system("info", "file rotated, reading the new file")
+			t.b.system(t.ctx, "info", "file rotated, reading the new file")
 		} else if first {
 			t.reset(backlogOffset(f, info.Size(), t.spec.Backlog))
 		}
 	case info.Size() < t.offset:
 		t.reset(0)
-		t.b.system("info", "file truncated, reading from the start")
+		t.b.system(t.ctx, "info", "file truncated, reading from the start")
 	}
 	t.info = info
 
@@ -98,7 +100,7 @@ func (t *tailer) poll(first bool) {
 			break
 		}
 	}
-	t.b.hub.publish(t.b, "file", t.batch...)
+	t.b.hub.publish(t.ctx, t.b, "file", t.batch...)
 	t.batch = t.batch[:0]
 }
 

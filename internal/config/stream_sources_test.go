@@ -19,7 +19,7 @@ sources:
   all: {type: merge, inputs: [web, app], flush: 200ms}`, ""},
 		{"both cmd and file", `
 sources:
-  x: {type: stream, cmd: "true", file: a.log}`, "exactly one of cmd or file"},
+  x: {type: stream, cmd: "true", file: a.log}`, "exactly one of cmd, file or http"},
 		{"bad format", `
 sources:
   x: {type: stream, file: a.log, format: yaml}`, "format"},
@@ -92,7 +92,7 @@ func TestExpandInputs(t *testing.T) {
 func TestValidateAccepts(t *testing.T) {
 	lookup := func(string) (SourceConfig, bool) { return SourceConfig{}, false }
 	for name, src := range map[string]SourceConfig{
-		"bad kind":        {Type: "merge", Inputs: []string{"*"}, Accepts: &SourceAccepts{Kinds: []string{"http"}}},
+		"bad kind":        {Type: "merge", Inputs: []string{"*"}, Accepts: &SourceAccepts{Kinds: []string{"ftp"}}},
 		"negative min":    {Type: "merge", Inputs: []string{"*"}, Accepts: &SourceAccepts{Min: -1}},
 		"without [\"*\"]": {Type: "merge", Inputs: []string{"web"}, Accepts: &SourceAccepts{}},
 	} {
@@ -174,5 +174,49 @@ func TestValidateParams(t *testing.T) {
 		if err := ValidateStreamSource("logview", src, lookup); err == nil {
 			t.Errorf("%s: want an error", name)
 		}
+	}
+}
+
+func TestValidateOnAndLineMax(t *testing.T) {
+	sources := map[string]SourceConfig{
+		"api":      {Type: "stream", HTTP: "api.http"},
+		"send":     {Type: "stream", Cmd: `curl -- "$TD_url"`},
+		"requests": {Type: "merge", Inputs: []string{"api"}, Key: []string{"fields.entry"}},
+	}
+	lookup := func(n string) (SourceConfig, bool) { s, ok := sources[n]; return s, ok }
+	params := map[string]SourceParam{"entry": {In: "requests.fields.entry"}}
+	ok := SourceConfig{Type: "merge", Inputs: []string{"send"}, On: "send", LineMax: "1MiB", Params: params}
+	if err := ValidateStreamSource("response", ok, lookup); err != nil {
+		t.Fatalf("valid click merge: %v", err)
+	}
+	if err := ValidateStreamSource("api", sources["api"], lookup); err != nil {
+		t.Fatalf("http stream: %v", err)
+	}
+	for name, src := range map[string]SourceConfig{
+		"on without params":   {Type: "merge", Inputs: []string{"send"}, On: "send"},
+		"on, bad name":        {Type: "merge", Inputs: []string{"send"}, On: "Send!", Params: params},
+		"on, input not a cmd": {Type: "merge", Inputs: []string{"api"}, On: "send", Params: params},
+		"on on a stream":      {Type: "stream", Cmd: "true", On: "send"},
+		"line_max on stream":  {Type: "stream", Cmd: "true", LineMax: "1MiB"},
+		"line_max, bad unit":  {Type: "merge", Inputs: []string{"send"}, LineMax: "1MB"},
+		"line_max, too big":   {Type: "merge", Inputs: []string{"send"}, LineMax: "17MiB"},
+		"line_max, zero":      {Type: "merge", Inputs: []string{"send"}, LineMax: "0"},
+		"http and cmd":        {Type: "stream", Cmd: "true", HTTP: "a.http"},
+	} {
+		if err := ValidateStreamSource("x", src, lookup); err == nil {
+			t.Errorf("%s: want an error", name)
+		}
+	}
+	for v, want := range map[string]int{"": 0, "65536": 65536, "64KiB": 65536, "1MiB": 1 << 20} {
+		if got, err := ParseLineMax(v); err != nil || got != want {
+			t.Errorf("ParseLineMax(%q) = %d, %v; want %d", v, got, err, want)
+		}
+	}
+	if k := sources["api"].Kind(); k != "http" {
+		t.Errorf("Kind() = %q, want http", k)
+	}
+	acc := SourceConfig{Type: "merge", Inputs: []string{"*"}, Accepts: &SourceAccepts{Kinds: []string{"http"}}}
+	if err := validateAccepts("requests", acc); err != nil {
+		t.Errorf("accepts http: %v", err)
 	}
 }
