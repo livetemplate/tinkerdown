@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -116,30 +117,53 @@ func TestFillFillsVariableValues(t *testing.T) {
 		t.Fatalf("Fill = %q, %v", got, err)
 	}
 	for _, cyc := range []map[string]string{{"a": "{{a}}"}, {"a": "{{b}}", "b": "{{a}}"}} {
-		if _, err := Fill("{{a}}", cyc); err == nil || !strings.Contains(err.Error(), "or to itself") {
+		if _, err := Fill("{{a}}", cyc); err == nil || !strings.Contains(err.Error(), "refers to itself") {
 			t.Errorf("cycle %v: err = %v", cyc, err)
 		}
 	}
 	if _, err := Fill("{{a}}", map[string]string{"a": "{{gone}}"}); err == nil || err.Error() != "unset variable gone" {
 		t.Errorf("an unset variable inside a value: err = %v", err)
 	}
+	deep := map[string]string{"v0": "x"}
+	for i := 1; i <= 11; i++ {
+		deep[fmt.Sprintf("v%d", i)] = fmt.Sprintf("{{v%d}}", i-1)
+	}
+	if _, err := Fill("{{v11}}", deep); err == nil || !strings.Contains(err.Error(), "more than 10 deep") {
+		t.Errorf("a chain 11 deep: err = %v", err)
+	}
+}
 
-	// Ten references per level, ten levels deep, would fill in to 10^10
-	// bytes: the shared budget stops it early.
-	fan := map[string]string{"v0": "x"}
-	for i := 1; i <= 9; i++ {
-		fan[fmt.Sprintf("v%d", i)] = strings.Repeat(fmt.Sprintf("{{v%d}}", i-1), 10)
+func TestFillBoundsFanOut(t *testing.T) {
+	// Ten references per level, nine levels deep: 10^9 copies of v0. With
+	// "x" that's too many bytes; with "" it costs no bytes, only work.
+	for _, v0 := range []string{"x", ""} {
+		vars := map[string]string{"v0": v0}
+		for i := 1; i <= 9; i++ {
+			vars[fmt.Sprintf("v%d", i)] = strings.Repeat(fmt.Sprintf("{{v%d}}", i-1), 10)
+		}
+		start := time.Now()
+		_, err := Fill("{{v9}}", vars)
+		if v0 != "" && (err == nil || !strings.Contains(err.Error(), "over 64 MiB")) {
+			t.Errorf("v0 %q: err = %v", v0, err)
+		}
+		if v0 == "" && err != nil {
+			t.Errorf("v0 %q: err = %v", v0, err)
+		}
+		if d := time.Since(start); v0 == "" && d > 2*time.Second {
+			t.Errorf("empty fan-out took %v: each variable must fill once", d)
+		}
 	}
-	start := time.Now()
-	if _, err := Fill("{{v9}}", fan); err == nil || !strings.Contains(err.Error(), "over 4 MiB") {
-		t.Errorf("fan-out: err = %v", err)
+	// The budget is the whole file's: many requests using one 1 MiB value
+	// run out, and the requests after that say so.
+	reqs := slices.Repeat([]HTTPRequest{{Method: "POST", URL: "https://h/", Body: "{{big}}"}}, 80)
+	vf, failed := newFiller(map[string]string{"big": strings.Repeat("y", 1<<20)}), 0
+	for _, q := range reqs {
+		if p := fillRequest(q, vf); strings.Contains(p.Err, "over 64 MiB") {
+			failed++
+		}
 	}
-	if d := time.Since(start); d > 2*time.Second {
-		t.Errorf("fan-out took %v", d)
-	}
-	// A value near the budget, used once, still fills.
-	if got, err := Fill("{{big}}", map[string]string{"big": strings.Repeat("y", 1<<20)}); err != nil || len(got) != 1<<20 {
-		t.Errorf("a 1 MiB value: %d bytes, %v", len(got), err)
+	if failed == 0 || failed == len(reqs) {
+		t.Errorf("%d of %d requests ran out of budget, want some", failed, len(reqs))
 	}
 }
 
@@ -153,7 +177,7 @@ func TestVariablesAreFileWide(t *testing.T) {
 	if reqs[0].Body != "@notavar = 1" || vars["notavar"] != "" {
 		t.Fatalf("body = %q, vars = %v", reqs[0].Body, vars)
 	}
-	if p := fillRequest(reqs[0], vars); p.Values["url"] != "https://h/a" {
+	if p := fillRequest(reqs[0], newFiller(vars)); p.Values["url"] != "https://h/a" {
 		t.Fatalf("private = %v", p)
 	}
 }
@@ -205,7 +229,7 @@ func TestHTTPReaderFollowsTheFile(t *testing.T) {
 
 func TestHTTPRequestWithUnsetVariableHasNoValues(t *testing.T) {
 	reqs, vars, _ := ParseHTTPFile("GET https://x/{{nope_unset_var}}\n")
-	if p := fillRequest(reqs[0], vars); p.Values != nil || p.Err != "unset variable nope_unset_var" {
+	if p := fillRequest(reqs[0], newFiller(vars)); p.Values != nil || p.Err != "unset variable nope_unset_var" {
 		t.Fatalf("private = %v", p)
 	}
 }

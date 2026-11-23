@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -140,50 +141,87 @@ var bareURL = regexp.MustCompile(`^(?i:https?://|\{\{)`)
 // too, so @token = {{$processEnv TOKEN}} works; an environment value is used
 // as it is. Fill reports the first reference it couldn't fill.
 func Fill(s string, vars map[string]string) (string, error) {
-	budget := MaxHTTPFile
-	return fill(s, vars, 0, &budget)
+	return newFiller(vars).fill(s)
 }
 
-// maxVarDepth bounds how deep variables may refer to variables, which also
-// stops a cycle such as @a = {{b}} and @b = {{a}}. Fan-out is bounded
-// separately: every value substituted, at any depth, spends one shared
-// budget of MaxHTTPFile bytes, so @a = {{b}}{{b}}… can't grow a fill
-// exponentially.
+// MaxHTTPFill caps the bytes one read of a .http file may fill in, across
+// its variables and every request, so the values it keeps stay bounded.
+const MaxHTTPFill = 64 * 1024 * 1024
+
+// maxVarDepth bounds how deep variables may refer to variables, so a long
+// chain can't grow the stack.
 const maxVarDepth = 10
 
-func fill(s string, vars map[string]string, depth int, budget *int) (string, error) {
-	var err error
-	out := varRef.ReplaceAllStringFunc(s, func(ref string) string {
-		if err != nil {
-			return ref
-		}
-		m := varRef.FindStringSubmatch(ref)
-		if m[1] != "" {
-			v, ok := os.LookupEnv(m[2])
-			if !ok {
-				err = fmt.Errorf("unset environment variable %s", m[2])
+// filler fills a file's variables, resolving each variable once: the work
+// grows with the file, not with how often its variables nest and repeat,
+// as in @a = {{b}}{{b}}… Every string it builds spends one budget.
+type filler struct {
+	vars   map[string]string
+	done   map[string]string
+	failed map[string]error
+	active []string // the variables being filled, innermost last
+	left   int      // bytes the filler may still build
+}
+
+func newFiller(vars map[string]string) *filler {
+	return &filler{vars: vars, done: map[string]string{}, failed: map[string]error{}, left: MaxHTTPFill}
+}
+
+func (f *filler) fill(s string) (string, error) {
+	var b strings.Builder
+	last := 0
+	for _, m := range varRef.FindAllStringSubmatchIndex(s, -1) {
+		b.WriteString(s[last:m[0]])
+		last = m[1]
+		name := s[m[4]:m[5]]
+		var v string
+		var err error
+		if m[2] >= 0 { // {{$processEnv NAME}}
+			var ok bool
+			if v, ok = os.LookupEnv(name); !ok {
+				err = fmt.Errorf("unset environment variable %s", name)
 			}
-			return v
+		} else {
+			v, err = f.value(name)
 		}
-		v, ok := vars[m[2]]
-		switch {
-		case !ok:
-			err = fmt.Errorf("unset variable %s", m[2])
-			return ref
-		case depth == maxVarDepth:
-			err = fmt.Errorf("variable %s refers to variables more than %d deep, or to itself", m[2], maxVarDepth)
-			return ref
+		if err != nil {
+			return "", err
 		}
-		if v, err = fill(v, vars, depth+1, budget); err != nil {
-			return ref
+		if f.left -= len(v); f.left < 0 {
+			return "", fmt.Errorf("variables fill in to over %d MiB", MaxHTTPFill>>20)
 		}
-		if *budget -= len(v); *budget < 0 {
-			err = fmt.Errorf("variables fill in to over %d MiB", MaxHTTPFile>>20)
-			return ref
-		}
-		return v
-	})
-	return out, err
+		b.WriteString(v)
+	}
+	b.WriteString(s[last:])
+	return b.String(), nil
+}
+
+// value returns a variable's filled value, filling it the first time.
+func (f *filler) value(name string) (string, error) {
+	if v, ok := f.done[name]; ok {
+		return v, nil
+	}
+	if err, ok := f.failed[name]; ok {
+		return "", err
+	}
+	raw, ok := f.vars[name]
+	switch {
+	case !ok:
+		return "", fmt.Errorf("unset variable %s", name)
+	case slices.Contains(f.active, name):
+		return "", fmt.Errorf("variable %s refers to itself", name)
+	case len(f.active) == maxVarDepth:
+		return "", fmt.Errorf("variable %s nests variables more than %d deep", name, maxVarDepth)
+	}
+	f.active = append(f.active, name)
+	v, err := f.fill(raw)
+	f.active = f.active[:len(f.active)-1]
+	if err != nil {
+		f.failed[name] = err
+		return "", err
+	}
+	f.done[name] = v
+	return v, nil
 }
 
 // readHTTPFile follows a .http file: it reads it whole at start and whenever
@@ -233,6 +271,7 @@ func readHTTPOnce(ctx context.Context, spec InputSpec, b *Buffer, last []byte) [
 	now := b.hub.now()
 	rows := make([]Row, len(reqs))
 	privs := make([]Private, len(reqs))
+	vf := newFiller(vars) // one budget and one resolution for the whole file
 	for i, q := range reqs {
 		fields := map[string]interface{}{
 			"entry":   strconv.Itoa(i + 1),
@@ -245,7 +284,7 @@ func readHTTPOnce(ctx context.Context, spec InputSpec, b *Buffer, last []byte) [
 		}
 		line := q.Method + " " + q.URL
 		rows[i] = makeRow(now, "", q.Name, line, false, fields)
-		privs[i] = fillRequest(q, vars)
+		privs[i] = fillRequest(q, vf)
 	}
 	b.hub.replace(ctx, b, "file", rows, privs)
 	b.hub.setErr(ctx, b, "")
@@ -254,10 +293,10 @@ func readHTTPOnce(ctx context.Context, spec InputSpec, b *Buffer, last []byte) [
 
 // fillRequest fills a request's variables into the values a command gets.
 // A variable set nowhere leaves no values and says which.
-func fillRequest(q HTTPRequest, vars map[string]string) Private {
+func fillRequest(q HTTPRequest, vf *filler) Private {
 	values := map[string]string{"method": q.Method}
 	for _, f := range [][2]string{{"url", q.URL}, {"headers", q.Headers}, {"body", q.Body}} {
-		filled, err := Fill(f[1], vars)
+		filled, err := vf.fill(f[1])
 		if err != nil {
 			return Private{Err: err.Error()}
 		}
