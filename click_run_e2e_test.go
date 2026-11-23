@@ -38,7 +38,7 @@ const clickRunHTTP = `@host = https://api.test
 
 ### Create user
 POST {{host}}/users
-Authorization: Bearer {{TD_E2E_TOKEN}}
+Authorization: Bearer {{$processEnv TD_E2E_TOKEN}}
 Content-Type: application/json
 
 {
@@ -164,7 +164,7 @@ func TestClickRun_E2E(t *testing.T) {
 		// The list shows the header as written, never the token's value.
 		var html string
 		run(chromedp.OuterHTML(`[data-testid="reqs"]`, &html, chromedp.ByQuery))
-		if !strings.Contains(html, "{{TD_E2E_TOKEN}}") {
+		if !strings.Contains(html, "{{$processEnv TD_E2E_TOKEN}}") {
 			dump()
 			t.Fatalf("the request list doesn't show the header as written: %s", html)
 		}

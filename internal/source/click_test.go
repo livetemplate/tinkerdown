@@ -73,7 +73,7 @@ func rowsOf(t *testing.T, src *StreamSource, n int) []map[string]interface{} {
 
 func TestClickRunsWithTheRowsPrivateValues(t *testing.T) {
 	t.Setenv("TD_TEST_TOKEN", "s3cret")
-	src, _, runs := clickSetup(t, "@host = https://api.test\n### Create\nPOST {{host}}/users\nAuthorization: Bearer {{TD_TEST_TOKEN}}\n\n{\"a\": 1}\n")
+	src, _, runs := clickSetup(t, "@host = https://api.test\n### Create\nPOST {{host}}/users\nAuthorization: Bearer {{$processEnv TD_TEST_TOKEN}}\n\n{\"a\": 1}\n")
 
 	// The URL holds entry=1, but only a click starts the run.
 	time.Sleep(300 * time.Millisecond)
@@ -139,6 +139,36 @@ func TestClickValueSizeLimit(t *testing.T) {
 	}
 	if err := src.Click(map[string]interface{}{"entry": "2"}); err == nil || !strings.Contains(err.Error(), "over 128 KiB") {
 		t.Fatalf("a body one byte over: err = %v", err)
+	}
+}
+
+func TestClicksInALoopRunOncePerGap(t *testing.T) {
+	src, _, runs := clickSetup(t, "### a\nPOST https://api.test/a\n")
+	count := func() int { data, _ := os.ReadFile(runs); return strings.Count(string(data), "run") }
+	for range 20 {
+		if err := src.Click(map[string]interface{}{"entry": "1"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// The first click runs now, and the last of the rest when the gap ends.
+	deadline := time.Now().Add(5 * time.Second)
+	for count() < 2 && time.Now().Before(deadline) {
+		time.Sleep(20 * time.Millisecond)
+	}
+	time.Sleep(3 * ClickGap)
+	if n := count(); n != 2 {
+		t.Fatalf("20 clicks in a row ran it %d times, want 2", n)
+	}
+}
+
+func TestClosingDropsAWaitingClick(t *testing.T) {
+	src, _, runs := clickSetup(t, "### a\nPOST https://api.test/a\n")
+	src.Click(map[string]interface{}{"entry": "1"})
+	src.Click(map[string]interface{}{"entry": "1"}) // waits for the gap
+	src.Close()
+	time.Sleep(3 * ClickGap)
+	if data, _ := os.ReadFile(runs); strings.Count(string(data), "run") != 1 {
+		t.Fatalf("runs = %q, want the first click's only", data)
 	}
 }
 
