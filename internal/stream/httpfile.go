@@ -140,14 +140,18 @@ var bareURL = regexp.MustCompile(`^(?i:https?://|\{\{)`)
 // too, so @token = {{$processEnv TOKEN}} works; an environment value is used
 // as it is. Fill reports the first reference it couldn't fill.
 func Fill(s string, vars map[string]string) (string, error) {
-	return fill(s, vars, 0)
+	budget := MaxHTTPFile
+	return fill(s, vars, 0, &budget)
 }
 
 // maxVarDepth bounds how deep variables may refer to variables, which also
-// stops a cycle such as @a = {{b}} and @b = {{a}}.
+// stops a cycle such as @a = {{b}} and @b = {{a}}. Fan-out is bounded
+// separately: every value substituted, at any depth, spends one shared
+// budget of MaxHTTPFile bytes, so @a = {{b}}{{b}}… can't grow a fill
+// exponentially.
 const maxVarDepth = 10
 
-func fill(s string, vars map[string]string, depth int) (string, error) {
+func fill(s string, vars map[string]string, depth int, budget *int) (string, error) {
 	var err error
 	out := varRef.ReplaceAllStringFunc(s, func(ref string) string {
 		if err != nil {
@@ -170,7 +174,13 @@ func fill(s string, vars map[string]string, depth int) (string, error) {
 			err = fmt.Errorf("variable %s refers to variables more than %d deep, or to itself", m[2], maxVarDepth)
 			return ref
 		}
-		v, err = fill(v, vars, depth+1)
+		if v, err = fill(v, vars, depth+1, budget); err != nil {
+			return ref
+		}
+		if *budget -= len(v); *budget < 0 {
+			err = fmt.Errorf("variables fill in to over %d MiB", MaxHTTPFile>>20)
+			return ref
+		}
 		return v
 	})
 	return out, err

@@ -1,6 +1,7 @@
 package stream
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -121,6 +122,24 @@ func TestFillFillsVariableValues(t *testing.T) {
 	}
 	if _, err := Fill("{{a}}", map[string]string{"a": "{{gone}}"}); err == nil || err.Error() != "unset variable gone" {
 		t.Errorf("an unset variable inside a value: err = %v", err)
+	}
+
+	// Ten references per level, ten levels deep, would fill in to 10^10
+	// bytes: the shared budget stops it early.
+	fan := map[string]string{"v0": "x"}
+	for i := 1; i <= 9; i++ {
+		fan[fmt.Sprintf("v%d", i)] = strings.Repeat(fmt.Sprintf("{{v%d}}", i-1), 10)
+	}
+	start := time.Now()
+	if _, err := Fill("{{v9}}", fan); err == nil || !strings.Contains(err.Error(), "over 4 MiB") {
+		t.Errorf("fan-out: err = %v", err)
+	}
+	if d := time.Since(start); d > 2*time.Second {
+		t.Errorf("fan-out took %v", d)
+	}
+	// A value near the budget, used once, still fills.
+	if got, err := Fill("{{big}}", map[string]string{"big": strings.Repeat("y", 1<<20)}); err != nil || len(got) != 1<<20 {
+		t.Errorf("a 1 MiB value: %d bytes, %v", len(got), err)
 	}
 }
 
