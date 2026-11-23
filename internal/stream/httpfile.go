@@ -3,6 +3,7 @@ package stream
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"regexp"
@@ -156,7 +157,7 @@ const maxVarDepth = 10
 // grows with the file, not with how often its variables nest and repeat,
 // as in @a = {{b}}{{b}}… Every string it builds spends one budget.
 type filler struct {
-	vars   map[string]string
+	vars   map[string]string // literal text around references is bounded by the file size, so only values spend left
 	done   map[string]string
 	failed map[string]error
 	active []string // the variables being filled, innermost last
@@ -196,6 +197,11 @@ func (f *filler) fill(s string) (string, error) {
 	return b.String(), nil
 }
 
+// tooDeep is the depth limit's error, which value doesn't cache.
+type tooDeep struct{ error }
+
+func (e tooDeep) Unwrap() error { return e.error }
+
 // value returns a variable's filled value, filling it the first time.
 func (f *filler) value(name string) (string, error) {
 	if v, ok := f.done[name]; ok {
@@ -211,13 +217,17 @@ func (f *filler) value(name string) (string, error) {
 	case slices.Contains(f.active, name):
 		return "", fmt.Errorf("variable %s refers to itself", name)
 	case len(f.active) == maxVarDepth:
-		return "", fmt.Errorf("variable %s nests variables more than %d deep", name, maxVarDepth)
+		return "", tooDeep{fmt.Errorf("variable %s nests variables more than %d deep", name, maxVarDepth)}
 	}
 	f.active = append(f.active, name)
 	v, err := f.fill(raw)
 	f.active = f.active[:len(f.active)-1]
 	if err != nil {
-		f.failed[name] = err
+		// How deep a variable sits depends on where it was reached from,
+		// so only the other errors, which don't, are kept.
+		if !errors.As(err, new(tooDeep)) {
+			f.failed[name] = err
+		}
 		return "", err
 	}
 	f.done[name] = v

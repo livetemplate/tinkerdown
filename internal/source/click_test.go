@@ -168,7 +168,9 @@ func TestClicksInALoopRunOncePerGap(t *testing.T) {
 func TestAClickAfterCloseRunsNothing(t *testing.T) {
 	src, _, runs := clickSetup(t, "### a\nPOST https://api.test/a\n")
 	src.Close()
-	src.Click(map[string]interface{}{"entry": "1"})
+	if err := src.Click(map[string]interface{}{"entry": "1"}); err != nil {
+		t.Fatalf("a click after Close: %v, want nil", err)
+	}
 	time.Sleep(3 * ClickGap)
 	if data, _ := os.ReadFile(runs); len(data) != 0 {
 		t.Fatalf("a click after Close ran: %q", data)

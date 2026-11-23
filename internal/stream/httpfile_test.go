@@ -128,8 +128,13 @@ func TestFillFillsVariableValues(t *testing.T) {
 	for i := 1; i <= 11; i++ {
 		deep[fmt.Sprintf("v%d", i)] = fmt.Sprintf("{{v%d}}", i-1)
 	}
-	if _, err := Fill("{{v11}}", deep); err == nil || !strings.Contains(err.Error(), "more than 10 deep") {
+	vf := newFiller(deep)
+	if _, err := vf.fill("{{v11}}"); err == nil || !strings.Contains(err.Error(), "more than 10 deep") {
 		t.Errorf("a chain 11 deep: err = %v", err)
+	}
+	// Reaching v5 directly is 5 deep, whatever failed through it before.
+	if got, err := vf.fill("{{v5}}"); got != "x" || err != nil {
+		t.Errorf("v5 after v11 failed: %q, %v", got, err)
 	}
 }
 
@@ -156,14 +161,19 @@ func TestFillBoundsFanOut(t *testing.T) {
 	// The budget is the whole file's: many requests using one 1 MiB value
 	// run out, and the requests after that say so.
 	reqs := slices.Repeat([]HTTPRequest{{Method: "POST", URL: "https://h/", Body: "{{big}}"}}, 80)
-	vf, failed := newFiller(map[string]string{"big": strings.Repeat("y", 1<<20)}), 0
-	for _, q := range reqs {
-		if p := fillRequest(q, vf); strings.Contains(p.Err, "over 64 MiB") {
-			failed++
+	vf := newFiller(map[string]string{"big": strings.Repeat("y", 1<<20)})
+	first := -1 // the first request that ran out; every one after it must too
+	for i, q := range reqs {
+		out := strings.Contains(fillRequest(q, vf).Err, "over 64 MiB")
+		switch {
+		case out && first < 0:
+			first = i
+		case !out && first >= 0:
+			t.Fatalf("request %d filled after request %d ran out", i, first)
 		}
 	}
-	if failed == 0 || failed == len(reqs) {
-		t.Errorf("%d of %d requests ran out of budget, want some", failed, len(reqs))
+	if first <= 0 {
+		t.Errorf("first request out of budget = %d, want some after the first", first)
 	}
 }
 
