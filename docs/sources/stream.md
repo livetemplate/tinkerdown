@@ -144,17 +144,17 @@ A stream with `http` reads a `.http` file, the format the VS Code REST Client an
 
 ### Create user
 POST {{host}}/users
-Authorization: Bearer {{token}}
+Authorization: Bearer {{$processEnv TOKEN}}
 Content-Type: application/json
 
 {"name": "Ada"}
 ```
 
-`###` separates requests, and the text after it names the next one; `# @name x` names it too. `#` and `//` start comments, and `@name = value` defines a variable. A request is its request line (`METHOD URL`, an optional `HTTP/1.1`, or a bare URL for `GET`), then headers up to the first blank line, then the body up to the next `###`.
+`###` separates requests, and the text after it names the next one; `# @name x` names it too. `#` and `//` start comments, also between headers. `@name = value` defines a variable for the whole file, and can come anywhere outside a request: after a request line, a line like it is part of the body. A request is its request line (`METHOD URL`, an optional `HTTP/1.1`, or a bare URL for `GET`), then headers up to the first blank line, then the body up to the next `###`.
 
 Each row's `fields` hold the request as written: `entry` (its position, `"1"` first), `name`, `method`, `url`, `headers` (one per line), `body`, and `text` (name, method and URL, for search). `{{name}}` stays as written in them.
 
-The values with variables filled in stay on the server. A variable comes from the file's `@name` lines, or else the environment, so a token can stay out of the file: `token=… tinkerdown serve …`. They reach a command only through a click; see below. A file that doesn't parse sets the block's `.Error`, naming the line, and the last good rows stay.
+The values with variables filled in stay on the server, and reach a command only through a click; see below. `{{name}}` takes the file's `@name` value. Because a plain `{{name}}` never reads the environment, a file gets only the environment variables it names as `{{$processEnv NAME}}`, the VS Code REST Client's syntax. That keeps a token out of the file: `TOKEN=… tinkerdown serve …`. A file that doesn't parse sets the block's `.Error`, naming the line, and the last good rows stay.
 
 ## Runs a click starts
 
@@ -180,7 +180,7 @@ sources:
 
 The button can be in any block on the page. Its `data-*` values are the params, checked like URL values: each must pass the value rules and be in its `in` merge. The command then gets each param as `TD_<name>`, plus the values the row stands for, which the browser never sees. For an `http` row these are `TD_method`, `TD_url`, `TD_headers` and `TD_body`, with variables filled in. These values may span lines. Each may be up to 128 KiB, counted as the whole `TD_name=value`, since Linux refuses a longer environment string. A request with an unset variable, a longer value, or a value holding a NUL byte is refused with the reason in the block's `.Error`, and nothing runs.
 
-The inputs run once per click: an input isn't restarted when it exits, and has no timeout of its own, so give the command one (`curl --max-time 30`). A click while it runs stops the run, clears its rows and starts again. The block's `.Running` is true while it runs. Everyone who clicks the same values shares one run. A clean exit adds no row, and a failed one adds a `system` row with the exit status.
+The inputs run once per click: an input isn't restarted when it exits, and has no timeout of its own, so give the command one (`curl --max-time 30`). A click while it runs stops the run, clears its rows and starts again. A click within 250 ms of the last run a page started waits until 250 ms have passed, and a later click in that time replaces it. Clicks sent in a loop then repeat a request at most four times a second, and the last click still runs. The block's `.Running` is true while it runs. Everyone who clicks the same values shares one run. A clean exit adds no row, and a failed one adds a `system` row with the exit status.
 
 A merge with `on` ignores the page URL's query, and its inputs must run a command. `on` is 1-32 lowercase letters, digits or `_`, and a builtin action name never starts one.
 

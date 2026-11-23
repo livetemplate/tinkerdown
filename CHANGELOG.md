@@ -17,13 +17,15 @@ Earlier releases (v0.1.x) are documented in the
   inputs when a button named NAME is clicked, never when a page loads. So a
   reload, Back or a shared link can't repeat a command that changes
   something. The inputs run once per click, a click mid-run starts them
-  again, and the block's `.Running` is true while they run.
+  again, and the block's `.Running` is true while they run. A click within
+  250 ms of the page's last run waits for the 250 ms to pass.
 - **`.http` files as a stream source.** `http: PATH` in config, or
   `--source NAME=http:PATH`, lists the requests in a `.http` file, one row
   per request, and follows the file as it's edited. Each request's filled-in
   method, URL, headers and body stay on the server and reach a command only
   through a click, as `TD_method`, `TD_url`, `TD_headers` and `TD_body`.
-  Variables come from the file's `@name` lines or the environment.
+  Variables come from the file's `@name` lines, and environment variables
+  only when named as `{{$processEnv NAME}}`.
 - **`line_max` on merges** raises the 16 KiB line cap, up to 16 MiB.
 - **A `jsonindent` template function** indents a JSON object or array and
   returns other text unchanged.

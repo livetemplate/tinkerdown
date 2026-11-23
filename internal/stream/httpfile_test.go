@@ -46,7 +46,8 @@ Accept: application/json
 ### Create user
 POST {{host}}/users HTTP/1.1
 Content-Type: application/json
-Authorization: Bearer {{token}}
+# a comment between headers
+Authorization: Bearer {{$processEnv token}}
 
 {
   "name": "Ada"
@@ -67,7 +68,7 @@ func TestParseHTTPFile(t *testing.T) {
 	}
 	want := []HTTPRequest{
 		{Name: "List users", Method: "GET", URL: "{{host}}/users", Headers: "Accept: application/json"},
-		{Name: "Create user", Method: "POST", URL: "{{host}}/users", Headers: "Content-Type: application/json\nAuthorization: Bearer {{token}}", Body: "{\n  \"name\": \"Ada\"\n}"},
+		{Name: "Create user", Method: "POST", URL: "{{host}}/users", Headers: "Content-Type: application/json\nAuthorization: Bearer {{$processEnv token}}", Body: "{\n  \"name\": \"Ada\"\n}"},
 		{Name: "health", Method: "GET", URL: "{{host}}/health"},
 	}
 	if !reflect.DeepEqual(reqs, want) {
@@ -86,14 +87,33 @@ func TestParseHTTPFileErrorNamesTheLine(t *testing.T) {
 	}
 }
 
-func TestFillUsesFileThenEnvironment(t *testing.T) {
+func TestFillReadsTheEnvironmentOnlyByName(t *testing.T) {
 	t.Setenv("TD_TEST_TOKEN", "s3cret")
-	got, missing := Fill("{{host}}/x?t={{ TD_TEST_TOKEN }}", map[string]string{"host": "https://h"})
+	got, missing := Fill("{{host}}/x?t={{ $processEnv TD_TEST_TOKEN }}", map[string]string{"host": "https://h"})
 	if got != "https://h/x?t=s3cret" || missing != "" {
 		t.Fatalf("Fill = %q, %q", got, missing)
 	}
-	if _, missing := Fill("{{nope_unset_var}}", nil); missing != "nope_unset_var" {
+	// A plain reference never falls back to the environment.
+	if _, missing := Fill("{{TD_TEST_TOKEN}}", nil); missing != "TD_TEST_TOKEN" {
+		t.Fatalf("missing = %q, want TD_TEST_TOKEN", missing)
+	}
+	if _, missing := Fill("{{$processEnv nope_unset_var}}", nil); missing != "$processEnv nope_unset_var" {
 		t.Fatalf("missing = %q", missing)
+	}
+}
+
+func TestVariablesAreFileWide(t *testing.T) {
+	// A variable defined after the request that uses it still fills it, and
+	// one after a request line, before the next ###, is body text.
+	reqs, vars, err := ParseHTTPFile("### a\nGET {{host}}/a\n\n@notavar = 1\n\n###\n@host = https://h\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reqs[0].Body != "@notavar = 1" || vars["notavar"] != "" {
+		t.Fatalf("body = %q, vars = %v", reqs[0].Body, vars)
+	}
+	if p := fillRequest(reqs[0], vars); p.Values["url"] != "https://h/a" {
+		t.Fatalf("private = %v", p)
 	}
 }
 
@@ -124,7 +144,7 @@ func TestHTTPReaderFollowsTheFile(t *testing.T) {
 		t.Fatalf("row 2 private = %v", p)
 	}
 	for _, r := range rows {
-		if strings.Contains(strings.ReplaceAll(fmtRow(r), "{{token}}", ""), "abc") {
+		if strings.Contains(strings.ReplaceAll(fmtRow(r), "{{$processEnv token}}", ""), "abc") {
 			t.Fatalf("a filled-in token is in a row: %v", r)
 		}
 	}
@@ -132,7 +152,7 @@ func TestHTTPReaderFollowsTheFile(t *testing.T) {
 	// A bad edit keeps the rows and reports the line; fixing it clears it.
 	time.Sleep(10 * time.Millisecond) // a new modification time
 	os.WriteFile(path, []byte(sampleHTTP+"\n### broken\nGET https://x\nnot a header\n"), 0o644)
-	waitFor(t, "the parse error", func() bool { return strings.Contains(m.Err(), "line 24:") })
+	waitFor(t, "the parse error", func() bool { return strings.Contains(m.Err(), "line 25:") })
 	if len(m.Snapshot()) != 3 {
 		t.Fatal("a parse error dropped the last good rows")
 	}

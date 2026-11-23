@@ -60,6 +60,8 @@ func ParseHTTPFile(text string) ([]HTTPRequest, map[string]string, error) {
 		case cur != nil && trimmed == "":
 			inHeaders = false // the blank line before the body
 			continue
+		case cur != nil && isComment(trimmed):
+			continue // REST Client allows comments between headers
 		case cur != nil:
 			if !headerLine.MatchString(trimmed) {
 				return nil, nil, fmt.Errorf("line %d: %q is not a header (Name: value); put a blank line before the body", n, trimmed)
@@ -73,7 +75,7 @@ func ParseHTTPFile(text string) ([]HTTPRequest, map[string]string, error) {
 			name = m[1]
 			continue
 		}
-		if strings.HasPrefix(trimmed, "#") || strings.HasPrefix(trimmed, "//") {
+		if isComment(trimmed) {
 			continue
 		}
 		if m := varLine.FindStringSubmatch(trimmed); m != nil {
@@ -95,8 +97,13 @@ var (
 	nameTag    = regexp.MustCompile(`^(?:#|//)\s*@name\s+(\S+)$`)
 	varLine    = regexp.MustCompile(`^@([A-Za-z_][A-Za-z0-9_.-]*)\s*=\s*(.*)$`)
 	headerLine = regexp.MustCompile(`^[!#$%&'*+.^_` + "`" + `|~0-9A-Za-z-]+:`)
-	varRef     = regexp.MustCompile(`\{\{\s*([A-Za-z_][A-Za-z0-9_.-]*)\s*\}\}`)
+	varRef     = regexp.MustCompile(`\{\{\s*(\$processEnv\s+)?([A-Za-z_][A-Za-z0-9_.-]*)\s*\}\}`)
 )
+
+// isComment reports whether a trimmed line is a # or // comment.
+func isComment(trimmed string) bool {
+	return strings.HasPrefix(trimmed, "#") || strings.HasPrefix(trimmed, "//")
+}
 
 // parseRequestLine reads a request line: METHOD URL, an optional HTTP
 // version after the URL, or a bare URL, which means GET. ok is false when the
@@ -126,20 +133,27 @@ var httpMethods = map[string]bool{
 // with a {{variable}} such as {{host}}/users.
 var bareURL = regexp.MustCompile(`^(?i:https?://|\{\{)`)
 
-// Fill replaces each {{name}} in s with vars[name], or else the environment
-// variable name. It returns the first name set in neither.
+// Fill replaces each {{name}} in s with vars[name], and each
+// {{$processEnv NAME}} with the environment variable NAME, as the VS Code
+// REST Client does. A plain {{name}} never reads the environment, so a file
+// gets only the variables it asks for by name. Fill returns the first
+// reference it couldn't fill, as written inside the braces.
 func Fill(s string, vars map[string]string) (string, string) {
 	missing := ""
 	out := varRef.ReplaceAllStringFunc(s, func(ref string) string {
-		name := varRef.FindStringSubmatch(ref)[1]
-		if v, ok := vars[name]; ok {
-			return v
+		m := varRef.FindStringSubmatch(ref)
+		v, ok := vars[m[2]]
+		if m[1] != "" {
+			v, ok = os.LookupEnv(m[2])
 		}
-		if v, ok := os.LookupEnv(name); ok {
+		if ok {
 			return v
 		}
 		if missing == "" {
-			missing = name
+			missing = m[2]
+			if m[1] != "" {
+				missing = "$processEnv " + m[2]
+			}
 		}
 		return ref
 	})

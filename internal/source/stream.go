@@ -56,6 +56,12 @@ var (
 // its terminating NUL: Linux refuses a longer one (MAX_ARG_STRLEN).
 const MaxClickValue = 128 * 1024
 
+// ClickGap is the least time between two runs a page's clicks start. A click
+// sooner than that runs when the gap ends, and a later click in the gap
+// replaces it, so clicks sent in a loop restart a command, and repeat what it
+// does, at most once per gap, and the last click is never lost.
+const ClickGap = 250 * time.Millisecond
+
 // StreamSource is a Source backed by a stream.Buffer shared with every other
 // page showing the same input. Fetch returns the buffer's current rows.
 //
@@ -79,6 +85,10 @@ type StreamSource struct {
 	on       string                                              // the button that starts the inputs; "" when the URL does
 	sub      *stream.Subscription                                // the page's subscription, once Subscribe ran
 	attached bool                                                // buf is attached to sub
+	clicked  time.Time                                           // when a click last started a run
+	later    *time.Timer                                         // runs laterValues when the gap ends
+	laterVal map[string]interface{}                              // the latest click inside the gap
+	closed   bool                                                // the page left; no deferred click runs
 }
 
 // gate is one param and the merge that must list its value at path.
@@ -245,7 +255,8 @@ func (s *StreamSource) On() string { return s.on }
 // names adds its private values (stream.Hub.Private) as TD_ variables, so a
 // command gets what the row stands for without the browser sending it. The
 // run is shared by everyone who clicks the same values, and a click while it
-// runs starts it again. A refused click is reported by the next Fetch.
+// runs starts it again. A click within ClickGap of the last run waits for
+// the gap to end. A refused click is reported by the next Fetch.
 func (s *StreamSource) Click(values map[string]interface{}) error {
 	if s.on == "" {
 		return fmt.Errorf("source %q is not started by a click", s.name)
@@ -257,6 +268,16 @@ func (s *StreamSource) Click(values map[string]interface{}) error {
 		s.mu.Unlock()
 		return s.valueErr
 	}
+	now := time.Now()
+	if wait := ClickGap - now.Sub(s.clicked); wait > 0 {
+		s.laterVal = values
+		if s.later == nil {
+			s.later = time.AfterFunc(wait, s.clickLater)
+		}
+		s.mu.Unlock()
+		return nil
+	}
+	s.clicked = now
 	if s.buf == nil || !maps.Equal(env, s.env) { // the same values keep their run's buffer
 		if s.attached {
 			s.sub.Detach(s.buf)
@@ -272,6 +293,18 @@ func (s *StreamSource) Click(values map[string]interface{}) error {
 	}
 	s.hub.Restart(buf)
 	return nil
+}
+
+// clickLater runs the click that came inside the gap. Its run wakes the
+// page, as any run does.
+func (s *StreamSource) clickLater() {
+	s.mu.Lock()
+	values, closed := s.laterVal, s.closed
+	s.later, s.laterVal = nil, nil
+	s.mu.Unlock()
+	if !closed {
+		s.Click(values)
+	}
 }
 
 // clickEnv checks a click's values and builds the run's TD_ variables: each
@@ -322,8 +355,18 @@ func (s *StreamSource) Running() bool {
 	return buf != nil && buf.Running()
 }
 
-// Close is a no-op: the input belongs to the hub and outlives one page.
-func (s *StreamSource) Close() error { return nil }
+// Close drops a click waiting for its gap. The input belongs to the hub and
+// outlives one page, so Close leaves it running.
+func (s *StreamSource) Close() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.closed = true
+	if s.later != nil {
+		s.later.Stop()
+		s.later, s.laterVal = nil, nil
+	}
+	return nil
+}
 
 // Subscribe starts the input if needed and wakes the caller on new rows. A
 // gated source wakes on its gates' rows too, and starts its own input only
