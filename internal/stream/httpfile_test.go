@@ -1,9 +1,11 @@
 package stream
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -89,16 +91,89 @@ func TestParseHTTPFileErrorNamesTheLine(t *testing.T) {
 
 func TestFillReadsTheEnvironmentOnlyByName(t *testing.T) {
 	t.Setenv("TD_TEST_TOKEN", "s3cret")
-	got, missing := Fill("{{host}}/x?t={{ $processEnv TD_TEST_TOKEN }}", map[string]string{"host": "https://h"})
-	if got != "https://h/x?t=s3cret" || missing != "" {
-		t.Fatalf("Fill = %q, %q", got, missing)
+	t.Setenv("TD_TEST_RAW", "{{host}}")
+	got, err := Fill("{{host}}/x?t={{ $processEnv TD_TEST_TOKEN }}", map[string]string{"host": "https://h"})
+	if got != "https://h/x?t=s3cret" || err != nil {
+		t.Fatalf("Fill = %q, %v", got, err)
 	}
-	// A plain reference never falls back to the environment.
-	if _, missing := Fill("{{TD_TEST_TOKEN}}", nil); missing != "TD_TEST_TOKEN" {
-		t.Fatalf("missing = %q, want TD_TEST_TOKEN", missing)
+	for in, want := range map[string]string{
+		"{{TD_TEST_TOKEN}}":              "unset variable TD_TEST_TOKEN", // never the environment
+		"{{$processEnv nope_unset_var}}": "unset environment variable nope_unset_var",
+	} {
+		if _, err := Fill(in, nil); err == nil || err.Error() != want {
+			t.Errorf("Fill(%s) err = %v, want %s", in, err, want)
+		}
 	}
-	if _, missing := Fill("{{$processEnv nope_unset_var}}", nil); missing != "$processEnv nope_unset_var" {
-		t.Fatalf("missing = %q", missing)
+	// An environment value is used as it is, never filled.
+	if got, _ := Fill("{{$processEnv TD_TEST_RAW}}", map[string]string{"host": "h"}); got != "{{host}}" {
+		t.Fatalf("an environment value was filled: %q", got)
+	}
+}
+
+func TestFillFillsVariableValues(t *testing.T) {
+	t.Setenv("TD_TEST_TOKEN", "s3cret")
+	vars := map[string]string{"token": "{{$processEnv TD_TEST_TOKEN}}", "auth": "Bearer {{token}}"}
+	if got, err := Fill("Authorization: {{auth}}", vars); got != "Authorization: Bearer s3cret" || err != nil {
+		t.Fatalf("Fill = %q, %v", got, err)
+	}
+	for _, cyc := range []map[string]string{{"a": "{{a}}"}, {"a": "{{b}}", "b": "{{a}}"}} {
+		if _, err := Fill("{{a}}", cyc); err == nil || !strings.Contains(err.Error(), "refers to itself") {
+			t.Errorf("cycle %v: err = %v", cyc, err)
+		}
+	}
+	if _, err := Fill("{{a}}", map[string]string{"a": "{{gone}}"}); err == nil || err.Error() != "unset variable gone" {
+		t.Errorf("an unset variable inside a value: err = %v", err)
+	}
+	deep := map[string]string{"v0": "x"}
+	for i := 1; i <= 11; i++ {
+		deep[fmt.Sprintf("v%d", i)] = fmt.Sprintf("{{v%d}}", i-1)
+	}
+	vf := newFiller(deep)
+	if _, err := vf.fill("{{v11}}"); err == nil || !strings.Contains(err.Error(), "more than 10 deep") {
+		t.Errorf("a chain 11 deep: err = %v", err)
+	}
+	// Reaching v5 directly is 5 deep, whatever failed through it before.
+	if got, err := vf.fill("{{v5}}"); got != "x" || err != nil {
+		t.Errorf("v5 after v11 failed: %q, %v", got, err)
+	}
+}
+
+func TestFillBoundsFanOut(t *testing.T) {
+	// Ten references per level, nine levels deep: 10^9 copies of v0. With
+	// "x" that's too many bytes; with "" it costs no bytes, only work.
+	for _, v0 := range []string{"x", ""} {
+		vars := map[string]string{"v0": v0}
+		for i := 1; i <= 9; i++ {
+			vars[fmt.Sprintf("v%d", i)] = strings.Repeat(fmt.Sprintf("{{v%d}}", i-1), 10)
+		}
+		start := time.Now()
+		_, err := Fill("{{v9}}", vars)
+		if v0 != "" && (err == nil || !strings.Contains(err.Error(), "over 64 MiB")) {
+			t.Errorf("v0 %q: err = %v", v0, err)
+		}
+		if v0 == "" && err != nil {
+			t.Errorf("v0 %q: err = %v", v0, err)
+		}
+		if d := time.Since(start); v0 == "" && d > 2*time.Second {
+			t.Errorf("empty fan-out took %v: each variable must fill once", d)
+		}
+	}
+	// The budget is the whole file's: many requests using one 1 MiB value
+	// run out, and the requests after that say so.
+	reqs := slices.Repeat([]HTTPRequest{{Method: "POST", URL: "https://h/", Body: "{{big}}"}}, 80)
+	vf := newFiller(map[string]string{"big": strings.Repeat("y", 1<<20)})
+	first := -1 // the first request that ran out; every one after it must too
+	for i, q := range reqs {
+		out := strings.Contains(fillRequest(q, vf).Err, "over 64 MiB")
+		switch {
+		case out && first < 0:
+			first = i
+		case !out && first >= 0:
+			t.Fatalf("request %d filled after request %d ran out", i, first)
+		}
+	}
+	if first <= 0 {
+		t.Errorf("first request out of budget = %d, want some after the first", first)
 	}
 }
 
@@ -112,7 +187,7 @@ func TestVariablesAreFileWide(t *testing.T) {
 	if reqs[0].Body != "@notavar = 1" || vars["notavar"] != "" {
 		t.Fatalf("body = %q, vars = %v", reqs[0].Body, vars)
 	}
-	if p := fillRequest(reqs[0], vars); p.Values["url"] != "https://h/a" {
+	if p := fillRequest(reqs[0], newFiller(vars)); p.Values["url"] != "https://h/a" {
 		t.Fatalf("private = %v", p)
 	}
 }
@@ -164,7 +239,7 @@ func TestHTTPReaderFollowsTheFile(t *testing.T) {
 
 func TestHTTPRequestWithUnsetVariableHasNoValues(t *testing.T) {
 	reqs, vars, _ := ParseHTTPFile("GET https://x/{{nope_unset_var}}\n")
-	if p := fillRequest(reqs[0], vars); p.Values != nil || p.Err != "unset variable nope_unset_var" {
+	if p := fillRequest(reqs[0], newFiller(vars)); p.Values != nil || p.Err != "unset variable nope_unset_var" {
 		t.Fatalf("private = %v", p)
 	}
 }

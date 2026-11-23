@@ -132,6 +132,28 @@ func TestClickRun_E2E(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// A fresh Chrome profile freezes the page for a few seconds about a
+	// second after its first load: its timers stop and DevTools gets no
+	// answers, 2 s without container limits and up to 10 s with them. Wait
+	// that out once, so the 10 s per-action deadlines below measure the app.
+	// Four answers in a row, 2 s in all, so a probe before the freeze
+	// starts doesn't count.
+	answers := 0
+	for deadline := time.Now().Add(60 * time.Second); answers < 4 && time.Now().Before(deadline); {
+		time.Sleep(500 * time.Millisecond)
+		pctx, cancel := context.WithTimeout(ctx, time.Second)
+		if chromedp.Run(pctx, chromedp.Evaluate(`1`, nil)) == nil {
+			answers++
+		} else {
+			answers = 0
+		}
+		cancel()
+	}
+	if answers < 4 {
+		dump()
+		t.Fatal("the browser never answered after the first page load")
+	}
+
 	t.Run("the URL and a reload start nothing", func(t *testing.T) {
 		time.Sleep(time.Second)
 		if err := run(chromedp.Reload(), chromedp.WaitVisible(`[data-testid="send-2"]`, chromedp.ByQuery)); err != nil {
