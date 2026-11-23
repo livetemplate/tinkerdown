@@ -263,6 +263,10 @@ func (s *StreamSource) Click(values map[string]interface{}) error {
 	}
 	env, params, err := s.clickEnv(values)
 	s.mu.Lock()
+	if s.closed { // the page left, maybe while a deferred click was firing
+		s.mu.Unlock()
+		return nil
+	}
 	if err != nil {
 		s.valueErr = &ValidationError{Source: s.name, Field: "click", Reason: err.Error()}
 		s.mu.Unlock()
@@ -296,15 +300,13 @@ func (s *StreamSource) Click(values map[string]interface{}) error {
 }
 
 // clickLater runs the click that came inside the gap. Its run wakes the
-// page, as any run does.
+// page, as any run does, and Click does nothing once the page has closed.
 func (s *StreamSource) clickLater() {
 	s.mu.Lock()
-	values, closed := s.laterVal, s.closed
+	values := s.laterVal
 	s.later, s.laterVal = nil, nil
 	s.mu.Unlock()
-	if !closed {
-		s.Click(values)
-	}
+	s.Click(values) // a refusal is in valueErr, which the next Fetch reports
 }
 
 // clickEnv checks a click's values and builds the run's TD_ variables: each

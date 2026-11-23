@@ -145,19 +145,33 @@ func TestClickValueSizeLimit(t *testing.T) {
 func TestClicksInALoopRunOncePerGap(t *testing.T) {
 	src, _, runs := clickSetup(t, "### a\nPOST https://api.test/a\n")
 	count := func() int { data, _ := os.ReadFile(runs); return strings.Count(string(data), "run") }
+	start := time.Now()
 	for range 20 {
 		if err := src.Click(map[string]interface{}{"entry": "1"}); err != nil {
 			t.Fatal(err)
 		}
 	}
+	// A stalled machine can stretch the loop past a gap, which allows one
+	// more run per gap.
+	most := 2 + int(time.Since(start)/ClickGap)
 	// The first click runs now, and the last of the rest when the gap ends.
 	deadline := time.Now().Add(5 * time.Second)
 	for count() < 2 && time.Now().Before(deadline) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	time.Sleep(3 * ClickGap)
-	if n := count(); n != 2 {
-		t.Fatalf("20 clicks in a row ran it %d times, want 2", n)
+	if n := count(); n < 2 || n > most {
+		t.Fatalf("20 clicks in a row ran it %d times, want 2 to %d", n, most)
+	}
+}
+
+func TestAClickAfterCloseRunsNothing(t *testing.T) {
+	src, _, runs := clickSetup(t, "### a\nPOST https://api.test/a\n")
+	src.Close()
+	src.Click(map[string]interface{}{"entry": "1"})
+	time.Sleep(3 * ClickGap)
+	if data, _ := os.ReadFile(runs); len(data) != 0 {
+		t.Fatalf("a click after Close ran: %q", data)
 	}
 }
 

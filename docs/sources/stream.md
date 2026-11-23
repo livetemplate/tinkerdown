@@ -154,7 +154,7 @@ Content-Type: application/json
 
 Each row's `fields` hold the request as written: `entry` (its position, `"1"` first), `name`, `method`, `url`, `headers` (one per line), `body`, and `text` (name, method and URL, for search). `{{name}}` stays as written in them.
 
-The values with variables filled in stay on the server, and reach a command only through a click; see below. `{{name}}` takes the file's `@name` value. Because a plain `{{name}}` never reads the environment, a file gets only the environment variables it names as `{{$processEnv NAME}}`, the VS Code REST Client's syntax. That keeps a token out of the file: `TOKEN=… tinkerdown serve …`. A file that doesn't parse sets the block's `.Error`, naming the line, and the last good rows stay.
+The values with variables filled in stay on the server, and reach a command only through a click; see below. `{{name}}` takes the file's `@name` value. Because a plain `{{name}}` never reads the environment, a file gets only the environment variables it names as `{{$processEnv NAME}}`, the VS Code REST Client's syntax. That keeps a token out of the file: `TOKEN=… tinkerdown serve …`. A variable's value can use other variables, so `@token = {{$processEnv TOKEN}}` lets requests write `{{token}}`. An environment value is used as it is. A file that doesn't parse sets the block's `.Error`, naming the line, and the last good rows stay.
 
 ## Runs a click starts
 

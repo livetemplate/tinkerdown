@@ -89,16 +89,38 @@ func TestParseHTTPFileErrorNamesTheLine(t *testing.T) {
 
 func TestFillReadsTheEnvironmentOnlyByName(t *testing.T) {
 	t.Setenv("TD_TEST_TOKEN", "s3cret")
-	got, missing := Fill("{{host}}/x?t={{ $processEnv TD_TEST_TOKEN }}", map[string]string{"host": "https://h"})
-	if got != "https://h/x?t=s3cret" || missing != "" {
-		t.Fatalf("Fill = %q, %q", got, missing)
+	t.Setenv("TD_TEST_RAW", "{{host}}")
+	got, err := Fill("{{host}}/x?t={{ $processEnv TD_TEST_TOKEN }}", map[string]string{"host": "https://h"})
+	if got != "https://h/x?t=s3cret" || err != nil {
+		t.Fatalf("Fill = %q, %v", got, err)
 	}
-	// A plain reference never falls back to the environment.
-	if _, missing := Fill("{{TD_TEST_TOKEN}}", nil); missing != "TD_TEST_TOKEN" {
-		t.Fatalf("missing = %q, want TD_TEST_TOKEN", missing)
+	for in, want := range map[string]string{
+		"{{TD_TEST_TOKEN}}":              "unset variable TD_TEST_TOKEN", // never the environment
+		"{{$processEnv nope_unset_var}}": "unset environment variable nope_unset_var",
+	} {
+		if _, err := Fill(in, nil); err == nil || err.Error() != want {
+			t.Errorf("Fill(%s) err = %v, want %s", in, err, want)
+		}
 	}
-	if _, missing := Fill("{{$processEnv nope_unset_var}}", nil); missing != "$processEnv nope_unset_var" {
-		t.Fatalf("missing = %q", missing)
+	// An environment value is used as it is, never filled.
+	if got, _ := Fill("{{$processEnv TD_TEST_RAW}}", map[string]string{"host": "h"}); got != "{{host}}" {
+		t.Fatalf("an environment value was filled: %q", got)
+	}
+}
+
+func TestFillFillsVariableValues(t *testing.T) {
+	t.Setenv("TD_TEST_TOKEN", "s3cret")
+	vars := map[string]string{"token": "{{$processEnv TD_TEST_TOKEN}}", "auth": "Bearer {{token}}"}
+	if got, err := Fill("Authorization: {{auth}}", vars); got != "Authorization: Bearer s3cret" || err != nil {
+		t.Fatalf("Fill = %q, %v", got, err)
+	}
+	for _, cyc := range []map[string]string{{"a": "{{a}}"}, {"a": "{{b}}", "b": "{{a}}"}} {
+		if _, err := Fill("{{a}}", cyc); err == nil || !strings.Contains(err.Error(), "or to itself") {
+			t.Errorf("cycle %v: err = %v", cyc, err)
+		}
+	}
+	if _, err := Fill("{{a}}", map[string]string{"a": "{{gone}}"}); err == nil || err.Error() != "unset variable gone" {
+		t.Errorf("an unset variable inside a value: err = %v", err)
 	}
 }
 

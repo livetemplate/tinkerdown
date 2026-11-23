@@ -136,28 +136,44 @@ var bareURL = regexp.MustCompile(`^(?i:https?://|\{\{)`)
 // Fill replaces each {{name}} in s with vars[name], and each
 // {{$processEnv NAME}} with the environment variable NAME, as the VS Code
 // REST Client does. A plain {{name}} never reads the environment, so a file
-// gets only the variables it asks for by name. Fill returns the first
-// reference it couldn't fill, as written inside the braces.
-func Fill(s string, vars map[string]string) (string, string) {
-	missing := ""
+// gets only the variables it asks for by name. A variable's value is filled
+// too, so @token = {{$processEnv TOKEN}} works; an environment value is used
+// as it is. Fill reports the first reference it couldn't fill.
+func Fill(s string, vars map[string]string) (string, error) {
+	return fill(s, vars, 0)
+}
+
+// maxVarDepth bounds how deep variables may refer to variables, which also
+// stops a cycle such as @a = {{b}} and @b = {{a}}.
+const maxVarDepth = 10
+
+func fill(s string, vars map[string]string, depth int) (string, error) {
+	var err error
 	out := varRef.ReplaceAllStringFunc(s, func(ref string) string {
-		m := varRef.FindStringSubmatch(ref)
-		v, ok := vars[m[2]]
-		if m[1] != "" {
-			v, ok = os.LookupEnv(m[2])
+		if err != nil {
+			return ref
 		}
-		if ok {
+		m := varRef.FindStringSubmatch(ref)
+		if m[1] != "" {
+			v, ok := os.LookupEnv(m[2])
+			if !ok {
+				err = fmt.Errorf("unset environment variable %s", m[2])
+			}
 			return v
 		}
-		if missing == "" {
-			missing = m[2]
-			if m[1] != "" {
-				missing = "$processEnv " + m[2]
-			}
+		v, ok := vars[m[2]]
+		switch {
+		case !ok:
+			err = fmt.Errorf("unset variable %s", m[2])
+			return ref
+		case depth == maxVarDepth:
+			err = fmt.Errorf("variable %s refers to variables more than %d deep, or to itself", m[2], maxVarDepth)
+			return ref
 		}
-		return ref
+		v, err = fill(v, vars, depth+1)
+		return v
 	})
-	return out, missing
+	return out, err
 }
 
 // readHTTPFile follows a .http file: it reads it whole at start and whenever
@@ -231,9 +247,9 @@ func readHTTPOnce(ctx context.Context, spec InputSpec, b *Buffer, last []byte) [
 func fillRequest(q HTTPRequest, vars map[string]string) Private {
 	values := map[string]string{"method": q.Method}
 	for _, f := range [][2]string{{"url", q.URL}, {"headers", q.Headers}, {"body", q.Body}} {
-		filled, missing := Fill(f[1], vars)
-		if missing != "" {
-			return Private{Err: "unset variable " + missing}
+		filled, err := Fill(f[1], vars)
+		if err != nil {
+			return Private{Err: err.Error()}
 		}
 		values[f[0]] = filled
 	}
