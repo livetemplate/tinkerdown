@@ -11,6 +11,13 @@ Earlier releases (v0.1.x) are documented in the
 
 ## [Unreleased]
 
+### Fixed
+
+- **A value that starts with `{{` and ends with `}}` shows as written.** The
+  page showed such a value as empty, so a `.http` request's URL like
+  `{{host}}/users/{{id}}` disappeared from the list. The embedded client is
+  now `@livetemplate/client` 0.27.0, which renders every value as sent.
+
 ## [v0.8.0] - 2026-11-23
 
 ### Added
