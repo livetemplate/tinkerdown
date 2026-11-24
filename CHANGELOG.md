@@ -11,6 +11,14 @@ Earlier releases (v0.1.x) are documented in the
 
 ## [Unreleased]
 
+### Added
+
+- **Short names for pages on GitHub.** `tinkerdown serve
+  github.com/OWNER/REPO[/PATH][@REF]` fetches the page at
+  `https://raw.githubusercontent.com/OWNER/REPO/REF/PATH/index.md`, with the
+  same checks as a URL. `REF` defaults to `HEAD`, and `#sha256=` pins it. The
+  pin line offers the short name, and an existing local path still wins.
+
 ## [v0.8.1] - 2026-11-24
 
 ### Fixed

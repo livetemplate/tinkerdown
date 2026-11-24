@@ -50,6 +50,75 @@ func TestParsePageArg(t *testing.T) {
 	}
 }
 
+func TestParseShortName(t *testing.T) {
+	const raw = "https://raw.githubusercontent.com/"
+	pin := strings.Repeat("ab", 32)
+	cases := []struct {
+		in, url, pin, wantErr string
+	}{
+		{in: "github.com/o/r/app", url: raw + "o/r/HEAD/app/index.md"},
+		{in: "github.com/o/r/deep/app@v1", url: raw + "o/r/v1/deep/app/index.md"},
+		{in: "github.com/o/r/app@3f2a9c1", url: raw + "o/r/3f2a9c1/app/index.md"},
+		{in: "github.com/o/r/app@main", url: raw + "o/r/main/app/index.md"},
+		{in: "github.com/o/r/doc.md", url: raw + "o/r/HEAD/doc.md"},
+		{in: "github.com/o/my.repo", url: raw + "o/my.repo/HEAD/index.md"},
+		{in: "github.com/o/r/app@v1#sha256=" + strings.ToUpper(pin), url: raw + "o/r/v1/app/index.md", pin: pin},
+		{in: "github.com/o", wantErr: "github.com/OWNER/REPO"},
+		{in: "github.com/o/", wantErr: "each part after OWNER"},
+		{in: "github.com/o/r/../x", wantErr: "each part after OWNER"},
+		{in: "github.com/o/r/a?b", wantErr: "each part after OWNER"},
+		{in: "github.com/o/r/a%2e", wantErr: "each part after OWNER"},
+		{in: "github.com/o/r/a b", wantErr: "each part after OWNER"},
+		{in: "github.com/-o/r", wantErr: "OWNER"},
+		{in: "github.com/o/r/app@", wantErr: "@REF"},
+		{in: "github.com/o/r/app@..x", wantErr: "@REF"},
+		{in: "github.com/o/r/app@-x", wantErr: "@REF"},
+		{in: "github.com/o/r/app#top", wantErr: "#sha256=HEX"},
+	}
+	for _, c := range cases {
+		got, err := parsePageArg(c.in)
+		if c.wantErr != "" {
+			if err == nil || !strings.Contains(err.Error(), c.wantErr) {
+				t.Errorf("%s: got %v, want an error containing %q", c.in, err, c.wantErr)
+			}
+			continue
+		}
+		if err != nil || got.url != c.url || got.pin != c.pin {
+			t.Errorf("%s: got %+v (err %v), want url %s", c.in, got, err, c.url)
+			continue
+		}
+		name, _, _ := strings.Cut(c.in, "#")
+		if got.share != name || got.shown != name+" ("+c.url+")" {
+			t.Errorf("%s: share %q, shown %q: both must name the short name, and shown the URL too", c.in, got.share, got.shown)
+		}
+	}
+}
+
+// A GOPATH-style checkout is a real directory named github.com/..., and
+// serving it must keep working.
+func TestShortNameLocalPathWins(t *testing.T) {
+	t.Chdir(t.TempDir())
+	if err := os.MkdirAll("github.com/o/r/app", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	got, err := parsePageArg("github.com/o/r/app")
+	if err != nil || got.url != "" || got.dir != "github.com/o/r/app" {
+		t.Fatalf("got %+v (err %v), want the local directory", got, err)
+	}
+}
+
+func TestShortNameFetchErrorNamesBoth(t *testing.T) {
+	p, err := parsePageArg("github.com/o/r/app")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.url = "http://127.0.0.1:1/index.md" // nothing listens: the fetch fails offline
+	_, _, err = fetchRemotePage(p)
+	if err == nil || !strings.Contains(err.Error(), "github.com/o/r/app (https://raw.githubusercontent.com/o/r/HEAD/app/index.md)") {
+		t.Fatalf("fetch error %v must name the short name and the URL", err)
+	}
+}
+
 func TestFetchRemotePage(t *testing.T) {
 	const body = "---\ntitle: Logs\n---\n# Logs\n"
 	mux := http.NewServeMux()

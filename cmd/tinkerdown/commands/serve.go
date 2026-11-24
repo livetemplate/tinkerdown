@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"log"
@@ -206,7 +207,7 @@ func ServeCommand(args []string) error {
 		}
 		cfg.Features.HotReload = false
 		fmt.Printf("Fetched %s (sha256 %s). Pin it with %s#sha256=%s\n",
-			target.shown, remoteSum, target.shown, remoteSum)
+			target.shown, remoteSum, cmp.Or(target.share, target.shown), remoteSum)
 	}
 
 	if err := checkFlagSources(cfg, srv); err != nil {
@@ -355,11 +356,15 @@ func ServeCommand(args []string) error {
 	return nil
 }
 
-const serveUsage = `Usage: tinkerdown serve [directory | page.md | file:// URI | https:// URL] [flags]
+const serveUsage = `Usage: tinkerdown serve [directory | page.md | file:// URI | https:// URL | short name] [flags]
 
 Serves the markdown pages in directory (default: current directory), one
 local page, or one page fetched from a URL. A URL may end in #sha256=HEX to
 refuse a page that changed; serve prints the hash of what it fetched.
+
+A short name, github.com/OWNER/REPO[/PATH][@REF], names a page on GitHub:
+PATH/index.md at REF (default HEAD), or PATH itself when it ends in .md.
+  tinkerdown serve github.com/livetemplate/onefile/logs --source 'api=docker logs -f api'
 
 A page from a URL may only declare merge sources: no other sources, actions,
 schedules, includes, scripts or event handlers, and it loads nothing from
