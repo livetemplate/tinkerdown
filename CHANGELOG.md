@@ -11,6 +11,8 @@ Earlier releases (v0.1.x) are documented in the
 
 ## [Unreleased]
 
+## [v0.8.1] - 2026-11-24
+
 ### Fixed
 
 - **A value that starts with `{{` and ends with `}}` shows as written.** The
