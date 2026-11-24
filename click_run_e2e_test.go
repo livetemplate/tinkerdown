@@ -25,7 +25,7 @@ const clickRunPage = "---\ntitle: Click run\n---\n\n# Click run\n\n" +
 	"```lvt\n" + `<main lvt-source="requests">
   {{if .Error}}<p data-testid="req-error">{{.Error}}</p>{{end}}
   <ol data-testid="reqs">
-    {{range .Data}}<li data-key="{{.key}}">{{.fields.name}} <code>{{.fields.headers}}</code>
+    {{range .Data}}<li data-key="{{.key}}">{{.fields.name}} <span data-testid="url-{{.fields.entry}}">{{.fields.url}}</span> <code>{{.fields.headers}}</code>
       <button name="send" data-entry="{{.fields.entry}}" data-testid="send-{{.fields.entry}}">Send</button></li>{{end}}
   </ol>
 </main>` + "\n```\n\n```lvt\n" + `<aside lvt-source="response">
@@ -251,8 +251,16 @@ func TestClickRun_E2E(t *testing.T) {
 	})
 
 	t.Run("editing the file updates the list", func(t *testing.T) {
-		os.WriteFile(filepath.Join(dir, "api.http"), []byte(clickRunHTTP+"\n### Third\nDELETE {{host}}/users/1\n"), 0o644)
+		os.WriteFile(filepath.Join(dir, "api.http"), []byte(clickRunHTTP+"\n### Third\nDELETE {{host}}/users/{{id}}\n"), 0o644)
 		waitJS("a third request", `!!document.querySelector('[data-testid="send-3"]')`)
+		// A URL that starts with {{ and ends with }} shows as written; the
+		// client once rendered any such value as empty.
+		var u string
+		run(chromedp.Evaluate(`document.querySelector('[data-testid="url-3"]').textContent`, &u))
+		if u != "{{host}}/users/{{id}}" {
+			dump()
+			t.Fatalf("the third request's URL shows %q, want {{host}}/users/{{id}}", u)
+		}
 		os.WriteFile(filepath.Join(dir, "api.http"), []byte(clickRunHTTP+"\n### Broken\nGET https://x\nnot a header\n"), 0o644)
 		waitJS("the parse error", `(document.querySelector('[data-testid="req-error"]')||{}).innerText?.includes("line 17:")`)
 		if err := run(chromedp.WaitVisible(`[data-testid="send-3"]`, chromedp.ByQuery)); err != nil {
