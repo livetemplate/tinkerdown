@@ -43,16 +43,17 @@ type pageArg struct {
 
 // parsePageArg sorts serve's positional argument into a directory, a local
 // page (a path or a file:// URI), a remote URL, or a short name such as
-// github.com/OWNER/REPO/PATH[@REF], which names a page on GitHub. An existing
-// local path wins over a short name, so a GOPATH-style checkout still serves.
+// github.com/OWNER/REPO/PATH[@REF], which names a page on GitHub. A bare
+// github.com/... is always a short name, never a local path: otherwise a
+// directory of that name in the current directory would be served as a
+// trusted local page, skipping the pin and the remote page checks. Serve a
+// local checkout as ./github.com/... or with file://.
 func parsePageArg(arg string) (pageArg, error) {
 	if strings.HasPrefix(arg, "https://") || strings.HasPrefix(arg, "http://") {
 		return parseURLArg(arg)
 	}
 	if strings.HasPrefix(arg, "github.com/") {
-		if _, err := os.Stat(arg); os.IsNotExist(err) {
-			return parseShortName(arg)
-		}
+		return parseShortName(arg)
 	}
 	if strings.HasPrefix(arg, "file://") {
 		u, err := url.Parse(arg)

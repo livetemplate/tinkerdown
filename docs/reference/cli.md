@@ -33,7 +33,7 @@ A short name such as `github.com/livetemplate/onefile/logs` names a page on GitH
 - A `PATH` ending in `.md` names the page itself. Any other `PATH` names a directory and its `index.md`. With no `PATH`, the page is the repo's root `index.md`.
 - `#sha256=HEX` after a short name pins the page, as after a URL.
 - Each part may hold only letters, digits, `.`, `_` and `-`, and a path part can't be `.` or `..`. `serve` refuses any other name and says which rule it broke.
-- An existing local path wins, so a checkout at `github.com/…` in the current directory is served from disk.
+- A bare `github.com/…` is always a short name, even when a directory of that name exists. Otherwise a checkout could plant one and have its page served as a local page, without the pin or these checks. To serve a local checkout at that path, write `./github.com/…` or use `file://`.
 
 Messages name both the short name and the URL it expanded to. The pin line offers the short name, so you can share back the line you typed.
 

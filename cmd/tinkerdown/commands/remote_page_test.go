@@ -94,16 +94,22 @@ func TestParseShortName(t *testing.T) {
 	}
 }
 
-// A GOPATH-style checkout is a real directory named github.com/..., and
-// serving it must keep working.
-func TestShortNameLocalPathWins(t *testing.T) {
+// A directory named github.com/... in the current directory must not take
+// over a short name: it would be served as a trusted local page, so a shared
+// line run inside an untrusted checkout would skip the remote page checks.
+// The local checkout is still reachable as ./github.com/...
+func TestShortNameIgnoresLocalPath(t *testing.T) {
 	t.Chdir(t.TempDir())
 	if err := os.MkdirAll("github.com/o/r/app", 0o755); err != nil {
 		t.Fatal(err)
 	}
 	got, err := parsePageArg("github.com/o/r/app")
-	if err != nil || got.url != "" || got.dir != "github.com/o/r/app" {
-		t.Fatalf("got %+v (err %v), want the local directory", got, err)
+	if err != nil || got.url != "https://raw.githubusercontent.com/o/r/HEAD/app/index.md" || got.dir != "" {
+		t.Fatalf("got %+v (err %v), want the short name, not the local directory", got, err)
+	}
+	got, err = parsePageArg("./github.com/o/r/app")
+	if err != nil || got.url != "" || got.dir != "./github.com/o/r/app" {
+		t.Fatalf("./ form: got %+v (err %v), want the local directory", got, err)
 	}
 }
 
