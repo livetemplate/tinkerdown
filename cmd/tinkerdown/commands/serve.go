@@ -31,6 +31,7 @@ func ServeCommand(args []string) error {
 	var headless bool
 	var sourceValues, actionValues []string
 	var dashCmd string // the command after "--", if any
+	var help, pageGiven bool
 
 	// Parse flags
 	for i := 0; i < len(args); i++ {
@@ -41,8 +42,7 @@ func ServeCommand(args []string) error {
 			}
 			break
 		} else if arg == "--help" || arg == "-h" {
-			fmt.Print(serveUsage)
-			return nil
+			help = true
 		} else if arg == "--source" {
 			if i+1 >= len(args) {
 				return fmt.Errorf("--source needs a value: NAME=COMMAND, NAME=file:PATH or NAME=http:PATH")
@@ -86,8 +86,12 @@ func ServeCommand(args []string) error {
 			return fmt.Errorf("unknown flag %s; see tinkerdown serve --help", arg)
 		} else {
 			// Positional argument (directory)
-			dir = arg
+			dir, pageGiven = arg, true
 		}
+	}
+	if help && !pageGiven {
+		fmt.Print(serveUsage)
+		return nil
 	}
 
 	// Set operator identity (defaults to $USER if not specified)
@@ -146,14 +150,17 @@ func ServeCommand(args []string) error {
 
 	// Sources from --source flags rank above page and site sources. They are
 	// checked after the loop, since --allow-exec may come after them.
-	cfg.FlagSources, err = flagSources(sourceValues, dashCmd, allowExec)
-	if err != nil {
-		return err
-	}
-	cfg.FlagActions = map[string]*config.Action{}
-	for _, v := range actionValues {
-		if err := addFlagAction(cfg.FlagActions, v, allowExec); err != nil {
+	// With --help, serve only loads the page to say what it takes, so the
+	// flags it would run are not read.
+	cfg.FlagSources, cfg.FlagActions = map[string]config.SourceConfig{}, map[string]*config.Action{}
+	if !help {
+		if cfg.FlagSources, err = flagSources(sourceValues, dashCmd, allowExec); err != nil {
 			return err
+		}
+		for _, v := range actionValues {
+			if err := addFlagAction(cfg.FlagActions, v, allowExec); err != nil {
+				return err
+			}
 		}
 	}
 	if err := checkFlagActions(cfg); err != nil {
@@ -178,18 +185,8 @@ func ServeCommand(args []string) error {
 		cfg.Features.Headless = true
 	}
 
-	if cfg.Features.Headless {
-		fmt.Printf("📚 Tinkerdown Headless Server\n\n")
-		fmt.Printf("Directory: %s\n", absDir)
-		fmt.Printf("Mode: 🤖 Headless (API, webhooks, schedules only)\n")
-	} else {
-		fmt.Printf("📚 Livemdtools Development Server\n\n")
-		fmt.Printf("Serving: %s\n", absDir)
-		if cfg.IsSiteMode() {
-			fmt.Printf("Mode: 📖 Multi-page documentation site\n")
-		} else {
-			fmt.Printf("Mode: 📝 Single tutorial\n")
-		}
+	if !help { // help prints only the usage and what the page takes
+		printBanner(cfg, absDir)
 	}
 
 	// Create server
@@ -212,8 +209,15 @@ func ServeCommand(args []string) error {
 			return err
 		}
 		cfg.Features.HotReload = false
-		fmt.Printf("Fetched %s (sha256 %s). Pin it with %s#sha256=%s\n",
-			target.shown, remoteSum, cmp.Or(target.share, target.shown), remoteSum)
+		if !help {
+			fmt.Printf("Fetched %s (sha256 %s). Pin it with %s#sha256=%s\n",
+				target.shown, remoteSum, cmp.Or(target.share, target.shown), remoteSum)
+		}
+	}
+	if help {
+		fmt.Print(serveUsage)
+		describeTakes(os.Stdout, cfg, srv, cmp.Or(target.share, target.shown))
+		return nil
 	}
 
 	if err := checkFlagSources(cfg, srv); err != nil {
@@ -360,6 +364,23 @@ func ServeCommand(args []string) error {
 	}
 
 	return nil
+}
+
+// printBanner says what serve is serving and in which mode.
+func printBanner(cfg *config.Config, absDir string) {
+	if cfg.Features.Headless {
+		fmt.Printf("📚 Tinkerdown Headless Server\n\n")
+		fmt.Printf("Directory: %s\n", absDir)
+		fmt.Printf("Mode: 🤖 Headless (API, webhooks, schedules only)\n")
+		return
+	}
+	fmt.Printf("📚 Livemdtools Development Server\n\n")
+	fmt.Printf("Serving: %s\n", absDir)
+	if cfg.IsSiteMode() {
+		fmt.Printf("Mode: 📖 Multi-page documentation site\n")
+	} else {
+		fmt.Printf("Mode: 📝 Single tutorial\n")
+	}
 }
 
 const serveUsage = `Usage: tinkerdown serve [directory | page.md | file:// URI | https:// URL | short name] [flags]
