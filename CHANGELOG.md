@@ -18,8 +18,26 @@ Earlier releases (v0.1.x) are documented in the
   `https://raw.githubusercontent.com/OWNER/REPO/REF/PATH/index.md`, with the
   same checks as a URL. `REF` defaults to `HEAD`, and `#sha256=` pins it. The
   pin line offers the short name.
+- **Plain commands.** Everything after `--` is one source command, so
+  `tinkerdown serve --allow-exec page.md -- docker logs -f api` needs no
+  quotes. `--source COMMAND`, `--source file:PATH` and `--source http:PATH`
+  need no `NAME=`: such a source is labelled by its command's last plain word
+  (`api`) or its file's name, with `-2`, `-3` when the label is taken, so it
+  never replaces a page's source. `NAME=` still names a source, so
+  `--source 'FOO=1 cmd'` is a source named `FOO`. To set a variable, write
+  `--source 'env FOO=1 cmd'` or `-- FOO=1 cmd`.
+- **`serve PAGE --help` lists what the page takes**: its `["*"]` merges with
+  their kinds and hint, the sources its other merges read by name, and its
+  buttons' actions. It needs no `--allow-exec` and starts nothing.
 
 ### Changed
+
+- **`serve` refuses a flag it doesn't know.** It used to ignore one, so a
+  mistyped flag ran the page without it. Flags that never existed, such as
+  `--debug`, `--verbose` and `--production`, now fail; the guides that showed
+  them are fixed. So does `--port=8080`, which was ignored too: serve says to
+  write `--port 8080`. A `--port`, `--host`, `--config` or `--operator` with
+  no value after it is refused instead of ignored.
 
 - **`serve github.com/…` now fetches from GitHub.** Before, a directory named
   `github.com/…` in the current directory was served as a local path. It no

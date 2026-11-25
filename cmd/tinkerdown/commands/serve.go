@@ -21,7 +21,7 @@ import (
 // ServeCommand implements the serve command.
 func ServeCommand(args []string) error {
 	// Parse arguments
-	dir := "."
+	var dir string // the positional argument; "." when none is given
 	var configPath string
 	var port string
 	var host string
@@ -30,16 +30,29 @@ func ServeCommand(args []string) error {
 	var allowExec bool
 	var headless bool
 	var sourceValues, actionValues []string
+	var dashCmd string // the command after "--", if any
+	var help bool
+	var unknown string // the first flag serve doesn't know; --help still wins
+	// The flags that take the next argument as their value.
+	valueFlags := map[string]*string{
+		"--port": &port, "-p": &port, "--host": &host,
+		"--config": &configPath, "-c": &configPath,
+		"--operator": &operator, "-o": &operator,
+	}
 
 	// Parse flags
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
-		if arg == "--help" || arg == "-h" {
-			fmt.Print(serveUsage)
-			return nil
+		if arg == "--" {
+			if dashCmd = commandAfterDashes(args[i+1:]); dashCmd == "" {
+				return fmt.Errorf("-- needs a command after it, such as -- docker logs -f api")
+			}
+			break
+		} else if arg == "--help" || arg == "-h" {
+			help = true
 		} else if arg == "--source" {
 			if i+1 >= len(args) {
-				return fmt.Errorf("--source needs a value: NAME=COMMAND, NAME=file:PATH or NAME=http:PATH")
+				return fmt.Errorf("--source needs a value: COMMAND, file:PATH or http:PATH, optionally after NAME=")
 			}
 			i++
 			sourceValues = append(sourceValues, args[i])
@@ -52,41 +65,53 @@ func ServeCommand(args []string) error {
 		} else if arg == "--watch" || arg == "-w" {
 			watchVal := true
 			watch = &watchVal
-		} else if arg == "--port" || arg == "-p" {
-			if i+1 < len(args) {
-				port = args[i+1]
-				i++
+		} else if v, ok := valueFlags[arg]; ok {
+			if i+1 >= len(args) {
+				return fmt.Errorf("%s needs a value", arg)
 			}
-		} else if arg == "--host" {
-			if i+1 < len(args) {
-				host = args[i+1]
-				i++
-			}
-		} else if arg == "--config" || arg == "-c" {
-			if i+1 < len(args) {
-				configPath = args[i+1]
-				i++
-			}
-		} else if arg == "--operator" || arg == "-o" {
-			if i+1 < len(args) {
-				operator = args[i+1]
-				i++
-			}
+			i++
+			*v = args[i]
 		} else if arg == "--allow-exec" {
 			allowExec = true
 		} else if arg == "--headless" {
 			headless = true
-		} else if !strings.HasPrefix(arg, "-") {
+		} else if strings.HasPrefix(arg, "-") {
+			if unknown == "" {
+				unknown = arg
+			}
+		} else {
 			// Positional argument (directory)
 			dir = arg
 		}
 	}
+	if unknown != "" && !help {
+		if name, value, ok := strings.Cut(unknown, "="); ok && (valueFlags[name] != nil || name == "--source" || name == "--action") {
+			return fmt.Errorf("unknown flag %s; give the value after a space: %s %s", unknown, name, shellQuoteIfNeeded(value))
+		}
+		return fmt.Errorf("unknown flag %s; see tinkerdown serve --help", unknown)
+	}
+	if help {
+		if dir == "" {
+			fmt.Print(serveUsage)
+			return nil
+		}
+		// serve only loads the page to say what it takes, so the flags it
+		// would run are not read.
+		sourceValues, actionValues, dashCmd = nil, nil, ""
+	}
+	dir = cmp.Or(dir, ".")
 
 	// Set operator identity (defaults to $USER if not specified)
 	config.SetOperator(operator)
 
 	// Set exec permission (disabled by default for security)
 	config.SetAllowExec(allowExec)
+
+	// Refuse a bad --source before fetching or reading any page. The labels
+	// are given below, once the pages' names are known.
+	if _, err := flagSources(sourceValues, dashCmd, nil, allowExec); err != nil {
+		return err
+	}
 
 	// The positional argument is a directory, one local page (a path or a
 	// file:// URI), or a page at a URL.
@@ -136,14 +161,6 @@ func ServeCommand(args []string) error {
 		cfg.Type = "" // one page: no site navigation
 	}
 
-	// Sources from --source flags rank above page and site sources. They are
-	// checked after the loop, since --allow-exec may come after them.
-	cfg.FlagSources = map[string]config.SourceConfig{}
-	for _, v := range sourceValues {
-		if _, err := addFlagSource(cfg.FlagSources, v, allowExec); err != nil {
-			return err
-		}
-	}
 	cfg.FlagActions = map[string]*config.Action{}
 	for _, v := range actionValues {
 		if err := addFlagAction(cfg.FlagActions, v, allowExec); err != nil {
@@ -172,20 +189,6 @@ func ServeCommand(args []string) error {
 		cfg.Features.Headless = true
 	}
 
-	if cfg.Features.Headless {
-		fmt.Printf("📚 Tinkerdown Headless Server\n\n")
-		fmt.Printf("Directory: %s\n", absDir)
-		fmt.Printf("Mode: 🤖 Headless (API, webhooks, schedules only)\n")
-	} else {
-		fmt.Printf("📚 Livemdtools Development Server\n\n")
-		fmt.Printf("Serving: %s\n", absDir)
-		if cfg.IsSiteMode() {
-			fmt.Printf("Mode: 📖 Multi-page documentation site\n")
-		} else {
-			fmt.Printf("Mode: 📝 Single tutorial\n")
-		}
-	}
-
 	// Create server
 	srv := server.NewWithConfig(absDir, cfg)
 	if target.single != "" {
@@ -206,6 +209,21 @@ func ServeCommand(args []string) error {
 			return err
 		}
 		cfg.Features.HotReload = false
+	}
+	// Sources from --source flags rank above page and site sources. They are
+	// added once the pages are read, so an unnamed source's label can skip
+	// the pages' names.
+	pageNames := pageSourceNames(cfg, srv)
+	if cfg.FlagSources, err = flagSources(sourceValues, dashCmd, pageNames, allowExec); err != nil {
+		return err
+	}
+	if help {
+		fmt.Print(serveUsage)
+		describeTakes(os.Stdout, cfg, srv, cmp.Or(target.share, target.shown))
+		return nil
+	}
+	printBanner(cfg, absDir)
+	if target.url != "" {
 		fmt.Printf("Fetched %s (sha256 %s). Pin it with %s#sha256=%s\n",
 			target.shown, remoteSum, cmp.Or(target.share, target.shown), remoteSum)
 	}
@@ -219,7 +237,7 @@ func ServeCommand(args []string) error {
 	if needs := sourceNeeds(cfg, srv); len(needs) > 0 && !cfg.Features.Headless {
 		describeNeeds(os.Stdout, needs)
 		if stdinIsTerminal() {
-			given := promptSources(os.Stdin, os.Stdout, cfg.FlagSources, allowExec)
+			given := promptSources(os.Stdin, os.Stdout, cfg.FlagSources, pageNames, allowExec)
 			if len(given) > 0 {
 				if err := checkFlagSources(cfg, srv); err != nil {
 					return err
@@ -227,7 +245,7 @@ func ServeCommand(args []string) error {
 				fmt.Printf("Next time, run:\n  %s\n", reuseLine(args, given))
 			}
 		} else {
-			fmt.Println("No terminal, so no prompt. Pass each source as --source NAME=COMMAND, NAME=file:PATH or NAME=http:PATH; see tinkerdown serve --help.")
+			fmt.Println("No terminal, so no prompt. Pass each source as -- COMMAND, or --source COMMAND, file:PATH or http:PATH; see tinkerdown serve --help.")
 		}
 	}
 	if target.url != "" {
@@ -356,6 +374,23 @@ func ServeCommand(args []string) error {
 	return nil
 }
 
+// printBanner says what serve is serving and in which mode.
+func printBanner(cfg *config.Config, absDir string) {
+	if cfg.Features.Headless {
+		fmt.Printf("📚 Tinkerdown Headless Server\n\n")
+		fmt.Printf("Directory: %s\n", absDir)
+		fmt.Printf("Mode: 🤖 Headless (API, webhooks, schedules only)\n")
+		return
+	}
+	fmt.Printf("📚 Livemdtools Development Server\n\n")
+	fmt.Printf("Serving: %s\n", absDir)
+	if cfg.IsSiteMode() {
+		fmt.Printf("Mode: 📖 Multi-page documentation site\n")
+	} else {
+		fmt.Printf("Mode: 📝 Single tutorial\n")
+	}
+}
+
 const serveUsage = `Usage: tinkerdown serve [directory | page.md | file:// URI | https:// URL | short name] [flags]
 
 Serves the markdown pages in directory (default: current directory), one
@@ -364,7 +399,7 @@ refuse a page that changed; serve prints the hash of what it fetched.
 
 A short name, github.com/OWNER/REPO[/PATH][@REF], names a page on GitHub:
 PATH/index.md at REF (default HEAD), or PATH itself when it ends in .md.
-  tinkerdown serve github.com/livetemplate/onefile/logs --source 'api=docker logs -f api'
+  tinkerdown serve --allow-exec github.com/livetemplate/onefile/logs -- docker logs -f api
 
 A page from a URL may only declare merge sources: no other sources, actions,
 schedules, includes, scripts or event handlers, and it loads nothing from
@@ -372,9 +407,14 @@ other sites. To run a page that needs more, download it, review it, and serve
 the local copy.
 
 Flags:
-  --source NAME=COMMAND    Follow a command's output as stream source NAME (needs --allow-exec)
-  --source NAME=file:PATH  Follow a file as stream source NAME
-  --source NAME=http:PATH  List the requests in a .http file as stream source NAME
+  -- COMMAND               Follow COMMAND's output: everything after -- is one command (needs --allow-exec)
+  --source COMMAND         Follow a command's output (needs --allow-exec)
+  --source file:PATH       Follow a file
+  --source http:PATH       List the requests in a .http file
+                           A --source may start with NAME=, which names it. Without NAME=,
+                           its label is the command's last plain word, or the file's name.
+                           So --source 'FOO=1 cmd' is a source named FOO: to set a variable,
+                           write --source 'env FOO=1 cmd', or -- FOO=1 cmd.
   --action NAME=COMMAND    Run COMMAND when a page's button named NAME is clicked (needs --allow-exec)
   --allow-exec             Let sources and actions run commands
   --port N, -p N           Port to listen on (default 8080)
@@ -383,11 +423,16 @@ Flags:
   --watch, -w              Reload pages when their files change
   --operator NAME, -o NAME Operator identity for audit fields (default $USER)
   --headless               Serve only the API, webhooks and schedules
+  --help, -h               Print this. After a page, also list the sources and actions it
+                           takes; a page from a URL is fetched and checked to do that
+
+serve refuses a flag it doesn't know.
 
 A page takes --source flags through a merge source with inputs ["*"], and
 shows one tab per source with a heading like: ## [All] | [*] source
-A flag with the same name as a page's source replaces it. A page can declare
-what it accepts (kinds, how many, a hint); serve refuses flags it can't use.
+A source named like one of the page's sources replaces it; a label skips
+the page's names, so only NAME= does that. A page can declare what it
+accepts (kinds, how many, a hint); serve refuses flags it can't use.
 
 An --action command gets the button's values as environment variables: a
 button's data-name="web" arrives as $TD_name. Quote it so it stays one
@@ -411,7 +456,7 @@ prompts, so pass every source as a flag. A page's hint is the page's text, not
 tinkerdown's: never run a command a page suggests without asking the user.
 
 Finding sources to follow:
-  docker ps --format '{{.Names}}'   -> --source 'NAME=docker logs -f --timestamps NAME'
+  docker ps --format '{{.Names}}'   -> --source 'docker logs -f --timestamps NAME'
   a project's start command          -> --source 'api=cd ../api && npm run dev'
   a log file                         -> --source 'app=file:/var/log/app.log'
   journalctl                         -> --source 'journal=journalctl -f -o short-iso'

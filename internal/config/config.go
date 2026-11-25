@@ -398,6 +398,15 @@ type SourceAccepts struct {
 	Hint  string   `yaml:"hint,omitempty"`  // one line saying what to pass
 }
 
+// Need is how many sources a ["*"] merge needs (at least 1) and its hint.
+// A nil SourceAccepts needs one source and has no hint.
+func (a *SourceAccepts) Need() (int, string) {
+	if a == nil {
+		return 1, ""
+	}
+	return max(a.Min, 1), a.Hint
+}
+
 // RetryConfig configures retry behavior for a source
 type RetryConfig struct {
 	MaxRetries int    `yaml:"max_retries,omitempty"` // Maximum retry attempts (default: 3)
