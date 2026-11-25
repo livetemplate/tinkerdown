@@ -320,6 +320,6 @@ func remoteConfig(configPath, dir string) (*config.Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	absSourcePaths(cfg.Sources, base)
+	rebase(cfg.Sources, cfg.Actions, base)
 	return cfg, nil
 }

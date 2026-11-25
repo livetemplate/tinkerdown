@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -871,5 +872,54 @@ func TestFlagActionPassesApprovalGate(t *testing.T) {
 	}
 	if err := state.HandleAction("yaml", nil); err == nil || !strings.Contains(err.Error(), "approved") {
 		t.Fatalf("unapproved yaml action: err = %v, want the approval gate", err)
+	}
+}
+
+// An action with a Dir runs there instead of the site directory, as serve
+// sets it for a page from a URL.
+func TestExecActionRunsInItsDir(t *testing.T) {
+	origState := config.IsExecAllowed()
+	defer config.SetAllowExec(origState)
+	config.SetAllowExec(true)
+
+	site, work := t.TempDir(), t.TempDir()
+	state := &GenericState{siteDir: site}
+	for _, action := range []*config.Action{
+		{Kind: "exec", Cmd: "touch flag-ran", FromFlag: true, Dir: work},
+		{Kind: "exec", Cmd: "touch config-ran", Dir: work},
+	} {
+		if err := state.executeCustomAction(action, map[string]interface{}{}); err != nil {
+			t.Fatalf("%s: %v", action.Cmd, err)
+		}
+	}
+	for _, f := range []string{"flag-ran", "config-ran"} {
+		if _, err := os.Stat(filepath.Join(work, f)); err != nil {
+			t.Errorf("%s: not in the action's Dir: %v", f, err)
+		}
+		if _, err := os.Stat(filepath.Join(site, f)); err == nil {
+			t.Errorf("%s: ran in the site directory", f)
+		}
+	}
+}
+
+// An exec source with a Dir runs there instead of the site directory, as
+// serve sets it for a --config file's source on a page from a URL.
+func TestExecSourceRunsInItsDir(t *testing.T) {
+	origState := config.IsExecAllowed()
+	defer config.SetAllowExec(origState)
+	config.SetAllowExec(true)
+
+	site := t.TempDir()
+	work, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	src, err := createSource("here", config.SourceConfig{Type: "exec", Cmd: "pwd -P", Format: "lines", Dir: work}, site, "", stateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows, err := src.Fetch(context.Background())
+	if err != nil || len(rows) != 1 || rows[0]["line"] != work {
+		t.Fatalf("rows %v (err %v), want one line %q", rows, err, work)
 	}
 }

@@ -5,6 +5,8 @@ package tinkerdown_test
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -90,6 +92,87 @@ func TestPlainCommandFlags_E2E(t *testing.T) {
 	if err := chromedp.Run(ctx, waitForDOM(`document.querySelectorAll("li.src-api").length === 2 && document.querySelectorAll("li.src-api-2").length === 2 && document.querySelectorAll("li.src-app").length === 1`, 15*time.Second)); err != nil {
 		dump()
 		t.Fatalf("rows from each unnamed source: %v", err)
+	}
+	for _, line := range logs.console {
+		if strings.Contains(strings.ToLower(line), "error") {
+			dump()
+			t.Fatalf("browser console error: %s", line)
+		}
+	}
+}
+
+// cwdPage is a page a URL may serve: one ["*"] merge, listing each row.
+const cwdPage = "---\ntitle: Cwd\nsources:\n  all:\n    type: merge\n    inputs: [\"*\"]\n---\n\n```lvt\n" +
+	`<ol data-testid="log" lvt-source="all">{{range .Data}}<li data-key="{{.seq}}">{{.msg}}</li>{{end}}</ol>` + "\n```\n"
+
+// TestFetchedPageCommandsRunInServeDir_E2E serves a page from a URL with
+// `-- sh -c pwd` and checks in the browser that the command ran in the
+// directory serve runs in, where its file: paths resolve, not in the
+// temporary directory that holds the fetched page (tinkerdown#386).
+func TestFetchedPageCommandsRunInServeDir_E2E(t *testing.T) {
+	bin := buildTinkerdown(t, t.TempDir())
+	pages := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, cwdPage) }))
+	defer pages.Close()
+	work, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	chrome, cleanup := SetupDockerChrome(t, 90*time.Second)
+	defer cleanup()
+
+	port, err := getFreePort()
+	if err != nil {
+		t.Fatal(err)
+	}
+	serverLog := &syncBuffer{}
+	cmd := exec.Command(bin, "serve", pages.URL+"/index.md", "--allow-exec", "--port", fmt.Sprint(port),
+		"--", "sh", "-c", "pwd -P; exec tail -f /dev/null")
+	cmd.Dir = work
+	cmd.Stdout, cmd.Stderr = serverLog, serverLog
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		// SIGINT lets serve remove the fetched page's temporary directory;
+		// SIGKILL is only the fallback.
+		syscall.Kill(-cmd.Process.Pid, syscall.SIGINT)
+		done := make(chan struct{})
+		go func() { cmd.Wait(); close(done) }()
+		select {
+		case <-done:
+		case <-time.After(15 * time.Second):
+			syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+			<-done
+		}
+		if t.Failed() {
+			t.Logf("server log:\n%s", serverLog.String())
+		}
+	})
+	url := fmt.Sprintf("http://localhost:%d", port)
+	WaitForServer(t, url, 20*time.Second)
+
+	ctx := chrome.Context
+	logs := &streamBrowserLogs{}
+	logs.listen(ctx)
+	dump := func() {
+		var html string
+		chromedp.Run(ctx, chromedp.OuterHTML("body", &html, chromedp.ByQuery))
+		t.Logf("console:\n%s", strings.Join(logs.console, "\n"))
+		frames := logs.frames()
+		t.Logf("ws received: %d frames, last: %s", len(frames), strings.Join(frames[max(0, len(frames)-3):], "\n"))
+		t.Logf("rendered html: %s", tail(html, 4000))
+		t.Logf("server log tail: %s", tail(serverLog.String(), 6000))
+	}
+	if err := chromedp.Run(ctx, network.Enable(), chromedp.Navigate(ConvertURLForDockerChrome(url)),
+		chromedp.WaitVisible(`[data-testid="log"]`, chromedp.ByQuery)); err != nil {
+		dump()
+		t.Fatal(err)
+	}
+	if err := chromedp.Run(ctx, waitForDOM(fmt.Sprintf(`[...document.querySelectorAll('[data-testid="log"] li')].some(li => li.textContent === %q)`, work), 15*time.Second)); err != nil {
+		dump()
+		t.Fatalf("the command did not run in serve's directory %s: %v", work, err)
 	}
 	for _, line := range logs.console {
 		if strings.Contains(strings.ToLower(line), "error") {

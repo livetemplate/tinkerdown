@@ -11,6 +11,15 @@ Earlier releases (v0.1.x) are documented in the
 
 ## [Unreleased]
 
+### Fixed
+
+- **A page from a URL runs its commands where you run `serve`.** Its
+  `--source`, `--` and `--action` commands ran in the temporary directory
+  that holds the fetched page, so `-- go test -json ./...` found no module.
+  They now run in the directory `serve` runs in, where their `file:` paths
+  already resolved, and a `--config` file's commands run in that file's
+  directory (#386). A local page is unchanged.
+
 ## [v0.9.0] - 2026-11-25
 
 ### Added
