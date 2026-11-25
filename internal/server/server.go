@@ -3076,7 +3076,10 @@ func (s *Server) renderPage(page *tinkerdown.Page, currentPath string, host stri
             });
         })();
 
-        // Move toolbar into sidebar footer when sidebar exists
+        // Move the toolbar into the sidebar's footer once the page has loaded.
+        // That covers both sidebars: the site sidebar is in the HTML, and the
+        // deferred client script builds the tutorial one before
+        // DOMContentLoaded fires (TestTutorialToolbarInSidebar).
         (function() {
             function moveToolbarToSidebar() {
                 const sidebar = document.querySelector('.tinkerdown-nav-sidebar');
@@ -3102,19 +3105,6 @@ func (s *Server) renderPage(page *tinkerdown.Page, currentPath string, host stri
             } else {
                 moveToolbarToSidebar();
             }
-
-            // Also watch for dynamically created sidebars (tutorial mode)
-            const observer = new MutationObserver((mutations) => {
-                for (const mutation of mutations) {
-                    for (const node of mutation.addedNodes) {
-                        if (node.nodeType === 1 && node.classList?.contains('tinkerdown-nav-sidebar')) {
-                            moveToolbarToSidebar();
-                            return;
-                        }
-                    }
-                }
-            });
-            observer.observe(document.body, { childList: true, subtree: true });
         })();
 
         // Presentation Mode
