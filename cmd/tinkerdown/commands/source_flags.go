@@ -2,10 +2,12 @@ package commands
 
 import (
 	"bufio"
+	"cmp"
 	"fmt"
 	"io"
 	"maps"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -22,18 +24,24 @@ import (
 // expressions (source = NAME), CSS classes and tab labels, so they stay plain.
 var sourceName = regexp.MustCompile(`^[A-Za-z0-9_-]{1,32}$`)
 
-// parseSourceFlag parses a --source value: NAME=COMMAND for a stream source
-// that runs COMMAND, NAME=file:PATH for one that follows PATH, or
-// NAME=http:PATH for one that lists the requests in a .http file. It splits
-// on the first "=" only, so a command may contain "=". PATH is kept as
-// given; see absSourcePaths for a page from a URL.
+// parseSourceFlag parses a --source value: COMMAND for a stream source that
+// runs COMMAND, file:PATH for one that follows PATH, or http:PATH for one that
+// lists the requests in a .http file. Each may start with NAME=, which names
+// the source; without it the name is "" and addSource picks a label. NAME= is
+// the part before the first "=" when that part is a plain name, so a command
+// such as `grep a=b` is unnamed, and one that starts with an environment
+// assignment is written `env FOO=1 cmd`. PATH is kept as given; see
+// absSourcePaths for a page from a URL.
 func parseSourceFlag(v string) (string, config.SourceConfig, error) {
-	name, value, ok := strings.Cut(v, "=")
-	if !ok || value == "" {
-		return "", config.SourceConfig{}, fmt.Errorf("--source %q: want NAME=COMMAND, NAME=file:PATH or NAME=http:PATH", v)
+	if strings.HasPrefix(v, "=") {
+		return "", config.SourceConfig{}, fmt.Errorf("--source %q: a name goes before the \"=\", as in api=COMMAND; or leave out NAME= and give the command alone", v)
 	}
-	if !sourceName.MatchString(name) {
-		return "", config.SourceConfig{}, fmt.Errorf("--source %q: name %q must be 1-32 letters, digits, _ or -", v, name)
+	name, value := "", v
+	if n, rest, ok := strings.Cut(v, "="); ok && sourceName.MatchString(n) {
+		name, value = n, rest
+	}
+	if strings.TrimSpace(value) == "" {
+		return "", config.SourceConfig{}, fmt.Errorf("--source %q: want COMMAND, file:PATH or http:PATH, optionally after NAME=", v)
 	}
 	if path, ok := strings.CutPrefix(value, "file:"); ok {
 		return name, config.SourceConfig{Type: "stream", File: path}, pathErr(v, "file", path)
@@ -68,6 +76,70 @@ func absSourcePaths(srcs map[string]config.SourceConfig, base string) {
 	}
 }
 
+// sourceLabel is the label of a source with no name: from its command, or
+// from its file's name without the extension.
+func sourceLabel(src config.SourceConfig) string {
+	path := cmp.Or(src.File, src.HTTP)
+	if path == "" {
+		return defaultLabel(src.Cmd)
+	}
+	label := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+	if !sourceName.MatchString(label) {
+		return "file"
+	}
+	return label
+}
+
+// defaultLabel picks the tab label for an unnamed command: its last plain
+// word, which usually names what the command follows. Flags are skipped, and
+// a path counts as its base name without the extension, so
+// `docker logs -f api` is api, `tail -f /var/log/app.log` is app and
+// `watchexec -e go -- go test -json ./...` is test. When no word fits
+// sourceName, the label is the first word with other characters dropped, or
+// "cmd".
+func defaultLabel(cmd string) string {
+	words := strings.Fields(cmd)
+	for i := len(words) - 1; i >= 0; i-- {
+		if w := wordLabel(words[i]); !strings.HasPrefix(words[i], "-") && sourceName.MatchString(w) {
+			return w
+		}
+	}
+	if len(words) > 0 {
+		kept := strings.Map(func(r rune) rune {
+			if sourceName.MatchString(string(r)) {
+				return r
+			}
+			return -1
+		}, wordLabel(words[0]))
+		if kept = kept[:min(len(kept), 32)]; kept != "" {
+			return kept
+		}
+	}
+	return "cmd"
+}
+
+// wordLabel is a command word as a label: unquoted, and a path reduced to its
+// base name without the extension.
+func wordLabel(w string) string {
+	w = path.Base(strings.Trim(w, `'"`))
+	return strings.TrimSuffix(w, path.Ext(w))
+}
+
+// uniqueLabel returns label, or label-2, label-3, ... when flags has it.
+// The suffix keeps the result within sourceName's 32 characters.
+func uniqueLabel(flags map[string]config.SourceConfig, label string) string {
+	if flags[label].Type == "" {
+		return label
+	}
+	for n := 2; ; n++ {
+		suffix := fmt.Sprintf("-%d", n)
+		l := label[:min(len(label), 32-len(suffix))] + suffix
+		if flags[l].Type == "" {
+			return l
+		}
+	}
+}
+
 // sourceFlagValue turns a source back into the value parseSourceFlag reads.
 func sourceFlagValue(name string, src config.SourceConfig) string {
 	switch {
@@ -86,12 +158,55 @@ func shellQuote(s string) string {
 }
 
 // addFlagSource parses a --source value (or a prompt answer) and adds it to
-// flags: one place for the rules both paths share.
+// flags.
 func addFlagSource(flags map[string]config.SourceConfig, value string, allowExec bool) (string, error) {
 	name, src, err := parseSourceFlag(value)
-	switch {
-	case err != nil:
+	if err != nil {
 		return "", err
+	}
+	return addSource(flags, name, src, allowExec)
+}
+
+// flagSources parses serve's --source values and the command after "--".
+// Named sources go in first, so a name the operator gave is never taken by
+// an unnamed source's label.
+func flagSources(values []string, dashCmd string, allowExec bool) (map[string]config.SourceConfig, error) {
+	type parsed struct {
+		name string
+		src  config.SourceConfig
+	}
+	var named, unnamed []parsed
+	for _, v := range values {
+		name, src, err := parseSourceFlag(v)
+		if err != nil {
+			return nil, err
+		}
+		if name == "" {
+			unnamed = append(unnamed, parsed{name, src})
+		} else {
+			named = append(named, parsed{name, src})
+		}
+	}
+	if dashCmd != "" {
+		unnamed = append(unnamed, parsed{"", config.SourceConfig{Type: "stream", Cmd: dashCmd}})
+	}
+	flags := map[string]config.SourceConfig{}
+	for _, p := range append(named, unnamed...) {
+		if _, err := addSource(flags, p.name, p.src, allowExec); err != nil {
+			return nil, err
+		}
+	}
+	return flags, nil
+}
+
+// addSource adds a parsed source to flags: one place for the rules every
+// path shares. A source with no name gets defaultLabel's label, made unique
+// with -2, -3, ... so two commands with the same label both show.
+func addSource(flags map[string]config.SourceConfig, name string, src config.SourceConfig, allowExec bool) (string, error) {
+	if name == "" {
+		name = uniqueLabel(flags, sourceLabel(src))
+	}
+	switch {
 	case flags[name].Type != "":
 		return "", fmt.Errorf("--source %s is given twice", name)
 	case src.Cmd != "" && !allowExec:
@@ -228,7 +343,7 @@ func describeNeeds(w io.Writer, needs []sourceNeed) {
 // promptSources asks for sources until an empty line, and adds them to
 // flags. It returns the --source values the operator gave.
 func promptSources(in io.Reader, out io.Writer, flags map[string]config.SourceConfig, allowExec bool) []string {
-	fmt.Fprintln(out, "Add one as name=command or name=file:path. Leave empty to finish.")
+	fmt.Fprintln(out, "Add one as a command, file:PATH or http:PATH, optionally after NAME=. Leave empty to finish.")
 	scanner := bufio.NewScanner(in)
 	var given []string
 	for {
@@ -251,16 +366,35 @@ func promptSources(in io.Reader, out io.Writer, flags map[string]config.SourceCo
 }
 
 // reuseLine is the serve command line that repeats this run without the
-// prompt: the original arguments plus a --source for each answer.
+// prompt: the original arguments plus a --source for each answer. The new
+// flags go before a "--", since everything after it is one command.
 func reuseLine(args, given []string) string {
+	before, after := args, []string(nil)
+	if i := slices.Index(args, "--"); i >= 0 {
+		before, after = args[:i], args[i:]
+	}
 	parts := []string{"tinkerdown", "serve"}
-	for _, a := range args {
+	for _, a := range before {
 		parts = append(parts, shellQuoteIfNeeded(a))
 	}
 	for _, g := range given {
 		parts = append(parts, "--source", shellQuote(g))
 	}
+	for _, a := range after {
+		parts = append(parts, shellQuoteIfNeeded(a))
+	}
 	return strings.Join(parts, " ")
+}
+
+// commandAfterDashes joins the arguments after "--" into one shell command,
+// each quoted when it needs it, so the command runs as typed. Only the first
+// "--" ends serve's flags; later ones are the command's own.
+func commandAfterDashes(args []string) string {
+	quoted := make([]string, len(args))
+	for i, a := range args {
+		quoted[i] = shellQuoteIfNeeded(a)
+	}
+	return strings.Join(quoted, " ")
 }
 
 func shellQuoteIfNeeded(s string) string {

@@ -30,11 +30,17 @@ func ServeCommand(args []string) error {
 	var allowExec bool
 	var headless bool
 	var sourceValues, actionValues []string
+	var dashCmd string // the command after "--", if any
 
 	// Parse flags
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
-		if arg == "--help" || arg == "-h" {
+		if arg == "--" {
+			if dashCmd = commandAfterDashes(args[i+1:]); dashCmd == "" {
+				return fmt.Errorf("-- needs a command after it, such as -- docker logs -f api")
+			}
+			break
+		} else if arg == "--help" || arg == "-h" {
 			fmt.Print(serveUsage)
 			return nil
 		} else if arg == "--source" {
@@ -76,7 +82,9 @@ func ServeCommand(args []string) error {
 			allowExec = true
 		} else if arg == "--headless" {
 			headless = true
-		} else if !strings.HasPrefix(arg, "-") {
+		} else if strings.HasPrefix(arg, "-") {
+			return fmt.Errorf("unknown flag %s; see tinkerdown serve --help", arg)
+		} else {
 			// Positional argument (directory)
 			dir = arg
 		}
@@ -138,11 +146,9 @@ func ServeCommand(args []string) error {
 
 	// Sources from --source flags rank above page and site sources. They are
 	// checked after the loop, since --allow-exec may come after them.
-	cfg.FlagSources = map[string]config.SourceConfig{}
-	for _, v := range sourceValues {
-		if _, err := addFlagSource(cfg.FlagSources, v, allowExec); err != nil {
-			return err
-		}
+	cfg.FlagSources, err = flagSources(sourceValues, dashCmd, allowExec)
+	if err != nil {
+		return err
 	}
 	cfg.FlagActions = map[string]*config.Action{}
 	for _, v := range actionValues {

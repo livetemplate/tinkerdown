@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"maps"
 	"net"
 	"net/http"
 	"os"
@@ -25,13 +26,17 @@ func TestParseSourceFlag(t *testing.T) {
 		{in: "api=docker logs -f api", name: "api", cmd: "docker logs -f api"},
 		{in: "q=grep a=b log.txt", name: "q", cmd: "grep a=b log.txt"},
 		{in: "app=file:./logs/app.log", name: "app", file: "./logs/app.log"},
+		{in: "docker logs -f api", cmd: "docker logs -f api"},
+		{in: "grep a=b log.txt", cmd: "grep a=b log.txt"},
+		{in: "env FOO=1 cmd", cmd: "env FOO=1 cmd"},
+		{in: "file:./logs/app.log", file: "./logs/app.log"},
+		{in: "a b=echo", cmd: "a b=echo"},
+		{in: strings.Repeat("x", 33) + "=echo", cmd: strings.Repeat("x", 33) + "=echo"},
 		{in: "=echo hi", wantErr: true},
-		{in: "api", wantErr: true},
 		{in: "api=", wantErr: true},
 		{in: "app=file:", wantErr: true},
-		{in: "a b=echo", wantErr: true},
-		{in: "a\"=echo", wantErr: true},
-		{in: strings.Repeat("x", 33) + "=echo", wantErr: true},
+		{in: "", wantErr: true},
+		{in: "  ", wantErr: true},
 	}
 	for _, c := range cases {
 		name, src, err := parseSourceFlag(c.in)
@@ -44,7 +49,7 @@ func TestParseSourceFlag(t *testing.T) {
 		if err != nil || name != c.name || src.Cmd != c.cmd || src.File != c.file || src.Type != "stream" {
 			t.Errorf("%q: got name %q cmd %q file %q err %v", c.in, name, src.Cmd, src.File, err)
 		}
-		if back := sourceFlagValue(name, src); back != c.in {
+		if back := sourceFlagValue(name, src); name != "" && back != c.in {
 			t.Errorf("%q: sourceFlagValue gave %q", c.in, back)
 		}
 	}
@@ -98,7 +103,11 @@ func TestServeRefusesBadSourceFlags(t *testing.T) {
 		{"kind the page doesn't accept", []string{dir, "--allow-exec", "--source", "api=echo hi"}, "no page takes it"},
 		{"no page takes sources", []string{empty, "--source", "app=file:a.log"}, "no page takes it"},
 		{"name given twice", []string{dir, "--source", "a=file:x", "--source", "a=file:y"}, "twice"},
-		{"bad format", []string{dir, "--source", "noequals"}, "NAME=COMMAND"},
+		{"empty value", []string{dir, "--source", ""}, "want COMMAND"},
+		{"name missing before =", []string{dir, "--source", "=echo hi"}, "a name goes before"},
+		{"unknown flag", []string{dir, "--verbose"}, "unknown flag --verbose"},
+		{"unknown short flag", []string{dir, "-x"}, "unknown flag -x"},
+		{"nothing after --", []string{dir, "--allow-exec", "--"}, "needs a command"},
 	}
 	for _, c := range cases {
 		err := ServeCommand(c.args)
@@ -110,14 +119,14 @@ func TestServeRefusesBadSourceFlags(t *testing.T) {
 
 func TestPromptSources(t *testing.T) {
 	flags := map[string]config.SourceConfig{"api": {Type: "stream", File: "a.log"}}
-	in := strings.NewReader("bad\nweb=docker logs -f web\napi=file:b.log\napp=file:./logs/app.log\n\nignored=file:x\n")
+	in := strings.NewReader("=bad\nweb=docker logs -f web\napi=file:b.log\napp=file:./logs/app.log\n\nignored=file:x\n")
 	var out strings.Builder
 	given := promptSources(in, &out, flags, false)
 
 	if want := []string{"app=file:./logs/app.log"}; !slices.Equal(given, want) {
 		t.Fatalf("given = %q, want %q\n%s", given, want, out.String())
 	}
-	for _, want := range []string{"NAME=COMMAND", "add --allow-exec", "api is given twice"} {
+	for _, want := range []string{"a name goes before", "add --allow-exec", "api is given twice"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("prompt output missing %q:\n%s", want, out.String())
 		}
@@ -291,5 +300,96 @@ func TestRemoteConfigPathsFollowTheConfigFile(t *testing.T) {
 	}
 	if got := cfg.Sources["abs"].File; got != "/var/log/x" {
 		t.Fatalf("absolute path changed to %q", got)
+	}
+}
+
+// Named sources keep their names, and unnamed ones get defaultLabel's
+// label, made unique. The assertions use defaultLabel itself, so they hold
+// whatever label it picks.
+func TestFlagSourcesLabels(t *testing.T) {
+	const tail = "tail -f /var/log/app.log"
+	flags, err := flagSources([]string{tail, "api=file:a.log", tail}, "watchexec -e go -- go test -json ./...", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if flags["api"].File != "a.log" {
+		t.Errorf("api = %+v, want the named file source", flags["api"])
+	}
+	label := uniqueLabel(map[string]config.SourceConfig{"api": {Type: "stream"}}, defaultLabel(tail))
+	if flags[label].Cmd != tail || flags[uniqueLabel(map[string]config.SourceConfig{"api": {Type: "stream"}, label: {Type: "stream"}}, defaultLabel(tail))].Cmd != tail {
+		t.Errorf("two %q sources: got %v, want %q and its -2", tail, slices.Sorted(maps.Keys(flags)), label)
+	}
+	if len(flags) != 4 {
+		t.Errorf("got %d sources %v, want 4", len(flags), slices.Sorted(maps.Keys(flags)))
+	}
+	for name := range flags {
+		if !sourceName.MatchString(name) {
+			t.Errorf("label %q doesn't match sourceName", name)
+		}
+	}
+	if _, err := flagSources([]string{tail}, "", false); err == nil || !strings.Contains(err.Error(), "--allow-exec") {
+		t.Errorf("an unnamed command without --allow-exec: got %v", err)
+	}
+}
+
+func TestUniqueLabel(t *testing.T) {
+	taken := map[string]config.SourceConfig{"api": {Type: "stream"}, "api-2": {Type: "stream"}}
+	if got := uniqueLabel(taken, "api"); got != "api-3" {
+		t.Errorf("got %q, want api-3", got)
+	}
+	long := strings.Repeat("x", 32)
+	taken[long] = config.SourceConfig{Type: "stream"}
+	if got := uniqueLabel(taken, long); len(got) > 32 || !strings.HasSuffix(got, "-2") {
+		t.Errorf("got %q, want a 32-character label ending in -2", got)
+	}
+}
+
+// Everything after the first "--" is one command, run as typed: its own
+// "--" and its quoting survive.
+func TestCommandAfterDashes(t *testing.T) {
+	cmd := commandAfterDashes([]string{"sh", "-c", `printf '%s|' "a b" c`})
+	out, err := exec.Command("sh", "-c", cmd).Output()
+	if err != nil || string(out) != "a b|c|" {
+		t.Errorf("%s gave %q (err %v), want %q", cmd, out, err, "a b|c|")
+	}
+	if got := commandAfterDashes([]string{"watchexec", "-e", "go", "--", "go", "test", "-json", "./..."}); got != "watchexec -e go -- go test -json ./..." {
+		t.Errorf("got %q", got)
+	}
+}
+
+// A flag after "--" belongs to the command, so serve doesn't read it.
+func TestServeDashEndsFlags(t *testing.T) {
+	defer config.SetAllowExec(false)
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "index.md"), []byte("# Hi\n"), 0o644)
+	err := ServeCommand([]string{dir, "--", "grep", "--verbose", "x"})
+	if err == nil || !strings.Contains(err.Error(), "--allow-exec") {
+		t.Errorf("got %v, want the --allow-exec refusal for the command, not an unknown flag", err)
+	}
+}
+
+func TestReuseLineBeforeDashes(t *testing.T) {
+	got := reuseLine([]string{"--allow-exec", ".", "--", "docker", "logs", "-f", "api"}, []string{"app=file:x.log"})
+	if want := "tinkerdown serve --allow-exec . --source 'app=file:x.log' -- docker logs -f api"; got != want {
+		t.Errorf("got  %s\nwant %s", got, want)
+	}
+}
+
+func TestDefaultLabel(t *testing.T) {
+	for cmd, want := range map[string]string{
+		"docker logs -f api":                     "api",
+		"tail -f /var/log/app.log":               "app",
+		"watchexec -e go -- go test -json ./...": "test",
+		"kubectl logs -f deploy/web":             "web",
+		"journalctl -fu nginx":                   "nginx",
+		`docker logs -f "api"`:                   "api",
+		"./run.sh --all":                         "run",
+		"🙂 --x":                                  "cmd",
+		"":                                       "cmd",
+		strings.Repeat("y", 40) + " --x":         strings.Repeat("y", 32),
+	} {
+		if got := defaultLabel(cmd); got != want || !sourceName.MatchString(got) {
+			t.Errorf("defaultLabel(%q) = %q, want %q", cmd, got, want)
+		}
 	}
 }
