@@ -254,7 +254,7 @@ func ServeCommand(args []string) error {
 		if err != nil {
 			return err
 		}
-		absSourcePaths(cfg.FlagSources, wd)
+		rebase(cfg.FlagSources, cfg.FlagActions, wd)
 	}
 
 	// Print discovered pages (only in non-headless mode)

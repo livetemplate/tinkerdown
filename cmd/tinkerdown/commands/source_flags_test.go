@@ -287,16 +287,22 @@ func TestHTTPSourceFlagAndAbsPaths(t *testing.T) {
 	}
 	wd, _ := os.Getwd()
 	flags := map[string]config.SourceConfig{"api": src, "log": {Type: "stream", File: "/var/log/x"}, "cmd": {Type: "stream", Cmd: "echo ./x"}}
-	absSourcePaths(flags, wd)
+	actions := map[string]*config.Action{"stop": {Kind: "exec", Cmd: "docker stop x"}, "save": {Kind: "sql"}}
+	rebase(flags, actions, wd)
 	if flags["api"].HTTP != filepath.Join(wd, "api.http") || flags["log"].File != "/var/log/x" || flags["cmd"].Cmd != "echo ./x" {
-		t.Fatalf("absSourcePaths = %+v", flags)
+		t.Fatalf("rebase = %+v", flags)
+	}
+	// Commands run in base, since a fetched page's directory holds only the page.
+	if flags["cmd"].Dir != wd || flags["log"].Dir != "" || actions["stop"].Dir != wd || actions["save"].Dir != "" {
+		t.Fatalf("rebase dirs: sources %+v, actions stop=%q save=%q", flags, actions["stop"].Dir, actions["save"].Dir)
 	}
 }
 
 func TestRemoteConfigPathsFollowTheConfigFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "http.yaml")
-	os.WriteFile(path, []byte("sources:\n  api: {type: stream, http: ./api.http}\n  abs: {type: stream, file: /var/log/x}\n"), 0o644)
+	os.WriteFile(path, []byte("sources:\n  api: {type: stream, http: ./api.http}\n  abs: {type: stream, file: /var/log/x}\n  run: {type: stream, cmd: ./run.sh}\n"+
+		"actions:\n  stop: {kind: exec, cmd: ./stop.sh}\n"), 0o644)
 	cfg, err := remoteConfig(path, t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -306,6 +312,9 @@ func TestRemoteConfigPathsFollowTheConfigFile(t *testing.T) {
 	}
 	if got := cfg.Sources["abs"].File; got != "/var/log/x" {
 		t.Fatalf("absolute path changed to %q", got)
+	}
+	if cfg.Sources["run"].Dir != dir || cfg.Actions["stop"].Dir != dir {
+		t.Fatalf("commands run in %q and %q, want the config's directory %q", cfg.Sources["run"].Dir, cfg.Actions["stop"].Dir, dir)
 	}
 }
 

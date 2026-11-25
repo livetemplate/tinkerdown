@@ -873,3 +873,30 @@ func TestFlagActionPassesApprovalGate(t *testing.T) {
 		t.Fatalf("unapproved yaml action: err = %v, want the approval gate", err)
 	}
 }
+
+// An action with a Dir runs there instead of the site directory, as serve
+// sets it for a page from a URL.
+func TestExecActionRunsInItsDir(t *testing.T) {
+	origState := config.IsExecAllowed()
+	defer config.SetAllowExec(origState)
+	config.SetAllowExec(true)
+
+	site, work := t.TempDir(), t.TempDir()
+	state := &GenericState{siteDir: site}
+	for _, action := range []*config.Action{
+		{Kind: "exec", Cmd: "touch flag-ran", FromFlag: true, Dir: work},
+		{Kind: "exec", Cmd: "touch config-ran", Dir: work},
+	} {
+		if err := state.executeCustomAction(action, map[string]interface{}{}); err != nil {
+			t.Fatalf("%s: %v", action.Cmd, err)
+		}
+	}
+	for _, f := range []string{"flag-ran", "config-ran"} {
+		if _, err := os.Stat(filepath.Join(work, f)); err != nil {
+			t.Errorf("%s: not in the action's Dir: %v", f, err)
+		}
+		if _, err := os.Stat(filepath.Join(site, f)); err == nil {
+			t.Errorf("%s: ran in the site directory", f)
+		}
+	}
+}

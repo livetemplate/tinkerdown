@@ -3,6 +3,7 @@
 package runtime
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -298,7 +299,7 @@ func createSource(name string, cfg config.SourceConfig, siteDir, currentFile str
 				Reason: "exec sources are disabled by default for security. Use --allow-exec flag to enable.",
 			}
 		}
-		return source.NewExecSourceWithConfig(name, cfg, siteDir)
+		return source.NewExecSourceWithConfig(name, cfg, cmp.Or(cfg.Dir, siteDir))
 	case "pg":
 		return source.NewPostgresSource(name, cfg.Query, cfg.Options)
 	case "rest":

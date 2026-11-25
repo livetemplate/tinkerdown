@@ -1,6 +1,7 @@
 package source
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -502,7 +503,7 @@ func streamInput(hub *stream.Hub, name string, cfg config.SourceConfig, dir stri
 		if err := requireExec(name, "cmd", "stream sources that run a command"); err != nil {
 			return nil, err
 		}
-		spec.Dir = dir
+		spec.Dir = cmp.Or(cfg.Dir, dir)
 		spec.Env = expandEnv(spec.Env)
 		maps.Copy(spec.Env, params)
 	default:

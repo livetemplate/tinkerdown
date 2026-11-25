@@ -30,8 +30,8 @@ var sourceName = regexp.MustCompile(`^[A-Za-z0-9_-]{1,32}$`)
 // the source; without it the name is "" and addSource picks a label. NAME= is
 // the part before the first "=" when that part is a plain name, so a command
 // such as `grep a=b` is unnamed, and one that starts with an environment
-// assignment is written `env FOO=1 cmd`. PATH is kept as given; see
-// absSourcePaths for a page from a URL.
+// assignment is written `env FOO=1 cmd`. PATH is kept as given; see rebase
+// for a page from a URL.
 func parseSourceFlag(v string) (string, config.SourceConfig, error) {
 	if strings.HasPrefix(v, "=") {
 		return "", config.SourceConfig{}, fmt.Errorf("--source %q: a name goes before the \"=\", as in api=COMMAND; or leave out NAME= and give the command alone", v)
@@ -60,19 +60,28 @@ func pathErr(flag, kind, path string) error {
 	return nil
 }
 
-// absSourcePaths makes each relative file and http path in srcs absolute
-// from base. A page from a URL lives in a temporary directory, so serve
-// resolves its flags from the directory it runs in and its --config file's
-// sources from that file's directory; a local page keeps paths relative to
-// its own directory.
-func absSourcePaths(srcs map[string]config.SourceConfig, base string) {
+// rebase points srcs and actions at base: each relative file and http path
+// becomes absolute from it, and each command runs in it. A page from a URL
+// lives in a temporary directory that holds only the page, so serve rebases
+// its flags on the directory it runs in and its --config file's sources and
+// actions on that file's directory. A local page's paths and commands stay
+// in its own directory.
+func rebase(srcs map[string]config.SourceConfig, actions map[string]*config.Action, base string) {
 	for name, src := range srcs {
 		for _, p := range []*string{&src.File, &src.HTTP} {
 			if *p != "" && !filepath.IsAbs(*p) {
 				*p = filepath.Join(base, *p)
 			}
 		}
+		if src.Cmd != "" {
+			src.Dir = base
+		}
 		srcs[name] = src
+	}
+	for _, a := range actions {
+		if a.Cmd != "" {
+			a.Dir = base
+		}
 	}
 }
 

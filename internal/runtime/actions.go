@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"fmt"
 	"io"
@@ -456,21 +457,21 @@ func (s *GenericState) executeExecAction(action *config.Action, data map[string]
 		return err
 	}
 
-	return s.runShell(cmdStr, nil)
+	return s.runShell(action, cmdStr, nil)
 }
 
-// runShell runs an exec action's command with sh -c in the site directory,
-// with a 30s timeout and env added to the server's environment, then
-// refreshes the block. It needs --allow-exec. A failure sets the block's
-// Error with the stderr.
-func (s *GenericState) runShell(cmdStr string, env []string) error {
+// runShell runs an exec action's command with sh -c in the action's Dir or
+// else the site directory, with a 30s timeout and env added to the server's
+// environment, then refreshes the block. It needs --allow-exec. A failure
+// sets the block's Error with the stderr.
+func (s *GenericState) runShell(action *config.Action, cmdStr string, env []string) error {
 	if !config.IsExecAllowed() {
 		return fmt.Errorf("exec actions disabled (use --allow-exec flag)")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "sh", "-c", cmdStr)
-	cmd.Dir = s.siteDir
+	cmd.Dir = cmp.Or(action.Dir, s.siteDir)
 	cmd.Env = append(os.Environ(), env...)
 
 	var stdout, stderr bytes.Buffer
@@ -500,7 +501,7 @@ func (s *GenericState) executeFlagAction(action *config.Action, data map[string]
 		s.Error = err.Error()
 		return err
 	}
-	return s.runShell(action.Cmd, env)
+	return s.runShell(action, action.Cmd, env)
 }
 
 // expandTemplate expands Go template expressions in a string.
