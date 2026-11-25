@@ -70,6 +70,33 @@ func (l *streamBrowserLogs) listen(ctx context.Context) {
 	})
 }
 
+// dump logs what a failing test needs: the console, the WebSocket frames,
+// the rendered HTML and the server log's tail.
+func (l *streamBrowserLogs) dump(t *testing.T, ctx context.Context, serverLog *serverLog) {
+	t.Helper()
+	var html string
+	chromedp.Run(ctx, chromedp.OuterHTML("body", &html, chromedp.ByQuery))
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	t.Logf("console:\n%s", strings.Join(l.console, "\n"))
+	t.Logf("ws sent:\n%s", strings.Join(l.wsSent, "\n"))
+	t.Logf("ws received: %d frames, last: %s", len(l.wsRecv), strings.Join(l.wsRecv[max(0, len(l.wsRecv)-5):], "\n"))
+	t.Logf("rendered html: %.6000s", html)
+	t.Logf("server log tail: %s", tail(serverLog.String(), 4000))
+}
+
+// checkConsole fails t for each error or exception the browser logged.
+func (l *streamBrowserLogs) checkConsole(t *testing.T) {
+	t.Helper()
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	for _, c := range l.console {
+		if strings.Contains(c, "[error]") || strings.Contains(c, "[exception]") {
+			t.Errorf("browser console: %s", c)
+		}
+	}
+}
+
 func (l *streamBrowserLogs) frames() []string {
 	l.mu.Lock()
 	defer l.mu.Unlock()

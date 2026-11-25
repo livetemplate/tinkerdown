@@ -61,7 +61,7 @@ func TestQueryKind(t *testing.T) {
 		"-- Everyone\nSELECT * FROM users": "select",
 		"/* the old ones */ DELETE FROM t": "delete",
 		"  update t set a = 1":             "update",
-		"-- a\n-- b\n\n  Insert INTO t":     "insert",
+		"-- a\n-- b\n\n  Insert INTO t":    "insert",
 	} {
 		if got := queryKind(sql); got != want {
 			t.Errorf("queryKind(%q) = %q, want %q", sql, got, want)

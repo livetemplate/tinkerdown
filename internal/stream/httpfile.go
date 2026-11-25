@@ -242,7 +242,7 @@ func readHTTPFile(ctx context.Context, spec InputSpec, b *Buffer) {
 		vf := newFiller(vars) // one budget and one resolution for the whole file
 		for i, q := range reqs {
 			fields := map[string]interface{}{
-				"entry":   entryID(spec.Name, i),
+				"entry":   EntryID(spec.Name, i),
 				"name":    q.Name,
 				"method":  q.Method,
 				"url":     q.URL,
@@ -257,9 +257,9 @@ func readHTTPFile(ctx context.Context, spec InputSpec, b *Buffer) {
 	})
 }
 
-// entryID names a row a file reader made: its source's name, "/", and its
+// EntryID names a row a file reader made: its source's name, "/", and its
 // place from 1, so rows from two files differ and a click names one.
-func entryID(source string, i int) string {
+func EntryID(source string, i int) string {
 	return source + "/" + strconv.Itoa(i+1)
 }
 

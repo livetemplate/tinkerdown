@@ -27,9 +27,6 @@ var sourceName = regexp.MustCompile(`^[A-Za-z0-9_-]{1,32}$`)
 // sourceForms is how a --source is written, for messages.
 const sourceForms = "COMMAND, file:PATH, http:PATH or sql:PATH, optionally after NAME="
 
-// pathKinds are the --source kinds written KIND:PATH.
-var pathKinds = []string{"file", "http", "sql"}
-
 // parseSourceFlag parses a --source value: COMMAND for a stream source that
 // runs COMMAND, file:PATH for one that follows PATH, http:PATH for one that
 // lists the requests in a .http file, or sql:PATH for one that lists the
@@ -50,29 +47,12 @@ func parseSourceFlag(v string) (string, config.SourceConfig, error) {
 	if strings.TrimSpace(value) == "" {
 		return "", config.SourceConfig{}, fmt.Errorf("--source %q: want %s", v, sourceForms)
 	}
-	for _, kind := range pathKinds {
-		path, ok := strings.CutPrefix(value, kind+":")
-		if !ok {
-			continue
+	if kind, path, ok := strings.Cut(value, ":"); ok {
+		if src, ok := config.WithPath(kind, path); ok {
+			return name, src, pathErr(v, kind, path)
 		}
-		src := config.SourceConfig{Type: "stream"}
-		*pathField(&src, kind) = path
-		return name, src, pathErr(v, kind, path)
 	}
 	return name, config.SourceConfig{Type: "stream", Cmd: value}, nil
-}
-
-// pathField is the field of src that holds a KIND:PATH flag's path.
-func pathField(src *config.SourceConfig, kind string) *string {
-	switch kind {
-	case "file":
-		return &src.File
-	case "http":
-		return &src.HTTP
-	case "sql":
-		return &src.SQL
-	}
-	return nil
 }
 
 // pathErr refuses a KIND:PATH flag with no path.
@@ -91,8 +71,8 @@ func pathErr(flag, kind, path string) error {
 // in its own directory.
 func rebase(srcs map[string]config.SourceConfig, actions map[string]*config.Action, base string) {
 	for name, src := range srcs {
-		for _, kind := range pathKinds {
-			if p := pathField(&src, kind); *p != "" && !filepath.IsAbs(*p) {
+		for _, p := range []*string{&src.File, &src.HTTP, &src.SQL} {
+			if *p != "" && !filepath.IsAbs(*p) {
 				*p = filepath.Join(base, *p)
 			}
 		}
@@ -111,8 +91,8 @@ func rebase(srcs map[string]config.SourceConfig, actions map[string]*config.Acti
 // sourceLabel is the label of a source with no name: from its command, or
 // from its file's name without the extension, cleaned by cleanLabel.
 func sourceLabel(src config.SourceConfig) string {
-	if kind := src.Kind(); kind != "cmd" {
-		return cmp.Or(cleanLabel(wordLabel(*pathField(&src, kind))), kind)
+	if p := src.StreamPath(); p != "" {
+		return cmp.Or(cleanLabel(wordLabel(p)), src.Kind())
 	}
 	return defaultLabel(src.Cmd)
 }
@@ -206,8 +186,8 @@ func pageSourceNames(cfg *config.Config, srv *server.Server) map[string]bool {
 
 // sourceFlagValue turns a source back into the value parseSourceFlag reads.
 func sourceFlagValue(name string, src config.SourceConfig) string {
-	if kind := src.Kind(); kind != "cmd" {
-		return name + "=" + kind + ":" + *pathField(&src, kind)
+	if p := src.StreamPath(); p != "" {
+		return name + "=" + src.Kind() + ":" + p
 	}
 	return name + "=" + src.Cmd
 }

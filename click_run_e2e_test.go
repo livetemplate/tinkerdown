@@ -116,17 +116,7 @@ func TestClickRun_E2E(t *testing.T) {
 	logs.listen(ctx)
 	url := ConvertURLForDockerChrome(ts.URL)
 
-	dump := func() {
-		var html string
-		chromedp.Run(ctx, chromedp.OuterHTML("body", &html, chromedp.ByQuery))
-		logs.mu.Lock()
-		defer logs.mu.Unlock()
-		t.Logf("console:\n%s", strings.Join(logs.console, "\n"))
-		t.Logf("ws sent:\n%s", strings.Join(logs.wsSent, "\n"))
-		t.Logf("ws received: %d frames, last: %s", len(logs.wsRecv), strings.Join(logs.wsRecv[max(0, len(logs.wsRecv)-5):], "\n"))
-		t.Logf("rendered html: %.6000s", html)
-		t.Logf("server log tail: %s", tail(serverLog.String(), 4000))
-	}
+	dump := func() { logs.dump(t, ctx, serverLog) }
 	run := func(actions ...chromedp.Action) error {
 		actx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		defer cancel()
@@ -274,11 +264,5 @@ func TestClickRun_E2E(t *testing.T) {
 		waitJS("one request, no error", `!document.querySelector('[data-testid="send-api/2"]') && !document.querySelector('[data-testid="req-error"]')`)
 	})
 
-	logs.mu.Lock()
-	defer logs.mu.Unlock()
-	for _, c := range logs.console {
-		if strings.Contains(c, "[error]") || strings.Contains(c, "[exception]") {
-			t.Errorf("browser console: %s", c)
-		}
-	}
+	logs.checkConsole(t)
 }

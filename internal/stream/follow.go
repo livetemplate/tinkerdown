@@ -17,9 +17,6 @@ import (
 // folder's files together.
 const MaxReadFile = 4 * 1024 * 1024
 
-// MaxHTTPFile caps the size of a .http file the reader reads.
-const MaxHTTPFile = MaxReadFile
-
 // MaxFolderFiles caps the files a folder source reads.
 const MaxFolderFiles = 1000
 
@@ -44,20 +41,20 @@ type fileStat struct {
 func followFiles(ctx context.Context, b *Buffer, path, ext string, parse func([]textFile) ([]Row, []Private, error)) {
 	tick := time.NewTicker(pollInterval)
 	defer tick.Stop()
-	var seen []fileStat
-	read := false       // whether seen holds a read's stats; an empty folder's are empty
+	var seen []fileStat // nil until a read; an empty folder's is empty, not nil
 	var last []textFile // the content last read, so a touch changes nothing
 	for {
 		stats, err := statFiles(path, ext)
 		switch {
-		case errors.Is(err, fs.ErrNotExist):
-			b.hub.setErr(ctx, b, "waiting for "+path)
-			read = false
 		case err != nil:
-			b.hub.setErr(ctx, b, err.Error())
-			read = false
-		case !read || !slices.Equal(stats, seen):
-			seen, read = stats, true
+			msg := err.Error()
+			if errors.Is(err, fs.ErrNotExist) {
+				msg = "waiting for " + path
+			}
+			b.hub.setErr(ctx, b, msg)
+			seen = nil
+		case seen == nil || !slices.Equal(stats, seen):
+			seen = stats
 			last = readFilesOnce(ctx, b, stats, parse, last)
 		}
 		select {
@@ -70,7 +67,7 @@ func followFiles(ctx context.Context, b *Buffer, path, ext string, parse func([]
 
 // statFiles lists what followFiles reads at path, refusing more than
 // MaxFolderFiles files or MaxReadFile bytes. A folder with no files is an
-// empty list, not an error.
+// empty list, never nil, and not an error.
 func statFiles(path, ext string) ([]fileStat, error) {
 	info, err := os.Stat(path)
 	if err != nil {
@@ -89,7 +86,7 @@ func statFiles(path, ext string) ([]fileStat, error) {
 	if err != nil {
 		return nil, err
 	}
-	var stats []fileStat
+	stats := []fileStat{}
 	var total int64
 	for _, e := range entries {
 		name := e.Name()

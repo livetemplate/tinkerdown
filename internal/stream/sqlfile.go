@@ -41,12 +41,16 @@ func ParseSQLFile(text, name string) []SQLQuery {
 		}
 	}
 	for i, line := range lines {
-		m := sqlHeader.FindStringSubmatch(strings.TrimSpace(line))
+		t := strings.TrimSpace(line)
+		if !strings.HasPrefix(t, "--") {
+			continue
+		}
+		m := sqlHeader.FindStringSubmatch(t)
 		if m == nil {
 			continue
 		}
 		finish(i)
-		n := m[1]
+		n := strings.Clone(m[1]) // a row keeps the name, not the whole file
 		if t := strings.TrimRight(n, "^$!<*#"); t != "" {
 			n = t
 		}
@@ -97,7 +101,7 @@ func readSQLFiles(ctx context.Context, spec InputSpec, b *Buffer) {
 					kind = ""
 				}
 				fields := map[string]interface{}{
-					"entry": entryID(spec.Name, len(rows)),
+					"entry": EntryID(spec.Name, len(rows)),
 					"file":  f.name,
 					"name":  q.Name,
 					"kind":  kind,

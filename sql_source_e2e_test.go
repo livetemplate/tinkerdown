@@ -99,17 +99,7 @@ func TestSQLSource_E2E(t *testing.T) {
 	logs := &streamBrowserLogs{}
 	logs.listen(ctx)
 
-	dump := func() {
-		var html string
-		chromedp.Run(ctx, chromedp.OuterHTML("body", &html, chromedp.ByQuery))
-		logs.mu.Lock()
-		defer logs.mu.Unlock()
-		t.Logf("console:\n%s", strings.Join(logs.console, "\n"))
-		t.Logf("ws sent:\n%s", strings.Join(logs.wsSent, "\n"))
-		t.Logf("ws received: %d frames, last: %s", len(logs.wsRecv), strings.Join(logs.wsRecv[max(0, len(logs.wsRecv)-5):], "\n"))
-		t.Logf("rendered html: %.6000s", html)
-		t.Logf("server log tail: %s", tail(serverLog.String(), 4000))
-	}
+	dump := func() { logs.dump(t, ctx, serverLog) }
 	do := func(actions ...chromedp.Action) {
 		t.Helper()
 		actx, cancel := context.WithTimeout(ctx, 10*time.Second)
@@ -224,11 +214,5 @@ func TestSQLSource_E2E(t *testing.T) {
 		}
 	})
 
-	logs.mu.Lock()
-	defer logs.mu.Unlock()
-	for _, c := range logs.console {
-		if strings.Contains(c, "[error]") || strings.Contains(c, "[exception]") {
-			t.Errorf("browser console: %s", c)
-		}
-	}
+	logs.checkConsole(t)
 }

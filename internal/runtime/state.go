@@ -332,12 +332,6 @@ func createSource(name string, cfg config.SourceConfig, siteDir, currentFile str
 
 // HandleAction dispatches an action to the appropriate handler.
 // This replaces the reflection-based dispatch used in generated plugins.
-// builtinActions are action names the runtime handles intrinsically for any
-// source, independent of the manifest — source affordances (refresh a view,
-// add/delete a row) rather than custom, governed actions. The policy lint must
-// not treat them as unapproved: they are governed by whether the source itself
-// is approved and writable. Kept in sync with the HandleAction switch below.
-var builtinActions = config.BuiltinActions
 
 // builtinActionPrefixes are the datatable action families (Sort_X, NextPage_X,
 // PrevPage_X). Used only by HandleAction's dispatch to route framework-generated
@@ -354,7 +348,7 @@ var builtinActionPrefixes = []string{"sort", "nextpage", "prevpage"}
 // would classify a custom governed action like "sort-by-priority" as built-in
 // and silently drop it from the approved-action check — a governance hole.
 func IsBuiltinAction(name string) bool {
-	return builtinActions[strings.ToLower(name)]
+	return config.BuiltinActions[strings.ToLower(name)]
 }
 
 func (s *GenericState) HandleAction(action string, data map[string]interface{}) error {

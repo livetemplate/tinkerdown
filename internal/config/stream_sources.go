@@ -1,6 +1,7 @@
 package config
 
 import (
+	"cmp"
 	"fmt"
 	"maps"
 	"regexp"
@@ -59,7 +60,7 @@ func ValidateStreamSource(name string, src SourceConfig, lookup func(string) (So
 		// A click names a request or query by its entry, NAME/1, which must
 		// pass the value rules.
 		if k := src.Kind(); k == "http" || k == "sql" {
-			if err := CheckTDValue("entry", name+"/1"); err != nil {
+			if err := CheckTDValue("entry", stream.EntryID(name, 0)); err != nil {
 				return invalid("stream source %q: an %s source's name can't start with - or hold a control character, since its rows' entries start with it", name, k)
 			}
 		}
@@ -135,6 +136,28 @@ func (s SourceConfig) Kind() string {
 	}
 }
 
+// StreamPath is a file, http or sql stream's path, and "" for any other source.
+func (s SourceConfig) StreamPath() string {
+	return cmp.Or(s.File, s.HTTP, s.SQL)
+}
+
+// WithPath returns a stream source of kind, file, http or sql, that reads
+// path; ok is false for any other kind.
+func WithPath(kind, path string) (src SourceConfig, ok bool) {
+	src = SourceConfig{Type: "stream"}
+	switch kind {
+	case "file":
+		src.File = path
+	case "http":
+		src.HTTP = path
+	case "sql":
+		src.SQL = path
+	default:
+		return SourceConfig{}, false
+	}
+	return src, true
+}
+
 // ParseLineMax reads a line_max value: bytes, or a number with a KiB or MiB
 // suffix. "" is 0, meaning the default.
 func ParseLineMax(v string) (int, error) {
@@ -165,8 +188,11 @@ var lineMaxValue = regexp.MustCompile(`^([0-9]{1,9})(KiB|MiB)?$`)
 var onName = regexp.MustCompile(`^[a-z][a-z0-9_]{0,31}$`)
 
 // BuiltinActions are the lowercase action names the runtime handles for any
-// block (runtime.IsBuiltinAction). A button with one of these names runs the
-// built-in, so it never starts a merge's on:.
+// source, independent of the manifest: source affordances (refresh a view,
+// add or delete a row), not custom, governed actions. The policy lint doesn't
+// treat them as unapproved, since whether the source is approved and writable
+// governs them. A button with one of these names runs the built-in, so it
+// never starts a merge's on:. Kept in sync with runtime's HandleAction switch.
 var BuiltinActions = map[string]bool{
 	"refresh": true, "run": true, "filter": true, "edit": true, "canceledit": true,
 	"add": true, "toggle": true, "delete": true, "update": true,
