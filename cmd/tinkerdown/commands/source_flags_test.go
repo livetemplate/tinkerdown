@@ -109,6 +109,8 @@ func TestServeRefusesBadSourceFlags(t *testing.T) {
 		{"unknown short flag", []string{dir, "-x"}, "unknown flag -x"},
 		{"FOO=1 cmd names a source", []string{dir, "--source", "FOO=1 cmd"}, "--source FOO runs a command"},
 		{"nothing after --", []string{dir, "--allow-exec", "--"}, "needs a command"},
+		// Port 1 is closed: the flag is refused before any fetch is tried.
+		{"bad flag before the fetch", []string{"http://127.0.0.1:1/page.md", "--source", "sh x"}, "add --allow-exec"},
 	}
 	for _, c := range cases {
 		err := ServeCommand(c.args)

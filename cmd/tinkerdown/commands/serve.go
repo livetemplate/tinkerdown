@@ -112,6 +112,12 @@ func ServeCommand(args []string) error {
 	// Set exec permission (disabled by default for security)
 	config.SetAllowExec(allowExec)
 
+	// Refuse a bad --source before fetching or reading any page. The labels
+	// are given below, once the pages' names are known.
+	if _, err := flagSources(sourceValues, dashCmd, nil, allowExec); err != nil {
+		return err
+	}
+
 	// The positional argument is a directory, one local page (a path or a
 	// file:// URI), or a page at a URL.
 	target, err := parsePageArg(dir)
@@ -210,8 +216,8 @@ func ServeCommand(args []string) error {
 		cfg.Features.HotReload = false
 	}
 	// Sources from --source flags rank above page and site sources. They are
-	// read once the pages are, so an unnamed source's label can skip the
-	// pages' names; and after the flag loop, since --allow-exec may come last.
+	// added once the pages are read, so an unnamed source's label can skip
+	// the pages' names.
 	pageNames := pageSourceNames(cfg, srv)
 	if cfg.FlagSources, err = flagSources(sourceValues, dashCmd, pageNames, allowExec); err != nil {
 		return err
