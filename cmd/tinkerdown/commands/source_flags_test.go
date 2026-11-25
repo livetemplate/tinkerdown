@@ -304,28 +304,19 @@ func TestRemoteConfigPathsFollowTheConfigFile(t *testing.T) {
 }
 
 // Named sources keep their names, and unnamed ones get defaultLabel's
-// label, made unique. The assertions use defaultLabel itself, so they hold
-// whatever label it picks.
+// label, made unique. A named source goes in first even when it comes
+// later, so "app" stays the operator's.
 func TestFlagSourcesLabels(t *testing.T) {
 	const tail = "tail -f /var/log/app.log"
-	flags, err := flagSources([]string{tail, "api=file:a.log", tail}, "watchexec -e go -- go test -json ./...", true)
+	flags, err := flagSources([]string{tail, "app=file:a.log", tail}, "watchexec -e go -- go test -json ./...", true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if flags["api"].File != "a.log" {
-		t.Errorf("api = %+v, want the named file source", flags["api"])
+	if got, want := slices.Sorted(maps.Keys(flags)), []string{"app", "app-2", "app-3", "test"}; !slices.Equal(got, want) {
+		t.Fatalf("sources %q, want %q", got, want)
 	}
-	label := uniqueLabel(map[string]config.SourceConfig{"api": {Type: "stream"}}, defaultLabel(tail))
-	if flags[label].Cmd != tail || flags[uniqueLabel(map[string]config.SourceConfig{"api": {Type: "stream"}, label: {Type: "stream"}}, defaultLabel(tail))].Cmd != tail {
-		t.Errorf("two %q sources: got %v, want %q and its -2", tail, slices.Sorted(maps.Keys(flags)), label)
-	}
-	if len(flags) != 4 {
-		t.Errorf("got %d sources %v, want 4", len(flags), slices.Sorted(maps.Keys(flags)))
-	}
-	for name := range flags {
-		if !sourceName.MatchString(name) {
-			t.Errorf("label %q doesn't match sourceName", name)
-		}
+	if flags["app"].File != "a.log" || flags["app-2"].Cmd != tail || flags["app-3"].Cmd != tail {
+		t.Errorf("got %+v", flags)
 	}
 	if _, err := flagSources([]string{tail}, "", false); err == nil || !strings.Contains(err.Error(), "--allow-exec") {
 		t.Errorf("an unnamed command without --allow-exec: got %v", err)
@@ -388,7 +379,7 @@ func TestDefaultLabel(t *testing.T) {
 		"":                                       "cmd",
 		strings.Repeat("y", 40) + " --x":         strings.Repeat("y", 32),
 	} {
-		if got := defaultLabel(cmd); got != want || !sourceName.MatchString(got) {
+		if got := defaultLabel(cmd); got != want {
 			t.Errorf("defaultLabel(%q) = %q, want %q", cmd, got, want)
 		}
 	}

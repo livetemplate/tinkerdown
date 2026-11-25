@@ -1,18 +1,13 @@
 package commands
 
 import (
+	"cmp"
 	"fmt"
 	"io"
-	"maps"
-	"regexp"
 	"slices"
 	"strings"
 
-	"golang.org/x/net/html"
-
-	"github.com/livetemplate/tinkerdown"
 	"github.com/livetemplate/tinkerdown/internal/config"
-	"github.com/livetemplate/tinkerdown/internal/runtime"
 	"github.com/livetemplate/tinkerdown/internal/security"
 	"github.com/livetemplate/tinkerdown/internal/server"
 )
@@ -20,8 +15,9 @@ import (
 // describeTakes prints what each page takes from the command line, for
 // `serve <page> --help`. It reads only what the page already declares: its
 // ["*"] merges take any sources, a merge's other inputs that nothing defines
-// are sources the operator names, and its buttons name actions. Page text
-// (names come from the page, hints too) is cleaned before it is printed.
+// are sources the operator names, and the actions its markup invokes are
+// --action flags. It walks the same sources checkFlagSources and sourceNeeds
+// do. Page text (names and hints) is cleaned before it is printed.
 func describeTakes(w io.Writer, cfg *config.Config, srv *server.Server, shown string) {
 	for _, route := range srv.Routes() {
 		page := route.Page
@@ -32,14 +28,8 @@ func describeTakes(w io.Writer, cfg *config.Config, srv *server.Server, shown st
 		add := func(flag, what string) {
 			lines = append(lines, fmt.Sprintf("  %s\n      %s", security.CleanPageText(flag), security.CleanPageText(what)))
 		}
-		// Help runs before any --source is read, so a name that resolves is
-		// one the page or tinkerdown.yaml defines.
-		defined := func(name string) bool {
-			_, ok := server.ResolveSource(cfg, page, name)
-			return ok
-		}
 		onButtons := map[string]bool{}
-		for _, name := range slices.Sorted(maps.Keys(page.Config.Sources)) {
+		for _, name := range slices.Compact(slices.Sorted(slices.Values(server.VisibleSourceNames(cfg, page)))) {
 			src, ok := server.ResolveSource(cfg, page, name)
 			if !ok || src.Type != "merge" {
 				continue
@@ -48,12 +38,13 @@ func describeTakes(w io.Writer, cfg *config.Config, srv *server.Server, shown st
 				onButtons[src.On] = true
 			}
 			if src.Wildcard {
-				flag, what := wildcardTakes(name, src.Accepts)
-				add(flag, what)
+				add(wildcardForms(src.Accepts), wildcardTakes(name, src.Accepts))
 				continue
 			}
 			for _, in := range src.Inputs {
-				if defined(in) {
+				// Help reads no --source, so an input that resolves is one
+				// the page or tinkerdown.yaml defines.
+				if _, ok := server.ResolveSource(cfg, page, in); ok {
 					continue
 				}
 				what := "shown in " + name
@@ -66,32 +57,29 @@ func describeTakes(w io.Writer, cfg *config.Config, srv *server.Server, shown st
 				add("--source "+in+"=…", what)
 			}
 		}
-		for _, b := range pageButtons(page.InteractiveBlocks) {
-			if !onButtons[b] && !runtime.IsBuiltinAction(b) {
-				add("--action "+b+"=COMMAND", "run by the "+b+" button")
+		// Refs lists the actions the markup invokes, sorted and without
+		// builtins. A name built by a template action can't be passed as
+		// --action, and an on: button starts a merge, not an action.
+		for _, a := range page.Refs().Actions {
+			if !onButtons[a] && !strings.Contains(a, "{{") {
+				add("--action "+a+"=COMMAND", "run by the "+a+" button")
 			}
 		}
-		label := shown
-		if label == "" {
-			label = route.FilePath
-		}
+		label := security.CleanPageText(cmp.Or(shown, route.FilePath))
 		if len(lines) == 0 {
-			fmt.Fprintf(w, "\n%s takes no sources or actions.\n", security.CleanPageText(label))
+			fmt.Fprintf(w, "\n%s takes no sources or actions.\n", label)
 			continue
 		}
-		fmt.Fprintf(w, "\n%s takes:\n%s\n", security.CleanPageText(label), strings.Join(lines, "\n"))
+		fmt.Fprintf(w, "\n%s takes:\n%s\n", label, strings.Join(lines, "\n"))
 	}
 }
 
-// wildcardTakes says how to pass a ["*"] merge's sources, and what it takes:
-// how many, and the page's hint.
-func wildcardTakes(name string, a *config.SourceAccepts) (flag, what string) {
-	need, hint, kinds := 1, "", []string(nil)
-	if a != nil {
-		need, hint, kinds = max(a.Min, 1), a.Hint, a.Kinds
-	}
-	if len(kinds) == 0 {
-		kinds = []string{"cmd", "file", "http"}
+// wildcardForms is how to pass a ["*"] merge's sources, by the kinds it
+// accepts (all three by default).
+func wildcardForms(a *config.SourceAccepts) string {
+	kinds := []string{"cmd", "file", "http"}
+	if a != nil && len(a.Kinds) > 0 {
+		kinds = a.Kinds
 	}
 	var forms []string
 	for _, k := range kinds {
@@ -102,36 +90,15 @@ func wildcardTakes(name string, a *config.SourceAccepts) (flag, what string) {
 			forms = append(forms, "--source "+k+":PATH")
 		}
 	}
-	what = fmt.Sprintf("%d or more, shown in %s", need, name)
+	return strings.Join(forms, ", ")
+}
+
+// wildcardTakes says what a ["*"] merge takes: how many, and the page's hint.
+func wildcardTakes(name string, a *config.SourceAccepts) string {
+	need, hint := a.Need()
+	what := fmt.Sprintf("%d or more, shown in %s", need, name)
 	if hint != "" {
 		what += fmt.Sprintf(". The page says: %q", hint)
 	}
-	return strings.Join(forms, ", "), what
-}
-
-// templateAction is a {{ }} action, replaced before tokenizing so a
-// template reads as HTML.
-var templateAction = regexp.MustCompile(`\{\{.*?\}\}`)
-
-// pageButtons lists the names of the buttons in a page's lvt blocks, sorted
-// and without repeats. A name built by a template action is skipped, since
-// only a fixed name can be passed as --action.
-func pageButtons(blocks map[string]*tinkerdown.InteractiveBlock) []string {
-	var names []string
-	for _, b := range blocks {
-		z := html.NewTokenizer(strings.NewReader(templateAction.ReplaceAllString(b.Content, "{{}}")))
-		for tt := z.Next(); tt != html.ErrorToken; tt = z.Next() {
-			tok := z.Token()
-			if tok.Data != "button" || (tt != html.StartTagToken && tt != html.SelfClosingTagToken) {
-				continue
-			}
-			for _, a := range tok.Attr {
-				if a.Key == "name" && a.Val != "" && !strings.Contains(a.Val, "{{") {
-					names = append(names, a.Val)
-				}
-			}
-		}
-	}
-	slices.Sort(names)
-	return slices.Compact(names)
+	return what
 }

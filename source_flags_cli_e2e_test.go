@@ -5,12 +5,10 @@ package tinkerdown_test
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -18,25 +16,6 @@ import (
 	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/chromedp"
 )
-
-// lockedBuffer is a bytes buffer that the server process and the test can
-// share: the process writes from os/exec's copy goroutine.
-type lockedBuffer struct {
-	mu sync.Mutex
-	b  strings.Builder
-}
-
-func (l *lockedBuffer) Write(p []byte) (int, error) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return l.b.Write(p)
-}
-
-func (l *lockedBuffer) String() string {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return l.b.String()
-}
 
 // TestPlainCommandFlags_E2E runs the real serve command with sources that
 // have no names: one after "--", one --source command and one --source
@@ -50,11 +29,15 @@ func TestPlainCommandFlags_E2E(t *testing.T) {
 	// Prints two lines, then stays up, so it isn't restarted and repeated.
 	os.WriteFile(filepath.Join(dir, "api.sh"), []byte("printf 'api one\\napi two\\n'\nexec tail -f /dev/null\n"), 0o755)
 
+	// Chrome takes longest to start and needs nothing else, so it goes first.
+	chrome, cleanup := SetupDockerChrome(t, 90*time.Second)
+	defer cleanup()
+
 	port, err := getFreePort()
 	if err != nil {
 		t.Fatal(err)
 	}
-	serverLog := &lockedBuffer{}
+	serverLog := &syncBuffer{}
 	cmd := exec.Command(bin, "serve", dir, "--allow-exec", "--port", fmt.Sprint(port),
 		"--source", "sh ./api.sh", "--source", "file:app.log", "--", "sh", "./api.sh")
 	cmd.Dir = dir
@@ -68,21 +51,13 @@ func TestPlainCommandFlags_E2E(t *testing.T) {
 	t.Cleanup(func() {
 		syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 		cmd.Wait()
+		if t.Failed() {
+			t.Logf("server log:\n%s", serverLog.String())
+		}
 	})
 	url := fmt.Sprintf("http://localhost:%d", port)
-	for deadline := time.Now().Add(20 * time.Second); ; {
-		if resp, err := http.Get(url); err == nil {
-			resp.Body.Close()
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("serve didn't start:\n%s", serverLog.String())
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
+	WaitForServer(t, url, 20*time.Second)
 
-	chrome, cleanup := SetupDockerChrome(t, 90*time.Second)
-	defer cleanup()
 	ctx := chrome.Context
 	logs := &streamBrowserLogs{}
 	logs.listen(ctx)
@@ -116,12 +91,10 @@ func TestPlainCommandFlags_E2E(t *testing.T) {
 		dump()
 		t.Fatalf("rows from each unnamed source: %v", err)
 	}
-	if len(logs.console) > 0 {
-		for _, line := range logs.console {
-			if strings.Contains(strings.ToLower(line), "error") {
-				dump()
-				t.Fatalf("browser console error: %s", line)
-			}
+	for _, line := range logs.console {
+		if strings.Contains(strings.ToLower(line), "error") {
+			dump()
+			t.Fatalf("browser console error: %s", line)
 		}
 	}
 }

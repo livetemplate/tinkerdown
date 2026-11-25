@@ -21,7 +21,7 @@ import (
 // ServeCommand implements the serve command.
 func ServeCommand(args []string) error {
 	// Parse arguments
-	dir := "."
+	var dir string // the positional argument; "." when none is given
 	var configPath string
 	var port string
 	var host string
@@ -31,7 +31,7 @@ func ServeCommand(args []string) error {
 	var headless bool
 	var sourceValues, actionValues []string
 	var dashCmd string // the command after "--", if any
-	var help, pageGiven bool
+	var help bool
 
 	// Parse flags
 	for i := 0; i < len(args); i++ {
@@ -86,13 +86,19 @@ func ServeCommand(args []string) error {
 			return fmt.Errorf("unknown flag %s; see tinkerdown serve --help", arg)
 		} else {
 			// Positional argument (directory)
-			dir, pageGiven = arg, true
+			dir = arg
 		}
 	}
-	if help && !pageGiven {
-		fmt.Print(serveUsage)
-		return nil
+	if help {
+		if dir == "" {
+			fmt.Print(serveUsage)
+			return nil
+		}
+		// serve only loads the page to say what it takes, so the flags it
+		// would run are not read.
+		sourceValues, actionValues, dashCmd = nil, nil, ""
 	}
+	dir = cmp.Or(dir, ".")
 
 	// Set operator identity (defaults to $USER if not specified)
 	config.SetOperator(operator)
@@ -150,17 +156,13 @@ func ServeCommand(args []string) error {
 
 	// Sources from --source flags rank above page and site sources. They are
 	// checked after the loop, since --allow-exec may come after them.
-	// With --help, serve only loads the page to say what it takes, so the
-	// flags it would run are not read.
-	cfg.FlagSources, cfg.FlagActions = map[string]config.SourceConfig{}, map[string]*config.Action{}
-	if !help {
-		if cfg.FlagSources, err = flagSources(sourceValues, dashCmd, allowExec); err != nil {
+	if cfg.FlagSources, err = flagSources(sourceValues, dashCmd, allowExec); err != nil {
+		return err
+	}
+	cfg.FlagActions = map[string]*config.Action{}
+	for _, v := range actionValues {
+		if err := addFlagAction(cfg.FlagActions, v, allowExec); err != nil {
 			return err
-		}
-		for _, v := range actionValues {
-			if err := addFlagAction(cfg.FlagActions, v, allowExec); err != nil {
-				return err
-			}
 		}
 	}
 	if err := checkFlagActions(cfg); err != nil {
@@ -209,15 +211,15 @@ func ServeCommand(args []string) error {
 			return err
 		}
 		cfg.Features.HotReload = false
-		if !help {
-			fmt.Printf("Fetched %s (sha256 %s). Pin it with %s#sha256=%s\n",
-				target.shown, remoteSum, cmp.Or(target.share, target.shown), remoteSum)
-		}
 	}
 	if help {
 		fmt.Print(serveUsage)
 		describeTakes(os.Stdout, cfg, srv, cmp.Or(target.share, target.shown))
 		return nil
+	}
+	if target.url != "" {
+		fmt.Printf("Fetched %s (sha256 %s). Pin it with %s#sha256=%s\n",
+			target.shown, remoteSum, cmp.Or(target.share, target.shown), remoteSum)
 	}
 
 	if err := checkFlagSources(cfg, srv); err != nil {
@@ -237,7 +239,7 @@ func ServeCommand(args []string) error {
 				fmt.Printf("Next time, run:\n  %s\n", reuseLine(args, given))
 			}
 		} else {
-			fmt.Println("No terminal, so no prompt. Pass each source as --source NAME=COMMAND, NAME=file:PATH or NAME=http:PATH; see tinkerdown serve --help.")
+			fmt.Println("No terminal, so no prompt. Pass each source as -- COMMAND, or --source COMMAND, file:PATH or http:PATH; see tinkerdown serve --help.")
 		}
 	}
 	if target.url != "" {

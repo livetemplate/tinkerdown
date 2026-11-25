@@ -83,7 +83,7 @@ func sourceLabel(src config.SourceConfig) string {
 	if path == "" {
 		return defaultLabel(src.Cmd)
 	}
-	label := strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+	label := wordLabel(path)
 	if !sourceName.MatchString(label) {
 		return "file"
 	}
@@ -100,23 +100,24 @@ func sourceLabel(src config.SourceConfig) string {
 func defaultLabel(cmd string) string {
 	words := strings.Fields(cmd)
 	for i := len(words) - 1; i >= 0; i-- {
-		if w := wordLabel(words[i]); !strings.HasPrefix(words[i], "-") && sourceName.MatchString(w) {
+		if strings.HasPrefix(words[i], "-") {
+			continue
+		}
+		if w := wordLabel(words[i]); sourceName.MatchString(w) {
 			return w
 		}
 	}
 	if len(words) > 0 {
-		kept := strings.Map(func(r rune) rune {
-			if sourceName.MatchString(string(r)) {
-				return r
-			}
-			return -1
-		}, wordLabel(words[0]))
+		kept := notNameChars.ReplaceAllString(wordLabel(words[0]), "")
 		if kept = kept[:min(len(kept), 32)]; kept != "" {
 			return kept
 		}
 	}
 	return "cmd"
 }
+
+// notNameChars matches what sourceName doesn't allow.
+var notNameChars = regexp.MustCompile(`[^A-Za-z0-9_-]`)
 
 // wordLabel is a command word as a label: unquoted, and a path reduced to its
 // base name without the extension.
@@ -171,28 +172,26 @@ func addFlagSource(flags map[string]config.SourceConfig, value string, allowExec
 // Named sources go in first, so a name the operator gave is never taken by
 // an unnamed source's label.
 func flagSources(values []string, dashCmd string, allowExec bool) (map[string]config.SourceConfig, error) {
-	type parsed struct {
-		name string
-		src  config.SourceConfig
-	}
-	var named, unnamed []parsed
+	flags := map[string]config.SourceConfig{}
+	var unnamed []config.SourceConfig
 	for _, v := range values {
 		name, src, err := parseSourceFlag(v)
-		if err != nil {
+		switch {
+		case err != nil:
 			return nil, err
-		}
-		if name == "" {
-			unnamed = append(unnamed, parsed{name, src})
-		} else {
-			named = append(named, parsed{name, src})
+		case name == "":
+			unnamed = append(unnamed, src)
+		default:
+			if _, err := addSource(flags, name, src, allowExec); err != nil {
+				return nil, err
+			}
 		}
 	}
 	if dashCmd != "" {
-		unnamed = append(unnamed, parsed{"", config.SourceConfig{Type: "stream", Cmd: dashCmd}})
+		unnamed = append(unnamed, config.SourceConfig{Type: "stream", Cmd: dashCmd})
 	}
-	flags := map[string]config.SourceConfig{}
-	for _, p := range append(named, unnamed...) {
-		if _, err := addSource(flags, p.name, p.src, allowExec); err != nil {
+	for _, src := range unnamed {
+		if _, err := addSource(flags, "", src, allowExec); err != nil {
 			return nil, err
 		}
 	}
@@ -305,10 +304,7 @@ func sourceNeeds(cfg *config.Config, srv *server.Server) []sourceNeed {
 			if !ok || !src.Wildcard {
 				continue
 			}
-			need, hint := 1, ""
-			if src.Accepts != nil {
-				need, hint = max(src.Accepts.Min, 1), src.Accepts.Hint
-			}
+			need, hint := src.Accepts.Need()
 			if len(src.Inputs) < need {
 				needs = append(needs, sourceNeed{page: route.FilePath, hint: hint, min: need})
 			}
@@ -373,28 +369,27 @@ func reuseLine(args, given []string) string {
 	if i := slices.Index(args, "--"); i >= 0 {
 		before, after = args[:i], args[i:]
 	}
-	parts := []string{"tinkerdown", "serve"}
-	for _, a := range before {
-		parts = append(parts, shellQuoteIfNeeded(a))
-	}
+	parts := append([]string{"tinkerdown", "serve"}, quoteArgs(before)...)
 	for _, g := range given {
 		parts = append(parts, "--source", shellQuote(g))
 	}
-	for _, a := range after {
-		parts = append(parts, shellQuoteIfNeeded(a))
+	return strings.Join(append(parts, quoteArgs(after)...), " ")
+}
+
+// quoteArgs quotes each argument that needs it for a POSIX shell.
+func quoteArgs(args []string) []string {
+	quoted := make([]string, len(args))
+	for i, a := range args {
+		quoted[i] = shellQuoteIfNeeded(a)
 	}
-	return strings.Join(parts, " ")
+	return quoted
 }
 
 // commandAfterDashes joins the arguments after "--" into one shell command,
 // each quoted when it needs it, so the command runs as typed. Only the first
 // "--" ends serve's flags; later ones are the command's own.
 func commandAfterDashes(args []string) string {
-	quoted := make([]string, len(args))
-	for i, a := range args {
-		quoted[i] = shellQuoteIfNeeded(a)
-	}
-	return strings.Join(quoted, " ")
+	return strings.Join(quoteArgs(args), " ")
 }
 
 func shellQuoteIfNeeded(s string) string {
