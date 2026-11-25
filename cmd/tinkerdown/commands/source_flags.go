@@ -126,19 +126,49 @@ func wordLabel(w string) string {
 	return strings.TrimSuffix(w, path.Ext(w))
 }
 
-// uniqueLabel returns label, or label-2, label-3, ... when flags has it.
+// uniqueLabel returns label, or label-2, label-3, ... when taken has it.
 // The suffix keeps the result within sourceName's 32 characters.
-func uniqueLabel(flags map[string]config.SourceConfig, label string) string {
-	if flags[label].Type == "" {
+func uniqueLabel(label string, taken func(string) bool) string {
+	if !taken(label) {
 		return label
 	}
 	for n := 2; ; n++ {
 		suffix := fmt.Sprintf("-%d", n)
 		l := label[:min(len(label), 32-len(suffix))] + suffix
-		if flags[l].Type == "" {
+		if !taken(l) {
 			return l
 		}
 	}
+}
+
+// pageSourceNames lists the names the pages and the site use: every source
+// they define and every input a merge lists. An unnamed source's label skips
+// these, so it never replaces a page's source or fills a role (send, logs,
+// ...) the operator didn't name. Only a NAME= does that. It reads what the
+// pages declare, not the flag sources.
+func pageSourceNames(cfg *config.Config, srv *server.Server) map[string]bool {
+	names := map[string]bool{}
+	add := func(name, typ string, inputs []string) {
+		names[name] = true
+		if typ == "merge" {
+			for _, in := range inputs {
+				if in != "*" {
+					names[in] = true
+				}
+			}
+		}
+	}
+	for name, src := range cfg.Sources {
+		add(name, src.Type, src.Inputs)
+	}
+	for _, route := range srv.Routes() {
+		if route.Page != nil {
+			for name, src := range route.Page.Config.Sources {
+				add(name, src.Type, src.Inputs)
+			}
+		}
+	}
+	return names
 }
 
 // sourceFlagValue turns a source back into the value parseSourceFlag reads.
@@ -159,19 +189,19 @@ func shellQuote(s string) string {
 }
 
 // addFlagSource parses a --source value (or a prompt answer) and adds it to
-// flags.
-func addFlagSource(flags map[string]config.SourceConfig, value string, allowExec bool) (string, error) {
+// flags. pageNames are the names an unnamed source's label skips.
+func addFlagSource(flags map[string]config.SourceConfig, pageNames map[string]bool, value string, allowExec bool) (string, error) {
 	name, src, err := parseSourceFlag(value)
 	if err != nil {
 		return "", err
 	}
-	return addSource(flags, name, src, allowExec)
+	return addSource(flags, pageNames, name, src, allowExec)
 }
 
 // flagSources parses serve's --source values and the command after "--".
 // Named sources go in first, so a name the operator gave is never taken by
-// an unnamed source's label.
-func flagSources(values []string, dashCmd string, allowExec bool) (map[string]config.SourceConfig, error) {
+// an unnamed source's label; neither is one of pageNames.
+func flagSources(values []string, dashCmd string, pageNames map[string]bool, allowExec bool) (map[string]config.SourceConfig, error) {
 	flags := map[string]config.SourceConfig{}
 	var unnamed []config.SourceConfig
 	for _, v := range values {
@@ -182,7 +212,7 @@ func flagSources(values []string, dashCmd string, allowExec bool) (map[string]co
 		case name == "":
 			unnamed = append(unnamed, src)
 		default:
-			if _, err := addSource(flags, name, src, allowExec); err != nil {
+			if _, err := addSource(flags, pageNames, name, src, allowExec); err != nil {
 				return nil, err
 			}
 		}
@@ -191,7 +221,7 @@ func flagSources(values []string, dashCmd string, allowExec bool) (map[string]co
 		unnamed = append(unnamed, config.SourceConfig{Type: "stream", Cmd: dashCmd})
 	}
 	for _, src := range unnamed {
-		if _, err := addSource(flags, "", src, allowExec); err != nil {
+		if _, err := addSource(flags, pageNames, "", src, allowExec); err != nil {
 			return nil, err
 		}
 	}
@@ -200,10 +230,11 @@ func flagSources(values []string, dashCmd string, allowExec bool) (map[string]co
 
 // addSource adds a parsed source to flags: one place for the rules every
 // path shares. A source with no name gets defaultLabel's label, made unique
-// with -2, -3, ... so two commands with the same label both show.
-func addSource(flags map[string]config.SourceConfig, name string, src config.SourceConfig, allowExec bool) (string, error) {
+// with -2, -3, ... against flags and pageNames, so two commands with the
+// same label both show and neither replaces a page's source.
+func addSource(flags map[string]config.SourceConfig, pageNames map[string]bool, name string, src config.SourceConfig, allowExec bool) (string, error) {
 	if name == "" {
-		name = uniqueLabel(flags, sourceLabel(src))
+		name = uniqueLabel(sourceLabel(src), func(l string) bool { return flags[l].Type != "" || pageNames[l] })
 	}
 	switch {
 	case flags[name].Type != "":
@@ -250,17 +281,14 @@ func checkFlagActions(cfg *config.Config) error {
 }
 
 // checkFlagSources refuses a flag that replaces an approved source, and one no
-// page uses. A page uses a flag when the flag replaces a source the page or
-// the site defines, or when one of the page's merges resolves to include it.
-// Both are decided by server.ResolveSource, as the page's blocks will see them.
+// page uses. A page uses a flag when it has the flag's name (pageSourceNames),
+// or when one of the page's ["*"] merges takes it, as server.ResolveSource
+// expands it for the page's blocks.
 func checkFlagSources(cfg *config.Config, srv *server.Server) error {
-	used := map[string]bool{}
+	used := pageSourceNames(cfg, srv)
 	for _, route := range srv.Routes() {
 		if route.Page == nil {
 			continue
-		}
-		for name := range route.Page.Config.Sources {
-			used[name] = true
 		}
 		for _, name := range server.VisibleSourceNames(cfg, route.Page) {
 			if src, ok := server.ResolveSource(cfg, route.Page, name); ok && src.Type == "merge" {
@@ -269,9 +297,6 @@ func checkFlagSources(cfg *config.Config, srv *server.Server) error {
 				}
 			}
 		}
-	}
-	for name := range cfg.Sources {
-		used[name] = true
 	}
 	for _, name := range slices.Sorted(maps.Keys(cfg.FlagSources)) {
 		if cfg.ApprovedSource(name) {
@@ -338,7 +363,7 @@ func describeNeeds(w io.Writer, needs []sourceNeed) {
 
 // promptSources asks for sources until an empty line, and adds them to
 // flags. It returns the --source values the operator gave.
-func promptSources(in io.Reader, out io.Writer, flags map[string]config.SourceConfig, allowExec bool) []string {
+func promptSources(in io.Reader, out io.Writer, flags map[string]config.SourceConfig, pageNames map[string]bool, allowExec bool) []string {
 	fmt.Fprintln(out, "Add one as a command, file:PATH or http:PATH, optionally after NAME=. Leave empty to finish.")
 	scanner := bufio.NewScanner(in)
 	var given []string
@@ -352,7 +377,7 @@ func promptSources(in io.Reader, out io.Writer, flags map[string]config.SourceCo
 		if line == "" {
 			return given
 		}
-		name, err := addFlagSource(flags, line, allowExec)
+		name, err := addFlagSource(flags, pageNames, line, allowExec)
 		if err != nil {
 			fmt.Fprintln(out, err)
 			continue

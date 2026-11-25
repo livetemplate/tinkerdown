@@ -122,7 +122,7 @@ func TestPromptSources(t *testing.T) {
 	flags := map[string]config.SourceConfig{"api": {Type: "stream", File: "a.log"}}
 	in := strings.NewReader("=bad\nweb=docker logs -f web\napi=file:b.log\napp=file:./logs/app.log\n\nignored=file:x\n")
 	var out strings.Builder
-	given := promptSources(in, &out, flags, false)
+	given := promptSources(in, &out, flags, nil, false)
 
 	if want := []string{"app=file:./logs/app.log"}; !slices.Equal(given, want) {
 		t.Fatalf("given = %q, want %q\n%s", given, want, out.String())
@@ -309,7 +309,7 @@ func TestRemoteConfigPathsFollowTheConfigFile(t *testing.T) {
 // later, so "app" stays the operator's.
 func TestFlagSourcesLabels(t *testing.T) {
 	const tail = "tail -f /var/log/app.log"
-	flags, err := flagSources([]string{tail, "app=file:a.log", tail}, "watchexec -e go -- go test -json ./...", true)
+	flags, err := flagSources([]string{tail, "app=file:a.log", tail}, "watchexec -e go -- go test -json ./...", nil, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -319,19 +319,53 @@ func TestFlagSourcesLabels(t *testing.T) {
 	if flags["app"].File != "a.log" || flags["app-2"].Cmd != tail || flags["app-3"].Cmd != tail {
 		t.Errorf("got %+v", flags)
 	}
-	if _, err := flagSources([]string{tail}, "", false); err == nil || !strings.Contains(err.Error(), "--allow-exec") {
+	if _, err := flagSources([]string{tail}, "", nil, false); err == nil || !strings.Contains(err.Error(), "--allow-exec") {
 		t.Errorf("an unnamed command without --allow-exec: got %v", err)
 	}
 }
 
+// An unnamed source's label skips the names the page uses, so it never
+// replaces a page source or fills a role; only NAME= does. takesPage has the
+// roles send (an on: button's input) and logs (a params merge's input).
+func TestUnnamedLabelsSkipPageNames(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "index.md"), []byte(takesPage), 0o644)
+	cfg, err := config.LoadFromDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := server.NewWithConfig(dir, cfg)
+	if err := srv.Discover(); err != nil {
+		t.Fatal(err)
+	}
+	pageNames := pageSourceNames(cfg, srv)
+	if got, want := slices.Sorted(maps.Keys(pageNames)), []string{"logs", "logview", "requests", "response", "send"}; !slices.Equal(got, want) {
+		t.Fatalf("page names %q, want %q", got, want)
+	}
+
+	flags, err := flagSources([]string{"tail -f send.log", "logs=file:x.log"}, "docker logs -f requests", pageNames, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := slices.Sorted(maps.Keys(flags)), []string{"logs", "requests-2", "send-2"}; !slices.Equal(got, want) {
+		t.Fatalf("sources %q, want %q: a label took a page name, or a NAME= was renamed", got, want)
+	}
+
+	var out strings.Builder
+	if given := promptSources(strings.NewReader("tail -f logs\n\n"), &out, flags, pageNames, true); !slices.Equal(given, []string{"logs-2=tail -f logs"}) {
+		t.Fatalf("prompt gave %q, want the label logs-2\n%s", given, out.String())
+	}
+}
+
 func TestUniqueLabel(t *testing.T) {
-	taken := map[string]config.SourceConfig{"api": {Type: "stream"}, "api-2": {Type: "stream"}}
-	if got := uniqueLabel(taken, "api"); got != "api-3" {
+	flags := map[string]config.SourceConfig{"api": {Type: "stream"}, "api-2": {Type: "stream"}}
+	taken := func(l string) bool { return flags[l].Type != "" }
+	if got := uniqueLabel("api", taken); got != "api-3" {
 		t.Errorf("got %q, want api-3", got)
 	}
 	long := strings.Repeat("x", 32)
-	taken[long] = config.SourceConfig{Type: "stream"}
-	if got := uniqueLabel(taken, long); len(got) > 32 || !strings.HasSuffix(got, "-2") {
+	flags[long] = config.SourceConfig{Type: "stream"}
+	if got := uniqueLabel(long, taken); len(got) > 32 || !strings.HasSuffix(got, "-2") {
 		t.Errorf("got %q, want a 32-character label ending in -2", got)
 	}
 }
@@ -348,6 +382,10 @@ func TestCommandAfterDashes(t *testing.T) {
 	if out, err := exec.Command("sh", "-c", commandAfterDashes([]string{"FOO=1", "sh", "-c", "printf %s \"$FOO\""})).Output(); err != nil || string(out) != "1" {
 		t.Errorf("-- FOO=1 cmd gave %q (err %v), want FOO set to 1", out, err)
 	}
+	// An empty argument stays one: sh -c '' runs nothing, where sh -c alone fails.
+	if got := commandAfterDashes([]string{"sh", "-c", ""}); got != "sh -c ''" {
+		t.Errorf("empty argument: got %q", got)
+	}
 	if got := commandAfterDashes([]string{"watchexec", "-e", "go", "--", "go", "test", "-json", "./..."}); got != "watchexec -e go -- go test -json ./..." {
 		t.Errorf("got %q", got)
 	}
@@ -361,6 +399,10 @@ func TestServeDashEndsFlags(t *testing.T) {
 	err := ServeCommand([]string{dir, "--", "grep", "--verbose", "x"})
 	if err == nil || !strings.Contains(err.Error(), "--allow-exec") {
 		t.Errorf("got %v, want the --allow-exec refusal for the command, not an unknown flag", err)
+	}
+	// --help after "--" is the command's, so serve doesn't print its help.
+	if err := ServeCommand([]string{dir, "--", "grep", "--help"}); err == nil || !strings.Contains(err.Error(), "--allow-exec") {
+		t.Errorf("got %v, want the --allow-exec refusal, not serve's help", err)
 	}
 }
 

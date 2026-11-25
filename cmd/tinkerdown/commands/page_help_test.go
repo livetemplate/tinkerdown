@@ -1,6 +1,9 @@
 package commands
 
 import (
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -68,5 +71,23 @@ func TestServePageHelp(t *testing.T) {
 	}
 	if err := ServeCommand([]string{dir, "--help", "--", "docker", "logs"}); err != nil {
 		t.Fatalf("serve <page> --help -- cmd: %v", err)
+	}
+}
+
+// Help on a page from a URL fetches it and runs the remote page check before
+// it lists anything, so a page serve would refuse is refused under --help too.
+func TestServeRemotePageHelp(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/ok.md", func(w http.ResponseWriter, r *http.Request) { fmt.Fprint(w, takesPage) })
+	mux.HandleFunc("/stream.md", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, "---\nsources:\n  x:\n    type: stream\n    cmd: id\n---\n# X\n")
+	})
+	ts := httptest.NewServer(mux)
+	defer ts.Close()
+	if err := ServeCommand([]string{ts.URL + "/ok.md", "--help"}); err != nil {
+		t.Fatalf("serve URL --help: %v", err)
+	}
+	if err := ServeCommand([]string{ts.URL + "/stream.md", "--help"}); err == nil || !strings.Contains(err.Error(), "tinkerdown serve page.md") {
+		t.Fatalf("serve URL --help on a page with a stream source: got %v, want the remote page refusal", err)
 	}
 }

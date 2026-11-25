@@ -160,11 +160,6 @@ func ServeCommand(args []string) error {
 		cfg.Type = "" // one page: no site navigation
 	}
 
-	// Sources from --source flags rank above page and site sources. They are
-	// checked after the loop, since --allow-exec may come after them.
-	if cfg.FlagSources, err = flagSources(sourceValues, dashCmd, allowExec); err != nil {
-		return err
-	}
 	cfg.FlagActions = map[string]*config.Action{}
 	for _, v := range actionValues {
 		if err := addFlagAction(cfg.FlagActions, v, allowExec); err != nil {
@@ -193,10 +188,6 @@ func ServeCommand(args []string) error {
 		cfg.Features.Headless = true
 	}
 
-	if !help { // help prints only the usage and what the page takes
-		printBanner(cfg, absDir)
-	}
-
 	// Create server
 	srv := server.NewWithConfig(absDir, cfg)
 	if target.single != "" {
@@ -218,11 +209,19 @@ func ServeCommand(args []string) error {
 		}
 		cfg.Features.HotReload = false
 	}
+	// Sources from --source flags rank above page and site sources. They are
+	// read once the pages are, so an unnamed source's label can skip the
+	// pages' names; and after the flag loop, since --allow-exec may come last.
+	pageNames := pageSourceNames(cfg, srv)
+	if cfg.FlagSources, err = flagSources(sourceValues, dashCmd, pageNames, allowExec); err != nil {
+		return err
+	}
 	if help {
 		fmt.Print(serveUsage)
 		describeTakes(os.Stdout, cfg, srv, cmp.Or(target.share, target.shown))
 		return nil
 	}
+	printBanner(cfg, absDir)
 	if target.url != "" {
 		fmt.Printf("Fetched %s (sha256 %s). Pin it with %s#sha256=%s\n",
 			target.shown, remoteSum, cmp.Or(target.share, target.shown), remoteSum)
@@ -237,7 +236,7 @@ func ServeCommand(args []string) error {
 	if needs := sourceNeeds(cfg, srv); len(needs) > 0 && !cfg.Features.Headless {
 		describeNeeds(os.Stdout, needs)
 		if stdinIsTerminal() {
-			given := promptSources(os.Stdin, os.Stdout, cfg.FlagSources, allowExec)
+			given := promptSources(os.Stdin, os.Stdout, cfg.FlagSources, pageNames, allowExec)
 			if len(given) > 0 {
 				if err := checkFlagSources(cfg, srv); err != nil {
 					return err
@@ -430,8 +429,9 @@ serve refuses a flag it doesn't know.
 
 A page takes --source flags through a merge source with inputs ["*"], and
 shows one tab per source with a heading like: ## [All] | [*] source
-A source named like one of the page's sources replaces it. A page can declare
-what it accepts (kinds, how many, a hint); serve refuses flags it can't use.
+A source named like one of the page's sources replaces it; a label skips
+the page's names, so only NAME= does that. A page can declare what it
+accepts (kinds, how many, a hint); serve refuses flags it can't use.
 
 An --action command gets the button's values as environment variables: a
 button's data-name="web" arrives as $TD_name. Quote it so it stays one
