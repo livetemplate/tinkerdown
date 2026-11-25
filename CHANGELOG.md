@@ -11,6 +11,8 @@ Earlier releases (v0.1.x) are documented in the
 
 ## [Unreleased]
 
+## [v0.9.1] - 2026-11-25
+
 ### Fixed
 
 - **A page from a URL runs its commands where you run `serve`.** Its
