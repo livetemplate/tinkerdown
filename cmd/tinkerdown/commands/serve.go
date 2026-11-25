@@ -32,6 +32,7 @@ func ServeCommand(args []string) error {
 	var sourceValues, actionValues []string
 	var dashCmd string // the command after "--", if any
 	var help bool
+	var unknown string // the first flag serve doesn't know; --help still wins
 
 	// Parse flags
 	for i := 0; i < len(args); i++ {
@@ -83,11 +84,16 @@ func ServeCommand(args []string) error {
 		} else if arg == "--headless" {
 			headless = true
 		} else if strings.HasPrefix(arg, "-") {
-			return fmt.Errorf("unknown flag %s; see tinkerdown serve --help", arg)
+			if unknown == "" {
+				unknown = arg
+			}
 		} else {
 			// Positional argument (directory)
 			dir = arg
 		}
+	}
+	if unknown != "" && !help {
+		return fmt.Errorf("unknown flag %s; see tinkerdown serve --help", unknown)
 	}
 	if help {
 		if dir == "" {
@@ -407,6 +413,8 @@ Flags:
   --source http:PATH       List the requests in a .http file
                            A --source may start with NAME=, which names it. Without NAME=,
                            its label is the command's last plain word, or the file's name.
+                           So --source 'FOO=1 cmd' is a source named FOO: to set a variable,
+                           write --source 'env FOO=1 cmd', or -- FOO=1 cmd.
   --action NAME=COMMAND    Run COMMAND when a page's button named NAME is clicked (needs --allow-exec)
   --allow-exec             Let sources and actions run commands
   --port N, -p N           Port to listen on (default 8080)
@@ -415,7 +423,8 @@ Flags:
   --watch, -w              Reload pages when their files change
   --operator NAME, -o NAME Operator identity for audit fields (default $USER)
   --headless               Serve only the API, webhooks and schedules
-  --help, -h               Print this. After a page, also list the sources and actions it takes
+  --help, -h               Print this. After a page, also list the sources and actions it
+                           takes; a page from a URL is fetched and checked to do that
 
 serve refuses a flag it doesn't know.
 

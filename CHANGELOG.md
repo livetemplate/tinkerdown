@@ -23,7 +23,8 @@ Earlier releases (v0.1.x) are documented in the
   quotes. `--source COMMAND`, `--source file:PATH` and `--source http:PATH`
   need no `NAME=`: such a source is labelled by its command's last plain word
   (`api`) or its file's name, with `-2`, `-3` for repeats. `NAME=` still
-  names a source.
+  names a source, so `--source 'FOO=1 cmd'` is a source named `FOO`. To set a
+  variable, write `--source 'env FOO=1 cmd'` or `-- FOO=1 cmd`.
 - **`serve PAGE --help` lists what the page takes**: its `["*"]` merges with
   their kinds and hint, the sources its other merges read by name, and its
   buttons' actions. It needs no `--allow-exec` and starts nothing.

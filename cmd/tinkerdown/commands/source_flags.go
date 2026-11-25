@@ -79,15 +79,15 @@ func absSourcePaths(srcs map[string]config.SourceConfig, base string) {
 // sourceLabel is the label of a source with no name: from its command, or
 // from its file's name without the extension.
 func sourceLabel(src config.SourceConfig) string {
-	path := cmp.Or(src.File, src.HTTP)
-	if path == "" {
+	switch label := wordLabel(cmp.Or(src.File, src.HTTP)); {
+	case src.File == "" && src.HTTP == "":
 		return defaultLabel(src.Cmd)
+	case sourceName.MatchString(label):
+		return label
+	case src.HTTP != "":
+		return "http"
 	}
-	label := wordLabel(path)
-	if !sourceName.MatchString(label) {
-		return "file"
-	}
-	return label
+	return "file"
 }
 
 // defaultLabel picks the tab label for an unnamed command: its last plain

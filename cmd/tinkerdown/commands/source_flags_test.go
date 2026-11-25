@@ -107,6 +107,7 @@ func TestServeRefusesBadSourceFlags(t *testing.T) {
 		{"name missing before =", []string{dir, "--source", "=echo hi"}, "a name goes before"},
 		{"unknown flag", []string{dir, "--verbose"}, "unknown flag --verbose"},
 		{"unknown short flag", []string{dir, "-x"}, "unknown flag -x"},
+		{"FOO=1 cmd names a source", []string{dir, "--source", "FOO=1 cmd"}, "--source FOO runs a command"},
 		{"nothing after --", []string{dir, "--allow-exec", "--"}, "needs a command"},
 	}
 	for _, c := range cases {
@@ -343,6 +344,10 @@ func TestCommandAfterDashes(t *testing.T) {
 	if err != nil || string(out) != "a b|c|" {
 		t.Errorf("%s gave %q (err %v), want %q", cmd, out, err, "a b|c|")
 	}
+	// After "--" nothing is a name, so a leading assignment sets a variable.
+	if out, err := exec.Command("sh", "-c", commandAfterDashes([]string{"FOO=1", "sh", "-c", "printf %s \"$FOO\""})).Output(); err != nil || string(out) != "1" {
+		t.Errorf("-- FOO=1 cmd gave %q (err %v), want FOO set to 1", out, err)
+	}
 	if got := commandAfterDashes([]string{"watchexec", "-e", "go", "--", "go", "test", "-json", "./..."}); got != "watchexec -e go -- go test -json ./..." {
 		t.Errorf("got %q", got)
 	}
@@ -375,12 +380,38 @@ func TestDefaultLabel(t *testing.T) {
 		"journalctl -fu nginx":                   "nginx",
 		`docker logs -f "api"`:                   "api",
 		"./run.sh --all":                         "run",
-		"🙂 --x":                                  "cmd",
-		"":                                       "cmd",
-		strings.Repeat("y", 40) + " --x":         strings.Repeat("y", 32),
+		// A flag\'s value can win: serve can\'t know which flags take one.
+		"curl -H Accept:x https://api.example.com/users": "users",
+		"python -m http.server --port 80":                "80",
+		"🙂 --x":                                          "cmd",
+		"":                                               "cmd",
+		strings.Repeat("y", 40) + " --x":                 strings.Repeat("y", 32),
 	} {
 		if got := defaultLabel(cmd); got != want {
 			t.Errorf("defaultLabel(%q) = %q, want %q", cmd, got, want)
 		}
+	}
+}
+
+func TestSourceLabelFallbacks(t *testing.T) {
+	for _, c := range []struct {
+		src  config.SourceConfig
+		want string
+	}{
+		{config.SourceConfig{Type: "stream", File: "/var/log/app.log"}, "app"},
+		{config.SourceConfig{Type: "stream", HTTP: "./api.http"}, "api"},
+		{config.SourceConfig{Type: "stream", File: "/tmp/🙂.log"}, "file"},
+		{config.SourceConfig{Type: "stream", HTTP: "/tmp/🙂.http"}, "http"},
+	} {
+		if got := sourceLabel(c.src); got != c.want {
+			t.Errorf("sourceLabel(%+v) = %q, want %q", c.src, got, c.want)
+		}
+	}
+}
+
+// --help wins over an unknown flag, so a mistyped line still shows help.
+func TestServeHelpBeatsUnknownFlag(t *testing.T) {
+	if err := ServeCommand([]string{"--bogus", "--help"}); err != nil {
+		t.Fatalf("serve --bogus --help: %v", err)
 	}
 }
