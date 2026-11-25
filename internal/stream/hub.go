@@ -78,8 +78,8 @@ func (h *Hub) Private(r Row) (Private, bool) {
 	return p, ok
 }
 
-// InputSpec describes one stream input. Exactly one of Cmd, File or HTTP is
-// set.
+// InputSpec describes one stream input. Exactly one of Cmd, File, HTTP or
+// SQL is set.
 type InputSpec struct {
 	Name string            `json:"name"` // source name, copied into each row's "source"
 	Cmd  string            `json:"cmd"`  // run with /bin/sh -c
@@ -87,6 +87,7 @@ type InputSpec struct {
 	Env  map[string]string `json:"env"`  // extra environment for Cmd
 	File string            `json:"file"` // absolute path to tail
 	HTTP string            `json:"http"` // absolute path of a .http file, re-read whole on change
+	SQL  string            `json:"sql"`  // absolute path of a .sql file or a folder of them, re-read on change
 	// Manual makes a Cmd start only when Restart is called, never when a page
 	// attaches, and run once. A command that changes something (sends a
 	// request) must not run again because a page reloaded.
@@ -107,8 +108,8 @@ var Formats = []string{"auto", "json", "logfmt", "lines"}
 // Normalize fills defaults and rejects invalid specs. Input calls it, and
 // config validation can call it to report errors before serving.
 func (s InputSpec) Normalize() (InputSpec, error) {
-	if set := boolInt(s.Cmd != "") + boolInt(s.File != "") + boolInt(s.HTTP != ""); set != 1 {
-		return s, fmt.Errorf("stream %q: set exactly one of cmd, file or http", s.Name)
+	if set := boolInt(s.Cmd != "") + boolInt(s.File != "") + boolInt(s.HTTP != "") + boolInt(s.SQL != ""); set != 1 {
+		return s, fmt.Errorf("stream %q: set exactly one of cmd, file, http or sql", s.Name)
 	}
 	if s.Manual {
 		if s.Cmd == "" {
@@ -168,6 +169,8 @@ func (h *Hub) Input(spec InputSpec) (*Buffer, error) {
 			runCmd(ctx, spec, b)
 		case spec.HTTP != "":
 			readHTTPFile(ctx, spec, b)
+		case spec.SQL != "":
+			readSQLFiles(ctx, spec, b)
 		default:
 			tailFile(ctx, spec, b)
 		}

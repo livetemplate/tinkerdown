@@ -211,7 +211,7 @@ func TestHTTPReaderFollowsTheFile(t *testing.T) {
 
 	rows := m.Snapshot()
 	f := rows[1]["fields"].(map[string]interface{})
-	if f["entry"] != "2" || f["name"] != "Create user" || f["url"] != "{{host}}/users" {
+	if f["entry"] != "api/2" || f["name"] != "Create user" || f["url"] != "{{host}}/users" {
 		t.Fatalf("row 2 fields = %v", f)
 	}
 	p, _ := h.Private(rows[1])

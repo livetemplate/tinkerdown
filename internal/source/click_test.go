@@ -36,7 +36,7 @@ func clickSetup(t *testing.T, httpText string) (*StreamSource, *stream.Hub, stri
 		"response": {Type: "merge", Inputs: []string{"send"}, On: "send", Params: map[string]config.SourceParam{"entry": {In: "requests.fields.entry"}}},
 	}
 	lookup := func(n string) (config.SourceConfig, bool) { s, ok := sources[n]; return s, ok }
-	page := &Page{Query: url.Values{"entry": {"1"}}, Resolve: lookup, InputLookup: func(string) func(string) (config.SourceConfig, bool) { return lookup }}
+	page := &Page{Query: url.Values{"entry": {"api/1"}}, Resolve: lookup, InputLookup: func(string) func(string) (config.SourceConfig, bool) { return lookup }}
 	reqs, err := NewStreamSource(hub, "requests", sources["requests"], dir, lookup, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -75,7 +75,7 @@ func TestClickRunsWithTheRowsPrivateValues(t *testing.T) {
 	t.Setenv("TD_TEST_TOKEN", "s3cret")
 	src, _, runs := clickSetup(t, "@host = https://api.test\n### Create\nPOST {{host}}/users\nAuthorization: Bearer {{$processEnv TD_TEST_TOKEN}}\n\n{\"a\": 1}\n")
 
-	// The URL holds entry=1, but only a click starts the run.
+	// The URL holds entry=api/1, but only a click starts the run.
 	time.Sleep(300 * time.Millisecond)
 	if rows, _ := src.Fetch(context.Background()); len(rows) != 0 {
 		t.Fatalf("rows before a click: %v", rows)
@@ -84,7 +84,7 @@ func TestClickRunsWithTheRowsPrivateValues(t *testing.T) {
 		t.Fatal("the page's URL started the command")
 	}
 
-	if err := src.Click(map[string]interface{}{"entry": "1"}); err != nil {
+	if err := src.Click(map[string]interface{}{"entry": "api/1"}); err != nil {
 		t.Fatal(err)
 	}
 	rows := rowsOf(t, src, 1)
@@ -92,7 +92,7 @@ func TestClickRunsWithTheRowsPrivateValues(t *testing.T) {
 	if got := strings.TrimSpace(rows[0]["line"].(string)); got != want {
 		t.Fatalf("command got %q, want %q", got, want)
 	}
-	if p := src.Params(); p["entry"] != "1" || len(p) != 1 {
+	if p := src.Params(); p["entry"] != "api/1" || len(p) != 1 {
 		t.Fatalf("Params() = %v; private values must not be there", p)
 	}
 }
@@ -101,10 +101,10 @@ func TestClickRefusals(t *testing.T) {
 	src, _, runs := clickSetup(t, "### a\nGET https://api.test/{{nope_unset_var}}\n### b\nGET https://api.test/b\n")
 	var ve *ValidationError
 	for name, values := range map[string]map[string]interface{}{
-		"not listed":     {"entry": "99"},
+		"not listed":     {"entry": "api/99"},
 		"missing":        {},
 		"option":         {"entry": "-1"},
-		"unset variable": {"entry": "1"},
+		"unset variable": {"entry": "api/1"},
 	} {
 		err := src.Click(values)
 		if !errors.As(err, &ve) {
@@ -117,7 +117,7 @@ func TestClickRefusals(t *testing.T) {
 	if _, err := os.Stat(runs); err == nil {
 		t.Fatal("a refused click ran the command")
 	}
-	if err := src.Click(map[string]interface{}{"entry": "2"}); err != nil {
+	if err := src.Click(map[string]interface{}{"entry": "api/2"}); err != nil {
 		t.Fatal(err)
 	}
 	rowsOf(t, src, 1)
@@ -130,14 +130,14 @@ func TestClickValueSizeLimit(t *testing.T) {
 	// The whole TD_body=… string with its NUL may be MaxClickValue bytes.
 	fits := strings.Repeat("x", MaxClickValue-len("TD_body=")-1)
 	src, _, _ := clickSetup(t, "### a\nPOST https://api.test/\n\n"+fits+"\n### b\nPOST https://api.test/\n\n"+fits+"y\n")
-	if err := src.Click(map[string]interface{}{"entry": "1"}); err != nil {
+	if err := src.Click(map[string]interface{}{"entry": "api/1"}); err != nil {
 		t.Fatalf("a body at the limit was refused: %v", err)
 	}
 	// One stdout row means the command ran: an E2BIG would be a system row.
 	if r := rowsOf(t, src, 1)[0]; r["stream"] != "stdout" || !strings.Contains(r["line"].(string), "xxxx") {
 		t.Fatalf("at the limit, the command didn't run: %v", r["line"])
 	}
-	if err := src.Click(map[string]interface{}{"entry": "2"}); err == nil || !strings.Contains(err.Error(), "over 128 KiB") {
+	if err := src.Click(map[string]interface{}{"entry": "api/2"}); err == nil || !strings.Contains(err.Error(), "over 128 KiB") {
 		t.Fatalf("a body one byte over: err = %v", err)
 	}
 }
@@ -147,7 +147,7 @@ func TestClicksInALoopRunOncePerGap(t *testing.T) {
 	count := func() int { data, _ := os.ReadFile(runs); return strings.Count(string(data), "run") }
 	start := time.Now()
 	for range 20 {
-		if err := src.Click(map[string]interface{}{"entry": "1"}); err != nil {
+		if err := src.Click(map[string]interface{}{"entry": "api/1"}); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -168,7 +168,7 @@ func TestClicksInALoopRunOncePerGap(t *testing.T) {
 func TestAClickAfterCloseRunsNothing(t *testing.T) {
 	src, _, runs := clickSetup(t, "### a\nPOST https://api.test/a\n")
 	src.Close()
-	if err := src.Click(map[string]interface{}{"entry": "1"}); err != nil {
+	if err := src.Click(map[string]interface{}{"entry": "api/1"}); err != nil {
 		t.Fatalf("a click after Close: %v, want nil", err)
 	}
 	time.Sleep(3 * ClickGap)
@@ -179,8 +179,8 @@ func TestAClickAfterCloseRunsNothing(t *testing.T) {
 
 func TestClosingDropsAWaitingClick(t *testing.T) {
 	src, _, runs := clickSetup(t, "### a\nPOST https://api.test/a\n")
-	src.Click(map[string]interface{}{"entry": "1"})
-	src.Click(map[string]interface{}{"entry": "1"}) // waits for the gap
+	src.Click(map[string]interface{}{"entry": "api/1"})
+	src.Click(map[string]interface{}{"entry": "api/1"}) // waits for the gap
 	src.Close()
 	time.Sleep(3 * ClickGap)
 	if data, _ := os.ReadFile(runs); strings.Count(string(data), "run") != 1 {
@@ -190,7 +190,7 @@ func TestClosingDropsAWaitingClick(t *testing.T) {
 
 func TestClickMergeIgnoresTheQuery(t *testing.T) {
 	src, _, _ := clickSetup(t, "### a\nGET https://api.test/a\n")
-	if src.SetQuery(url.Values{"entry": {"1"}}) {
+	if src.SetQuery(url.Values{"entry": {"api/1"}}) {
 		t.Fatal("a click merge took values from the URL")
 	}
 }

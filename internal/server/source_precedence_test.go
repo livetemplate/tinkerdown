@@ -311,7 +311,7 @@ func TestHostAllowed(t *testing.T) {
 
 func TestBlockErrorShowsOnlyValidationMessages(t *testing.T) {
 	err := config.ValidateStreamSource("api", config.SourceConfig{Type: "stream", Cmd: "x", File: "y"}, nil)
-	if got := blockErrorFor("api", err).Error; !strings.Contains(got, "exactly one of cmd, file or http") {
+	if got := blockErrorFor("api", err).Error; !strings.Contains(got, "exactly one of cmd, file, http or sql") {
 		t.Errorf("validation error shown as %q", got)
 	}
 	secret := fmt.Errorf("start %q: exit 1", "curl -H 'Authorization: token SECRET' api")

@@ -113,3 +113,26 @@ func TestDescribeTakesEachPage(t *testing.T) {
 		}
 	}
 }
+
+func TestDescribeTakesSQL(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "index.md"), []byte("---\ntitle: DB\nsources:\n"+
+		"  queries: {type: merge, inputs: [\"*\"], key: [fields.entry], accepts: {kinds: [sql], min: 1}}\n---\n\n# DB\n"), 0o644)
+	cfg, err := config.LoadFromDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := server.NewWithConfig(dir, cfg)
+	if err := srv.Discover(); err != nil {
+		t.Fatal(err)
+	}
+	var out strings.Builder
+	describeTakes(&out, cfg, srv, "db")
+	if got := out.String(); !strings.Contains(got, "--source sql:PATH\n      1 or more, shown in queries") {
+		t.Fatalf("describeTakes:\n%s", got)
+	}
+	// With no kinds listed, every kind is offered.
+	if got := wildcardForms(nil); got != "-- COMMAND, --source file:PATH, --source http:PATH, --source sql:PATH" {
+		t.Fatalf("wildcardForms(nil) = %q", got)
+	}
+}

@@ -337,11 +337,7 @@ func createSource(name string, cfg config.SourceConfig, siteDir, currentFile str
 // add/delete a row) rather than custom, governed actions. The policy lint must
 // not treat them as unapproved: they are governed by whether the source itself
 // is approved and writable. Kept in sync with the HandleAction switch below.
-var builtinActions = map[string]bool{
-	"refresh": true, "run": true, "filter": true, "edit": true, "canceledit": true,
-	"add": true, "toggle": true, "delete": true, "update": true,
-	"pause": true, "resume": true, "clear": true,
-}
+var builtinActions = config.BuiltinActions
 
 // builtinActionPrefixes are the datatable action families (Sort_X, NextPage_X,
 // PrevPage_X). Used only by HandleAction's dispatch to route framework-generated

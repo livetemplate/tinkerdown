@@ -48,6 +48,7 @@ To run a page that needs more, download it, review it, and serve the local copy 
 | `--source COMMAND` | Add a stream source that follows a command's output. Needs `--allow-exec`. Repeatable. | none |
 | `--source file:PATH` | Add a stream source that follows a file. Repeatable. | none |
 | `--source http:PATH` | Add a stream source that lists the requests in a `.http` file. Repeatable. | none |
+| `--source sql:PATH` | Add a stream source that lists the queries in a `.sql` file, or in a folder's `.sql` files. Repeatable. | none |
 | `--action NAME=COMMAND` | Run COMMAND when a button named NAME is clicked, on any page. Needs `--allow-exec`. Repeatable. | none |
 | `--allow-exec` | Let sources and actions run commands | off |
 | `--port`, `-p` | Server port | `8080` |
@@ -60,7 +61,7 @@ To run a page that needs more, download it, review it, and serve the local copy 
 
 A `--source` value may start with `NAME=`, which names the source: `--source 'api=docker logs -f api'`. `NAME=` is the part before the first `=` when that part is 1-32 letters, digits, `_` or `-`, so `--source 'grep a=b log'` has no name. Write a command that starts with an environment assignment as `env FOO=1 cmd`. A source with no name gets a label: a command's last word that isn't a flag, with a path reduced to its base name (`docker logs -f api` is `api`, `tail -f /var/log/app.log` is `app`), or a file's name without its extension. When a label is taken, by another source or by a name the page uses, it becomes `api-2`, `api-3`. So a label never takes a name you give, and never replaces a page's source: only `NAME=` does that.
 
-A `--source` flag reaches a page through a merge source with `inputs: ["*"]`, or, given a `NAME=`, by replacing a page source with that name. `serve` refuses a flag no page uses, and a flag of a kind the page's `accepts` leaves out. For a page from a URL, a relative `file:` or `http:` path is taken from the directory `serve` runs in, and commands from `--source`, `--` and `--action` run there. See [stream sources](../sources/stream.md#sources-from-the-command-line).
+A `--source` flag reaches a page through a merge source with `inputs: ["*"]`, or, given a `NAME=`, by replacing a page source with that name. `serve` refuses a flag no page uses, and a flag of a kind the page's `accepts` leaves out. For a page from a URL, a relative `file:`, `http:` or `sql:` path is taken from the directory `serve` runs in, and commands from `--source`, `--` and `--action` run there. See [stream sources](../sources/stream.md#sources-from-the-command-line).
 
 `serve` refuses a flag it doesn't know, such as a mistyped `--alow-exec`, instead of ignoring it. A flag's value goes after a space: `--port 8080`, not `--port=8080`.
 
@@ -89,7 +90,7 @@ tinkerdown serve github.com/livetemplate/onefile/http --help
 
 `tinkerdown serve PAGE --help` loads the page, from its URL or short name too, and lists what it takes from the command line after the usage. It reads only what the page declares:
 
-- a merge with `inputs: ["*"]`: the forms its `accepts` kinds take (`-- COMMAND`, `--source file:PATH`, `--source http:PATH`), how many it needs, and its hint
+- a merge with `inputs: ["*"]`: the forms its `accepts` kinds take (`-- COMMAND`, `--source file:PATH`, `--source http:PATH`, `--source sql:PATH`), how many it needs, and its hint
 - an input of another merge that no page or `tinkerdown.yaml` source defines: `--source NAME=…`, and whether a button or a row you open starts it
 - a button whose name isn't a builtin action or a merge's `on:` button: `--action NAME=COMMAND`
 

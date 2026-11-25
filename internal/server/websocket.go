@@ -498,6 +498,7 @@ func pageSourceConfig(src tinkerdown.SourceConfig) config.SourceConfig {
 		Drop:         src.Drop,
 		Sort:         src.Sort,
 		HTTP:         src.HTTP,
+		SQL:          src.SQL,
 		On:           src.On,
 		LineMax:      src.LineMax,
 	}

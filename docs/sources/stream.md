@@ -1,6 +1,6 @@
 # Stream and Merge Sources
 
-A `stream` source follows a long-running command or a growing file, and the page shows each new line as it arrives. A `merge` source combines several streams into one timeline. Use them for logs: `docker logs -f`, `journalctl -f`, `kubectl logs -f`, a dev server's output, or `/var/log/app.log`. A stream can also list the requests in a `.http` file, and a merge can run a command when a button is clicked; see [Runs a click starts](#runs-a-click-starts).
+A `stream` source follows a long-running command or a growing file, and the page shows each new line as it arrives. A `merge` source combines several streams into one timeline. Use them for logs: `docker logs -f`, `journalctl -f`, `kubectl logs -f`, a dev server's output, or `/var/log/app.log`. A stream can also list the requests in a `.http` file or the queries in `.sql` files, and a merge can run a command when a button is clicked; see [Runs a click starts](#runs-a-click-starts).
 
 ## Configuration
 
@@ -24,9 +24,10 @@ A command needs `tinkerdown serve --allow-exec`, as an `exec` source does. A fil
 | Option | Applies to | Description |
 |--------|------------|-------------|
 | `type` | both | `stream` or `merge` |
-| `cmd` | stream | Command to follow. Runs with `/bin/sh -c` from the site directory, so pipes, quoting and `./script.sh` work. Set one of `cmd`, `file` and `http`. |
+| `cmd` | stream | Command to follow. Runs with `/bin/sh -c` from the site directory, so pipes, quoting and `./script.sh` work. Set one of `cmd`, `file`, `http` and `sql`. |
 | `file` | stream | File to follow, absolute or relative to the site directory. |
 | `http` | stream | A `.http` file, absolute or relative to the site directory: one row per request, read again whenever the file changes. See [Requests from a .http file](#requests-from-a-http-file). |
+| `sql` | stream | A `.sql` file or a folder of them, absolute or relative to the site directory: one row per query, read again whenever a file changes. See [Queries from a .sql file](#queries-from-a-sql-file). |
 | `inputs` | merge | Names of the stream sources to combine, or `["*"]` for every stream source the page can see, including `--source` flags. |
 | `key` | merge | Field paths (`NAME` or `fields.NAME`) that make the merge keyed: one row per distinct key, updated in place. See [One row per key](#one-row-per-key). |
 | `collect` | merge | With `key`: a field path whose text is gathered across a key's rows into `collected`. |
@@ -36,7 +37,7 @@ A command needs `tinkerdown serve --allow-exec`, as an `exec` source does. A fil
 | `params` | merge | Values taken from the page URL's query, each with `in: MERGE.PATH`. See [Values from the page URL](#values-from-the-page-url). |
 | `on` | merge | With `params`: the name of the button whose click starts the inputs, instead of the URL. See [Runs a click starts](#runs-a-click-starts). |
 | `line_max` | merge | The longest line its inputs read, in bytes or with `KiB` or `MiB`, up to `16MiB` (default: `16KiB`). A longer line is cut and its row gets `truncated: true`. |
-| `accepts` | merge | With `inputs: ["*"]`: the sources the page takes. `kinds` lists any of `cmd`, `file` and `http` (default: all), `min` is how many it needs, and `hint` is one line saying what to pass. |
+| `accepts` | merge | With `inputs: ["*"]`: the sources the page takes. `kinds` lists any of `cmd`, `file`, `http` and `sql` (default: all), `min` is how many it needs, and `hint` is one line saying what to pass. |
 | `format` | stream | How to parse each line: `auto` (default), `json`, `logfmt` or `lines`. |
 | `env` | stream | Extra environment variables for `cmd`. `$VAR` references are expanded. |
 | `restart` | stream | `on-exit` (default) restarts an exited command after 1s, doubling up to 30s. `never` leaves it stopped. |
@@ -64,7 +65,7 @@ tinkerdown serve --allow-exec --source 'docker logs -f --timestamps api' --sourc
 tinkerdown serve --allow-exec -- docker logs -f --timestamps api
 ```
 
-`--source COMMAND` follows a command and needs `--allow-exec`; `--source file:PATH` follows a file, and `--source http:PATH` lists a `.http` file's requests. Each may start with `NAME=` to name the source; without it, the source gets a label from its command or file name, as [the CLI reference](../reference/cli.md#serve) describes. A merge that reads a source by name, such as one with `params` or `on:`, needs `NAME=`. For a page from a URL, a relative `PATH` is taken from the directory `serve` runs in, and a command runs there. A relative path in a `--config` file is taken from that file's directory, and its commands run there. A local page's commands run in the page's directory. A flag with `NAME=` also replaces a page or `tinkerdown.yaml` source of that name, but never an approved one. A label never does: it becomes `logs-2` when the page uses `logs`. `serve` refuses a flag no page uses, and one of a kind the page's `accepts` leaves out.
+`--source COMMAND` follows a command and needs `--allow-exec`; `--source file:PATH` follows a file, `--source http:PATH` lists a `.http` file's requests, and `--source sql:PATH` lists the queries in a `.sql` file or a folder of them. Each may start with `NAME=` to name the source; without it, the source gets a label from its command or file name, as [the CLI reference](../reference/cli.md#serve) describes. A merge that reads a source by name, such as one with `params` or `on:`, needs `NAME=`. For a page from a URL, a relative `PATH` is taken from the directory `serve` runs in, and a command runs there. A relative path in a `--config` file is taken from that file's directory, and its commands run there. A local page's commands run in the page's directory. A flag with `NAME=` also replaces a page or `tinkerdown.yaml` source of that name, but never an approved one. A label never does: it becomes `logs-2` when the page uses `logs`. `serve` refuses a flag no page uses, and one of a kind the page's `accepts` leaves out.
 
 `["*"]` takes every stream source, sorted by name. An approved merge takes only `tinkerdown.yaml` sources, so neither a page nor a flag can add one. With no sources yet, the merge is empty: the block can show an empty state with `{{if not .Inputs}}`, and `.Accepts.Hint` says what to pass.
 
@@ -154,9 +155,39 @@ Content-Type: application/json
 
 `###` separates requests, and the text after it names the next one; `# @name x` names it too. `#` and `//` start comments, also between headers. `@name = value` defines a variable for the whole file, and can come anywhere outside a request: after a request line, a line like it is part of the body. A request is its request line (`METHOD URL`, an optional `HTTP/1.1`, or a bare URL for `GET`), then headers up to the first blank line, then the body up to the next `###`.
 
-Each row's `fields` hold the request as written: `entry` (its position, `"1"` first), `name`, `method`, `url`, `headers` (one per line), `body`, and `text` (name, method and URL, for search). `{{name}}` stays as written in them.
+Each row's `fields` hold the request as written: `entry` (the source's name and the request's place, such as `"api/1"`, so two files' rows differ), `name`, `method`, `url`, `headers` (one per line), `body`, and `text` (name, method and URL, for search). `{{name}}` stays as written in them.
 
 The values with variables filled in stay on the server, and reach a command only through a click; see below. `{{name}}` takes the file's `@name` value. Because a plain `{{name}}` never reads the environment, a file gets only the environment variables it names as `{{$processEnv NAME}}`, the VS Code REST Client's syntax. That keeps a token out of the file: `TOKEN=… tinkerdown serve …`. A variable's value can use other variables, so `@token = {{$processEnv TOKEN}}` lets requests write `{{token}}`. An environment value is used as it is. A variable that refers to itself, directly or through others, is an error, and so is a chain more than 10 deep. One read of the file fills in at most 64 MiB, and the requests past that say so. A file that doesn't parse sets the block's `.Error`, naming the line, and the last good rows stay.
+
+## Queries from a .sql file
+
+A stream with `sql` reads a `.sql` file, or a folder of them, and shows one row per query. A file names its queries with the header sqlc, aiosql and yesql use:
+
+```sql
+-- name: users
+-- Everyone, newest first.
+SELECT id, name FROM users ORDER BY id DESC LIMIT 100;
+
+-- name: close-stale :exec
+UPDATE orders SET status = 'closed' WHERE age > 30;
+```
+
+A query starts at a `-- name: NAME` line, or HugSQL's `-- :name NAME`, and runs to the next one. NAME is the first word after the header. A word after it, such as sqlc's `:exec`, isn't part of the name, and neither are the operator characters aiosql puts at its end (`^ $ ! < * #`). Text before the first header, and a header with no SQL under it, are skipped. A file with no header is one query named after the file, so `users.sql` holding one query is `users`.
+
+A folder gives the queries of each `.sql` file in it, in name order. Its subfolders, and files whose names start with `.`, aren't read. The reader reads again when a file's size or modification time changes, or a file is added or removed. Each read replaces the rows, so an edited query updates and a deleted one leaves the page. A file, or a folder's files together, may hold 4 MiB, and a folder up to 1,000 `.sql` files. Past that, the block's `.Error` says so.
+
+Each row's `fields` hold:
+- `entry`: the source's name and the query's place, such as `"queries/1"`, counted across a folder's files
+- `file`: the file's name
+- `name`
+- `kind`: the first keyword, lowercased, such as `select` or `update`
+- `sql`: the query as written, trimmed
+- `line`: the header's line number, or 1 for a file with no header
+- `text`: name and SQL, for search
+
+The row's `msg` is the name, and its `line` is the query's first line of SQL. A click passes the query's SQL to the command as `TD_sql`; see [Runs a click starts](#runs-a-click-starts).
+
+tinkerdown never runs the SQL: the command you give does, such as `sqlite3 -safe -readonly app.db "$TD_sql"`. `kind` only says how a query starts, so a page can mark the queries that write, and a read-only connection is what refuses them.
 
 ## Runs a click starts
 
@@ -180,11 +211,11 @@ sources:
 <button name="send" data-entry="{{.fields.entry}}">Send</button>
 ```
 
-The button can be in any block on the page. Its `data-*` values are the params, checked like URL values: each must pass the value rules and be in its `in` merge. The command then gets each param as `TD_<name>`, plus the values the row stands for, which the browser never sees. For an `http` row these are `TD_method`, `TD_url`, `TD_headers` and `TD_body`, with variables filled in. These values may span lines. Each may be up to 128 KiB, counted as the whole `TD_name=value`, since Linux refuses a longer environment string. A request with an unset variable, a longer value, or a value holding a NUL byte is refused with the reason in the block's `.Error`, and nothing runs.
+The button can be in any block on the page. Its `data-*` values are the params, checked like URL values: each must pass the value rules and be in its `in` merge. The command then gets each param as `TD_<name>`, plus the values the row stands for, which the browser never sees. For an `http` row these are `TD_method`, `TD_url`, `TD_headers` and `TD_body`, with variables filled in. For a `sql` row it is `TD_sql`. These values may span lines. Each may be up to 128 KiB, counted as the whole `TD_name=value`, since Linux refuses a longer environment string. A request with an unset variable, a longer value, or a value holding a NUL byte is refused with the reason in the block's `.Error`, and nothing runs.
 
 The inputs run once per click: an input isn't restarted when it exits, and has no timeout of its own, so give the command one (`curl --max-time 30`). A click while it runs stops the run, clears its rows and starts again. A click within 250 ms of the last run a page started waits until 250 ms have passed, and a later click in that time replaces it. Clicks sent in a loop then repeat a request at most four times a second, and the last click still runs. The block's `.Running` is true while it runs. Everyone who clicks the same values shares one run. A clean exit adds no row, and a failed one adds a `system` row with the exit status.
 
-A merge with `on` ignores the page URL's query, and its inputs must run a command. `on` is 1-32 lowercase letters, digits or `_`, and a builtin action name never starts one.
+A merge with `on` ignores the page URL's query, and its inputs must run a command. `on` is 1-32 lowercase letters, digits or `_`. It can't be a built-in action's name, such as `run` or `refresh`, because a button with that name runs the built-in.
 
 ## Row fields
 

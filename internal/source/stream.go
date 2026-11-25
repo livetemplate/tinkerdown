@@ -499,6 +499,8 @@ func streamInput(hub *stream.Hub, name string, cfg config.SourceConfig, dir stri
 	switch {
 	case spec.HTTP != "":
 		spec.HTTP = resolveSitePath(dir, spec.HTTP)
+	case spec.SQL != "":
+		spec.SQL = resolveSitePath(dir, spec.SQL)
 	case spec.Cmd != "":
 		if err := requireExec(name, "cmd", "stream sources that run a command"); err != nil {
 			return nil, err

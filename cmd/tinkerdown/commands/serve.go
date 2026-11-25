@@ -52,7 +52,7 @@ func ServeCommand(args []string) error {
 			help = true
 		} else if arg == "--source" {
 			if i+1 >= len(args) {
-				return fmt.Errorf("--source needs a value: COMMAND, file:PATH or http:PATH, optionally after NAME=")
+				return fmt.Errorf("--source needs a value: %s", sourceForms)
 			}
 			i++
 			sourceValues = append(sourceValues, args[i])
@@ -245,7 +245,7 @@ func ServeCommand(args []string) error {
 				fmt.Printf("Next time, run:\n  %s\n", reuseLine(args, given))
 			}
 		} else {
-			fmt.Println("No terminal, so no prompt. Pass each source as -- COMMAND, or --source COMMAND, file:PATH or http:PATH; see tinkerdown serve --help.")
+			fmt.Println("No terminal, so no prompt. Pass each source as -- COMMAND, or --source " + sourceForms + "; see tinkerdown serve --help.")
 		}
 	}
 	if target.url != "" {
@@ -411,6 +411,7 @@ Flags:
   --source COMMAND         Follow a command's output (needs --allow-exec)
   --source file:PATH       Follow a file
   --source http:PATH       List the requests in a .http file
+  --source sql:PATH        List the queries in a .sql file, or in a folder's .sql files
                            A --source may start with NAME=, which names it. Without NAME=,
                            its label is the command's last plain word, or the file's name.
                            So --source 'FOO=1 cmd' is a source named FOO: to set a variable,
@@ -445,9 +446,10 @@ A merge with on: NAME starts its inputs only when a button named NAME is
 clicked, never from the URL, and runs them once per click. They get the
 button's params, plus the private values of the row the params name: for an
 http: source, the request's TD_method, TD_url, TD_headers and TD_body, with
-{{variables}} filled from the file and the environment.
+{{variables}} filled from the file and the environment; for a sql: source,
+the query's TD_sql.
 
-For a page from a URL, a relative file: or http: path in a flag is taken
+For a page from a URL, a relative file:, http: or sql: path in a flag is taken
 from the directory serve runs in, and one in a --config file from that
 file's directory.
 
