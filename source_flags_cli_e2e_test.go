@@ -135,8 +135,17 @@ func TestFetchedPageCommandsRunInServeDir_E2E(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-		cmd.Wait()
+		// SIGINT lets serve remove the fetched page's temporary directory;
+		// SIGKILL is only the fallback.
+		syscall.Kill(-cmd.Process.Pid, syscall.SIGINT)
+		done := make(chan struct{})
+		go func() { cmd.Wait(); close(done) }()
+		select {
+		case <-done:
+		case <-time.After(15 * time.Second):
+			syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+			<-done
+		}
 		if t.Failed() {
 			t.Logf("server log:\n%s", serverLog.String())
 		}
