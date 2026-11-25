@@ -11,6 +11,8 @@ Earlier releases (v0.1.x) are documented in the
 
 ## [Unreleased]
 
+## [v0.9.0] - 2026-11-25
+
 ### Added
 
 - **Short names for pages on GitHub.** `tinkerdown serve
