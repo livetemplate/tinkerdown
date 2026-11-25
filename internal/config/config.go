@@ -377,7 +377,7 @@ type SourceConfig struct {
 	// its Inputs are the sources found, and empty means "no sources yet".
 	Wildcard bool `yaml:"-"`
 
-	// Dir is where Cmd runs when it isn't the site directory. Only serve sets
+	// Dir is where Cmd runs; empty means the site directory. Only serve sets
 	// it: a page from a URL lives in a temporary directory, so its commands
 	// run where their paths resolve.
 	Dir string `yaml:"-" json:"-"`
@@ -554,7 +554,7 @@ type Action struct {
 	// TD_<name> environment variables, never pasted into Cmd. Only the
 	// command line sets it.
 	FromFlag bool `yaml:"-" json:"-"`
-	// Dir is where Cmd runs when it isn't the site directory, as for
+	// Dir is where Cmd runs; empty means the site directory, as for
 	// SourceConfig.Dir.
 	Dir string `yaml:"-" json:"-"`
 }

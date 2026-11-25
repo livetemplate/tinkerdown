@@ -88,6 +88,7 @@ package server
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
@@ -680,7 +681,7 @@ func (e *webhookActionExecutor) executeExecAction(action *config.Action, data ma
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, "sh", "-c", cmdStr)
-	cmd.Dir = e.rootDir
+	cmd.Dir = cmp.Or(action.Dir, e.rootDir)
 
 	// Capture output
 	var stderr bytes.Buffer

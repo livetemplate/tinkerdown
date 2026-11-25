@@ -299,6 +299,8 @@ func createSource(name string, cfg config.SourceConfig, siteDir, currentFile str
 				Reason: "exec sources are disabled by default for security. Use --allow-exec flag to enable.",
 			}
 		}
+		// Dir, when set, is the exec source's whole site directory: its command
+		// runs there, and a relative command such as ./run.sh resolves there.
 		return source.NewExecSourceWithConfig(name, cfg, cmp.Or(cfg.Dir, siteDir))
 	case "pg":
 		return source.NewPostgresSource(name, cfg.Query, cfg.Options)

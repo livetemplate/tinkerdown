@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -1004,5 +1006,25 @@ func TestWebhookHandler_FlagActionNotReachable(t *testing.T) {
 	handler.ServeHTTP(w, httptest.NewRequest("POST", "/webhook/hook", nil))
 	if w.Code != http.StatusNotFound || called {
 		t.Fatalf("webhook reached a flag action: status %d, called %v", w.Code, called)
+	}
+}
+
+// A webhook's exec action with a Dir runs there, as serve sets it for a
+// --config action on a page from a URL.
+func TestWebhookExecActionRunsInItsDir(t *testing.T) {
+	orig := config.IsExecAllowed()
+	defer config.SetAllowExec(orig)
+	config.SetAllowExec(true)
+
+	site, work := t.TempDir(), t.TempDir()
+	executor := newWebhookActionExecutor(nil, site)
+	if err := executor.executeExecAction(&config.Action{Kind: "exec", Cmd: "touch ran", Dir: work}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(work, "ran")); err != nil {
+		t.Errorf("not in the action's Dir: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(site, "ran")); err == nil {
+		t.Error("ran in the site directory")
 	}
 }
