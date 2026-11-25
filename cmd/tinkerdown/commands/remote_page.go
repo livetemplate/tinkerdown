@@ -140,6 +140,9 @@ func expandShortName(name string) (string, error) {
 	ref := "HEAD"
 	if i := strings.LastIndex(rest, "@"); i >= 0 {
 		rest, ref = rest[:i], rest[i+1:]
+		if strings.Contains(ref, "/") {
+			return "", fmt.Errorf("@REF goes at the end and can't contain \"/\" (%s)", shortNameForm)
+		}
 		if !githubRef.MatchString(ref) || strings.Contains(ref, "..") {
 			return "", errors.New("@REF must be a branch, tag or commit of letters, digits, \".\", \"_\" and \"-\", not starting with \".\" or \"-\"")
 		}

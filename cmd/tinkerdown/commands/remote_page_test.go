@@ -70,6 +70,11 @@ func TestParseShortName(t *testing.T) {
 		{in: "github.com/o/r/a%2e", wantErr: "each part after OWNER"},
 		{in: "github.com/o/r/a b", wantErr: "each part after OWNER"},
 		{in: "github.com/-o/r", wantErr: "OWNER"},
+		{in: "github.com/o/.", wantErr: "each part after OWNER"},
+		{in: "github.com/o/..", wantErr: "each part after OWNER"},
+		{in: "github.com/o/r/app.md/", wantErr: "each part after OWNER"},
+		{in: "github.com/o/r@v1/app", wantErr: "@REF goes at the end"},
+		{in: "github.com/o/r/app@a..b", wantErr: "@REF"},
 		{in: "github.com/o/r/app@", wantErr: "@REF"},
 		{in: "github.com/o/r/app@..x", wantErr: "@REF"},
 		{in: "github.com/o/r/app@-x", wantErr: "@REF"},
@@ -118,9 +123,11 @@ func TestShortNameFetchErrorNamesBoth(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p.url = "http://127.0.0.1:1/index.md" // nothing listens: the fetch fails offline
+	srv := httptest.NewServer(http.NotFoundHandler())
+	defer srv.Close()
+	p.url = srv.URL + "/index.md" // stands in for GitHub, so the test stays offline
 	_, _, err = fetchRemotePage(p)
-	if err == nil || !strings.Contains(err.Error(), "github.com/o/r/app (https://raw.githubusercontent.com/o/r/HEAD/app/index.md)") {
+	if err == nil || !strings.Contains(err.Error(), "github.com/o/r/app (https://raw.githubusercontent.com/o/r/HEAD/app/index.md): 404") {
 		t.Fatalf("fetch error %v must name the short name and the URL", err)
 	}
 }

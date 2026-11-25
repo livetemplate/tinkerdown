@@ -17,9 +17,14 @@ Earlier releases (v0.1.x) are documented in the
   github.com/OWNER/REPO[/PATH][@REF]` fetches the page at
   `https://raw.githubusercontent.com/OWNER/REPO/REF/PATH/index.md`, with the
   same checks as a URL. `REF` defaults to `HEAD`, and `#sha256=` pins it. The
-  pin line offers the short name. A bare `github.com/…` is never read as a
-  local path, so a directory of that name can't skip the remote page checks;
-  serve a local checkout as `./github.com/…`.
+  pin line offers the short name.
+
+### Changed
+
+- **`serve github.com/…` now fetches from GitHub.** Before, a directory named
+  `github.com/…` in the current directory was served as a local path. It no
+  longer is, so a checkout can't plant one to skip the remote page checks.
+  Write `./github.com/…` to serve it locally.
 
 ## [v0.8.1] - 2026-11-24
 
