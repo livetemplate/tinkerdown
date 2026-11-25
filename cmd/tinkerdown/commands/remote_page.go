@@ -31,37 +31,29 @@ const (
 )
 
 // pageArg is what serve's positional argument names: a directory, one local
-// page, or a page at a URL.
+// page, or a page at a URL, which a short name expands to.
 type pageArg struct {
 	dir    string // site root
 	single string // with dir: the one page to serve, relative to dir
 	url    string // a remote page's URL, without the #sha256= pin
 	shown  string // url without credentials, for every message
+	share  string // a short name as typed, which the pin line offers instead of shown
 	pin    string // the expected sha256, hex
 }
 
 // parsePageArg sorts serve's positional argument into a directory, a local
-// page (a path or a file:// URI) or a remote URL.
+// page (a path or a file:// URI), a remote URL, or a short name such as
+// github.com/OWNER/REPO/PATH[@REF], which names a page on GitHub. A bare
+// github.com/... is always a short name, never a local path: otherwise a
+// directory of that name in the current directory would be served as a
+// trusted local page, skipping the pin and the remote page checks. Serve a
+// local checkout as ./github.com/... or with file://.
 func parsePageArg(arg string) (pageArg, error) {
 	if strings.HasPrefix(arg, "https://") || strings.HasPrefix(arg, "http://") {
-		u, err := url.Parse(arg)
-		if err != nil {
-			return pageArg{}, fmt.Errorf("page URL: %w", err)
-		}
-		if u.Scheme == "http" && !isLocalHost(u.Hostname()) {
-			return pageArg{}, fmt.Errorf("page URL %s: use https; plain http is allowed only to localhost", u.Redacted())
-		}
-		pin, _ := strings.CutPrefix(u.Fragment, "sha256=")
-		if u.Fragment != "" && pin == u.Fragment {
-			return pageArg{}, fmt.Errorf("page URL %s: the only fragment allowed is #sha256=HEX", u.Redacted())
-		}
-		if pin != "" && !sha256Hex.MatchString(pin) {
-			return pageArg{}, fmt.Errorf("page URL %s: #sha256= needs 64 hex characters", u.Redacted())
-		}
-		u.Fragment = ""
-		shown := *u
-		shown.User = nil
-		return pageArg{url: u.String(), shown: shown.String(), pin: strings.ToLower(pin)}, nil
+		return parseURLArg(arg)
+	}
+	if strings.HasPrefix(arg, "github.com/") {
+		return parseShortName(arg)
 	}
 	if strings.HasPrefix(arg, "file://") {
 		u, err := url.Parse(arg)
@@ -89,6 +81,92 @@ func parsePageArg(arg string) (pageArg, error) {
 		return pageArg{}, fmt.Errorf("%s: serve takes a directory or a .md file", arg)
 	}
 	return pageArg{dir: filepath.Dir(arg), single: filepath.Base(arg)}, nil
+}
+
+func parseURLArg(arg string) (pageArg, error) {
+	u, err := url.Parse(arg)
+	if err != nil {
+		return pageArg{}, fmt.Errorf("page URL: %w", err)
+	}
+	if u.Scheme == "http" && !isLocalHost(u.Hostname()) {
+		return pageArg{}, fmt.Errorf("page URL %s: use https; plain http is allowed only to localhost", u.Redacted())
+	}
+	pin, _ := strings.CutPrefix(u.Fragment, "sha256=")
+	if u.Fragment != "" && pin == u.Fragment {
+		return pageArg{}, fmt.Errorf("page URL %s: the only fragment allowed is #sha256=HEX", u.Redacted())
+	}
+	if pin != "" && !sha256Hex.MatchString(pin) {
+		return pageArg{}, fmt.Errorf("page URL %s: #sha256= needs 64 hex characters", u.Redacted())
+	}
+	u.Fragment = ""
+	shown := *u
+	shown.User = nil
+	return pageArg{url: u.String(), shown: shown.String(), pin: strings.ToLower(pin)}, nil
+}
+
+// parseShortName expands a short name into its raw GitHub URL and parses that
+// as any other page URL, so the fetch, pin and page checks are the same.
+// Messages name both forms, and the pin line offers the short one.
+func parseShortName(arg string) (pageArg, error) {
+	name, frag, _ := strings.Cut(arg, "#")
+	raw, err := expandShortName(name)
+	var p pageArg
+	if err == nil {
+		p, err = parseURLArg(raw + "#" + frag) // an empty fragment is no pin
+	}
+	if err != nil {
+		return pageArg{}, fmt.Errorf("short name %s: %w", name, err)
+	}
+	p.shown = name + " (" + p.shown + ")"
+	p.share = name
+	return p, nil
+}
+
+const shortNameForm = "github.com/OWNER/REPO[/PATH][@REF]"
+
+var (
+	githubOwner = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9-]{0,37}[A-Za-z0-9])?$`)
+	githubPart  = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
+	githubRef   = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9._-]*$`)
+)
+
+// expandShortName turns github.com/OWNER/REPO[/PATH][@REF] into
+// https://raw.githubusercontent.com/OWNER/REPO/REF/PATH/index.md. REF
+// defaults to HEAD, the repo's default branch, and splits at the last "@".
+// A PATH ending in .md names the page itself. Every part is checked against
+// a character set, so nothing in the name can change the fetched path.
+func expandShortName(name string) (string, error) {
+	rest := strings.TrimPrefix(name, "github.com/")
+	ref := "HEAD"
+	if i := strings.LastIndex(rest, "@"); i >= 0 {
+		rest, ref = rest[:i], rest[i+1:]
+		if strings.Contains(ref, "/") {
+			return "", fmt.Errorf("@REF goes at the end and can't contain \"/\" (%s)", shortNameForm)
+		}
+		if !githubRef.MatchString(ref) || strings.Contains(ref, "..") {
+			return "", errors.New("@REF must be a branch, tag or commit of letters, digits, \".\", \"_\" and \"-\", not starting with \".\" or \"-\"")
+		}
+	}
+	parts := strings.Split(rest, "/")
+	if len(parts) < 2 {
+		return "", fmt.Errorf("a short name is %s", shortNameForm)
+	}
+	if !githubOwner.MatchString(parts[0]) {
+		return "", errors.New("OWNER must be 1-39 letters, digits or \"-\", not starting or ending with \"-\"")
+	}
+	for _, part := range parts[1:] {
+		if !githubPart.MatchString(part) || part == "." || part == ".." {
+			return "", fmt.Errorf("each part after OWNER must be letters, digits, \".\", \"_\" or \"-\", and not \".\" or \"..\" (%s)", shortNameForm)
+		}
+	}
+	page := strings.Join(parts[2:], "/")
+	switch {
+	case page == "":
+		page = "index.md"
+	case !strings.HasSuffix(page, ".md"):
+		page += "/index.md"
+	}
+	return "https://raw.githubusercontent.com/" + parts[0] + "/" + parts[1] + "/" + ref + "/" + page, nil
 }
 
 var sha256Hex = regexp.MustCompile(`^[0-9a-fA-F]{64}$`)

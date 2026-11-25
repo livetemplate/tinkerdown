@@ -9,7 +9,7 @@ Complete reference for the `tinkerdown` command-line interface.
 Start the development server.
 
 ```bash
-tinkerdown serve [directory | page.md | file:// URI | https:// URL] [flags]
+tinkerdown serve [directory | page.md | file:// URI | https:// URL | short name] [flags]
 ```
 
 **Arguments:**
@@ -19,6 +19,7 @@ tinkerdown serve [directory | page.md | file:// URI | https:// URL] [flags]
 | `directory` | Path to the app directory | Current directory |
 | `page.md` or `file:///path/page.md` | Serve one local page at `/`, with its directory as the site root. Other pages in the directory aren't served. | |
 | `https://…/page.md` | Fetch one page and serve it at `/`. Plain `http://` works only for localhost. | |
+| `github.com/OWNER/REPO[/PATH][@REF]` | A short name for a page on GitHub, fetched like a URL. See [short names](#short-names). | |
 
 ### Pages from a URL
 
@@ -69,12 +70,24 @@ tinkerdown serve
 # Specify port
 tinkerdown serve --port 3000
 
-# Run a one-file app from a URL, pinned to the content you reviewed
-tinkerdown serve --allow-exec 'https://raw.githubusercontent.com/livetemplate/onefile/main/logs/index.md#sha256=…' --source 'api=docker logs -f api'
+# Run a one-file app from GitHub, pinned to the content you reviewed
+tinkerdown serve --allow-exec 'github.com/livetemplate/onefile/logs#sha256=…' --source 'api=docker logs -f api'
 
 # Follow a container and a file on a page that takes --source flags
 tinkerdown serve --allow-exec --source 'api=docker logs -f --timestamps api' --source 'app=file:./logs/app.log'
 ```
+
+### Short names
+
+A short name such as `github.com/livetemplate/onefile/logs` names a page on GitHub the way a Go import path names a package. `serve` expands it to `https://raw.githubusercontent.com/OWNER/REPO/REF/PATH/index.md` and fetches that URL, with the same checks:
+
+- `@REF` picks a branch, tag or commit, as in `github.com/livetemplate/onefile/logs@main`. Without it, `serve` uses `HEAD`, the repo's default branch. A ref can't contain `/`, since the URL couldn't show where it ends.
+- A `PATH` ending in `.md` names the page itself. Any other `PATH` names a directory and its `index.md`. With no `PATH`, the page is the repo's root `index.md`.
+- `#sha256=HEX` after a short name pins the page, as after a URL.
+- Each part may hold only letters, digits, `.`, `_` and `-`, and a path part can't be `.` or `..`. `serve` refuses any other name and says which rule it broke.
+- A bare `github.com/…` is always a short name, even when a directory of that name exists. Otherwise a checkout could plant one and have its page served as a local page, without the pin or these checks. To serve a local checkout at that path, write `./github.com/…` or use `file://`.
+
+Messages name both the short name and the URL it expanded to. The pin line offers the short name, so you can share back the line you typed.
 
 ### Actions from the command line
 
