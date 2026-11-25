@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -898,5 +899,27 @@ func TestExecActionRunsInItsDir(t *testing.T) {
 		if _, err := os.Stat(filepath.Join(site, f)); err == nil {
 			t.Errorf("%s: ran in the site directory", f)
 		}
+	}
+}
+
+// An exec source with a Dir runs there instead of the site directory, as
+// serve sets it for a --config file's source on a page from a URL.
+func TestExecSourceRunsInItsDir(t *testing.T) {
+	origState := config.IsExecAllowed()
+	defer config.SetAllowExec(origState)
+	config.SetAllowExec(true)
+
+	site := t.TempDir()
+	work, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	src, err := createSource("here", config.SourceConfig{Type: "exec", Cmd: "pwd -P", Format: "lines", Dir: work}, site, "", stateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows, err := src.Fetch(context.Background())
+	if err != nil || len(rows) != 1 || rows[0]["line"] != work {
+		t.Fatalf("rows %v (err %v), want one line %q", rows, err, work)
 	}
 }

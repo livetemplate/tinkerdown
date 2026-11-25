@@ -305,10 +305,6 @@ type SourceConfig struct {
 	Describes string `yaml:"describes,omitempty"`
 
 	Type        string                 `yaml:"type"`                   // "exec", "pg", "rest", "csv", "json", "markdown", "sqlite", "wasm", "graphql", "computed", "stream", "merge"
-	// Dir is where Cmd runs when it isn't the site directory. Only serve sets
-	// it: a page from a URL lives in a temporary directory, so its commands
-	// run where their paths resolve.
-	Dir string `yaml:"-" json:"-"`
 	Cmd         string                 `yaml:"cmd,omitempty"`          // For exec: command to run
 	Query       string                 `yaml:"query,omitempty"`        // For pg: SQL query
 	From        string                 `yaml:"from,omitempty"`         // For rest/graphql: API endpoint URL
@@ -380,6 +376,11 @@ type SourceConfig struct {
 	// Wildcard is set by ExpandInputs on a merge declared with inputs ["*"]:
 	// its Inputs are the sources found, and empty means "no sources yet".
 	Wildcard bool `yaml:"-"`
+
+	// Dir is where Cmd runs when it isn't the site directory. Only serve sets
+	// it: a page from a URL lives in a temporary directory, so its commands
+	// run where their paths resolve.
+	Dir string `yaml:"-" json:"-"`
 }
 
 // SourceParam is one params value. In is MERGE.PATH: the value must equal
