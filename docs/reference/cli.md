@@ -44,7 +44,7 @@ To run a page that needs more, download it, review it, and serve the local copy 
 
 | Flag | Description | Default |
 |------|-------------|---------|
-| `-- COMMAND` | Add a stream source that follows COMMAND's output. Everything after the first `--` is one command, so it needs no quotes. Needs `--allow-exec`. | none |
+| `-- COMMAND` | Add a stream source that follows COMMAND's output. Everything after the first `--` is one command, so it needs no quotes. A pipe would pipe `serve` itself, so give a pipeline as one `--source`: `--source 'docker logs -f api 2>&1 \| grep -v health'`. Needs `--allow-exec`. | none |
 | `--source COMMAND` | Add a stream source that follows a command's output. Needs `--allow-exec`. Repeatable. | none |
 | `--source file:PATH` | Add a stream source that follows a file. Repeatable. | none |
 | `--source http:PATH` | Add a stream source that lists the requests in a `.http` file. Repeatable. | none |
@@ -62,7 +62,7 @@ A `--source` value may start with `NAME=`, which names the source: `--source 'ap
 
 A `--source` flag reaches a page through a merge source with `inputs: ["*"]`, or, given a `NAME=`, by replacing a page source with that name. `serve` refuses a flag no page uses, and a flag of a kind the page's `accepts` leaves out. For a page from a URL, a relative `file:` or `http:` path is taken from the directory `serve` runs in. See [stream sources](../sources/stream.md#sources-from-the-command-line).
 
-`serve` refuses a flag it doesn't know, such as a mistyped `--alow-exec`, instead of ignoring it.
+`serve` refuses a flag it doesn't know, such as a mistyped `--alow-exec`, instead of ignoring it. A flag's value goes after a space: `--port 8080`, not `--port=8080`.
 
 When a page needs sources and has none, `serve` asks for them if it runs in a terminal, then prints the `--source` flags to reuse. Without a terminal it never waits: it prints what to pass and serves the page's empty state.
 

@@ -109,6 +109,9 @@ func TestServeRefusesBadSourceFlags(t *testing.T) {
 		{"unknown short flag", []string{dir, "-x"}, "unknown flag -x"},
 		{"FOO=1 cmd names a source", []string{dir, "--source", "FOO=1 cmd"}, "--source FOO runs a command"},
 		{"nothing after --", []string{dir, "--allow-exec", "--"}, "needs a command"},
+		{"--port with no value", []string{dir, "--port"}, "--port needs a value"},
+		{"--config with no value", []string{dir, "-c"}, "-c needs a value"},
+		{"--port=N", []string{dir, "--port=8080"}, "give the value after a space: --port 8080"},
 		// Port 1 is closed: the flag is refused before any fetch is tried.
 		{"bad flag before the fetch", []string{"http://127.0.0.1:1/page.md", "--source", "sh x"}, "add --allow-exec"},
 	}
@@ -445,6 +448,7 @@ func TestSourceLabelFallbacks(t *testing.T) {
 		{config.SourceConfig{Type: "stream", File: "/var/log/app.log"}, "app"},
 		{config.SourceConfig{Type: "stream", HTTP: "./api.http"}, "api"},
 		{config.SourceConfig{Type: "stream", File: "/tmp/🙂.log"}, "file"},
+		{config.SourceConfig{Type: "stream", File: "/var/log/app.2024.log"}, "app2024"},
 		{config.SourceConfig{Type: "stream", HTTP: "/tmp/🙂.http"}, "http"},
 	} {
 		if got := sourceLabel(c.src); got != c.want {

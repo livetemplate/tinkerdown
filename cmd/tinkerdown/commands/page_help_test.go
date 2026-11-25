@@ -91,3 +91,25 @@ func TestServeRemotePageHelp(t *testing.T) {
 		t.Fatalf("serve URL --help on a page with a stream source: got %v, want the remote page refusal", err)
 	}
 }
+
+// A directory of pages lists each page under its own file name.
+func TestDescribeTakesEachPage(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "index.md"), []byte(takesPage), 0o644)
+	os.WriteFile(filepath.Join(dir, "plain.md"), []byte("# Plain\n"), 0o644)
+	cfg, err := config.LoadFromDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := server.NewWithConfig(dir, cfg)
+	if err := srv.Discover(); err != nil {
+		t.Fatal(err)
+	}
+	var out strings.Builder
+	describeTakes(&out, cfg, srv, "")
+	for _, want := range []string{"index.md takes:\n", "plain.md takes no sources or actions."} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("missing %q in:\n%s", want, out.String())
+		}
+	}
+}

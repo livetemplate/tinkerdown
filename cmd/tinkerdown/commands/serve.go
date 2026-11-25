@@ -33,6 +33,12 @@ func ServeCommand(args []string) error {
 	var dashCmd string // the command after "--", if any
 	var help bool
 	var unknown string // the first flag serve doesn't know; --help still wins
+	// The flags that take the next argument as their value.
+	valueFlags := map[string]*string{
+		"--port": &port, "-p": &port, "--host": &host,
+		"--config": &configPath, "-c": &configPath,
+		"--operator": &operator, "-o": &operator,
+	}
 
 	// Parse flags
 	for i := 0; i < len(args); i++ {
@@ -46,7 +52,7 @@ func ServeCommand(args []string) error {
 			help = true
 		} else if arg == "--source" {
 			if i+1 >= len(args) {
-				return fmt.Errorf("--source needs a value: NAME=COMMAND, NAME=file:PATH or NAME=http:PATH")
+				return fmt.Errorf("--source needs a value: COMMAND, file:PATH or http:PATH, optionally after NAME=")
 			}
 			i++
 			sourceValues = append(sourceValues, args[i])
@@ -59,26 +65,12 @@ func ServeCommand(args []string) error {
 		} else if arg == "--watch" || arg == "-w" {
 			watchVal := true
 			watch = &watchVal
-		} else if arg == "--port" || arg == "-p" {
-			if i+1 < len(args) {
-				port = args[i+1]
-				i++
+		} else if v, ok := valueFlags[arg]; ok {
+			if i+1 >= len(args) {
+				return fmt.Errorf("%s needs a value", arg)
 			}
-		} else if arg == "--host" {
-			if i+1 < len(args) {
-				host = args[i+1]
-				i++
-			}
-		} else if arg == "--config" || arg == "-c" {
-			if i+1 < len(args) {
-				configPath = args[i+1]
-				i++
-			}
-		} else if arg == "--operator" || arg == "-o" {
-			if i+1 < len(args) {
-				operator = args[i+1]
-				i++
-			}
+			i++
+			*v = args[i]
 		} else if arg == "--allow-exec" {
 			allowExec = true
 		} else if arg == "--headless" {
@@ -93,6 +85,9 @@ func ServeCommand(args []string) error {
 		}
 	}
 	if unknown != "" && !help {
+		if name, value, ok := strings.Cut(unknown, "="); ok && (valueFlags[name] != nil || name == "--source" || name == "--action") {
+			return fmt.Errorf("unknown flag %s; give the value after a space: %s %s", unknown, name, shellQuoteIfNeeded(value))
+		}
 		return fmt.Errorf("unknown flag %s; see tinkerdown serve --help", unknown)
 	}
 	if help {

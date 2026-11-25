@@ -35,7 +35,9 @@ Earlier releases (v0.1.x) are documented in the
 - **`serve` refuses a flag it doesn't know.** It used to ignore one, so a
   mistyped flag ran the page without it. Flags that never existed, such as
   `--debug`, `--verbose` and `--production`, now fail; the guides that showed
-  them are fixed.
+  them are fixed. So does `--port=8080`, which was ignored too: serve says to
+  write `--port 8080`. A `--port`, `--host`, `--config` or `--operator` with
+  no value after it is refused instead of ignored.
 
 - **`serve github.com/…` now fetches from GitHub.** Before, a directory named
   `github.com/…` in the current directory was served as a local path. It no
