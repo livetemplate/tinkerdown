@@ -44,9 +44,10 @@ To run a page that needs more, download it, review it, and serve the local copy 
 
 | Flag | Description | Default |
 |------|-------------|---------|
-| `--source NAME=COMMAND` | Add a stream source that follows a command's output. Needs `--allow-exec`. Repeatable. | none |
-| `--source NAME=file:PATH` | Add a stream source that follows a file. Repeatable. | none |
-| `--source NAME=http:PATH` | Add a stream source that lists the requests in a `.http` file. Repeatable. | none |
+| `-- COMMAND` | Add a stream source that follows COMMAND's output. Everything after the first `--` is one command, so it needs no quotes. Needs `--allow-exec`. | none |
+| `--source COMMAND` | Add a stream source that follows a command's output. Needs `--allow-exec`. Repeatable. | none |
+| `--source file:PATH` | Add a stream source that follows a file. Repeatable. | none |
+| `--source http:PATH` | Add a stream source that lists the requests in a `.http` file. Repeatable. | none |
 | `--action NAME=COMMAND` | Run COMMAND when a button named NAME is clicked, on any page. Needs `--allow-exec`. Repeatable. | none |
 | `--allow-exec` | Let sources and actions run commands | off |
 | `--port`, `-p` | Server port | `8080` |
@@ -55,9 +56,13 @@ To run a page that needs more, download it, review it, and serve the local copy 
 | `--watch`, `-w` | Reload pages when their files change | off |
 | `--operator`, `-o` | Operator identity for audit fields | `$USER` |
 | `--headless` | Serve only the API, webhooks and schedules | off |
-| `--help`, `-h` | Print serve's usage and exit | |
+| `--help`, `-h` | Print serve's usage and exit. After a page, also list what the page takes: see [what a page takes](#what-a-page-takes) | |
+
+A `--source` value may start with `NAME=`, which names the source: `--source 'api=docker logs -f api'`. `NAME=` is the part before the first `=` when that part is 1-32 letters, digits, `_` or `-`, so `--source 'grep a=b log'` has no name. Write a command that starts with an environment assignment as `env FOO=1 cmd`. A source with no name gets a label: a command's last word that isn't a flag, with a path reduced to its base name (`docker logs -f api` is `api`, `tail -f /var/log/app.log` is `app`), or a file's name without its extension. When two sources get the same label, the later ones become `api-2`, `api-3`. A name you give is never taken by a label.
 
 A `--source` flag reaches a page through a merge source with `inputs: ["*"]`, or by replacing a page source with the same name. `serve` refuses a flag no page uses, and a flag of a kind the page's `accepts` leaves out. For a page from a URL, a relative `file:` or `http:` path is taken from the directory `serve` runs in. See [stream sources](../sources/stream.md#sources-from-the-command-line).
+
+`serve` refuses a flag it doesn't know, such as a mistyped `--alow-exec`, instead of ignoring it.
 
 When a page needs sources and has none, `serve` asks for them if it runs in a terminal, then prints the `--source` flags to reuse. Without a terminal it never waits: it prints what to pass and serves the page's empty state.
 
@@ -71,11 +76,32 @@ tinkerdown serve
 tinkerdown serve --port 3000
 
 # Run a one-file app from GitHub, pinned to the content you reviewed
-tinkerdown serve --allow-exec 'github.com/livetemplate/onefile/logs#sha256=…' --source 'api=docker logs -f api'
+tinkerdown serve --allow-exec 'github.com/livetemplate/onefile/logs#sha256=…' -- docker logs -f api
 
 # Follow a container and a file on a page that takes --source flags
-tinkerdown serve --allow-exec --source 'api=docker logs -f --timestamps api' --source 'app=file:./logs/app.log'
+tinkerdown serve --allow-exec --source 'docker logs -f --timestamps api' --source file:./logs/app.log
+
+# See what a page takes before you run it
+tinkerdown serve github.com/livetemplate/onefile/http --help
 ```
+
+### What a page takes
+
+`tinkerdown serve PAGE --help` loads the page, from its URL or short name too, and lists what it takes from the command line after the usage. It reads only what the page declares:
+
+- a merge with `inputs: ["*"]`: the forms its `accepts` kinds take (`-- COMMAND`, `--source file:PATH`, `--source http:PATH`), how many it needs, and its hint
+- an input of another merge that no page or `tinkerdown.yaml` source defines: `--source NAME=…`, and whether a button or a row you open starts it
+- a button whose name isn't a builtin action or a merge's `on:` button: `--action NAME=COMMAND`
+
+```
+github.com/livetemplate/onefile/http takes:
+  --source http:PATH
+      1 or more, shown in requests. The page says: "…"
+  --source send=…
+      run by the send button, shown in response
+```
+
+The names and hints are the page's text, so `serve` cleans them before printing. Help reads no `--source` or `--action` flag, so it needs no `--allow-exec` and starts nothing.
 
 ### Short names
 

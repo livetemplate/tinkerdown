@@ -6,15 +6,15 @@ Generate Tinkerdown apps using natural language with AI assistants.
 
 Tinkerdown is designed to work seamlessly with AI assistants like Claude Code. You can describe what you want to build in natural language, and the AI will generate a complete working app.
 
-The reason this works is the constraint: interactivity comes from a **fixed `lvt-*` vocabulary** rather than open-ended HTML and JavaScript, so there is a small, well-defined target to hit — and `tinkerdown validate` gives real-parser errors with line numbers and hints, so a generating agent can self-correct to a clean pass before anything is served.
+This works because of a constraint. Interactivity comes from a **fixed `lvt-*` vocabulary** rather than open-ended HTML and JavaScript, so there is a small, well-defined target to hit. And `tinkerdown validate` gives real-parser errors with line numbers and hints, so a generating agent can self-correct to a clean pass before anything is served.
 
 ## Using Claude Code Skills
 
-Tinkerdown ships the [`skills/tinkerdown`](../../skills/tinkerdown/) skill, whose default action **is** generation: it teaches an assistant the constrained attribute vocabulary and source types, then runs the loop — read the approved surface (a `tinkerdown.yaml` [`generation:` block](../reference/config.md#the-generation-block), if present) → write `app.md` using only approved sources/actions → `tinkerdown validate` and self-correct on its diagnostics → check the operation summary if the app is privileged → serve. You describe what you want in plain language; the assistant does the rest.
+Tinkerdown ships the [`skills/tinkerdown`](../../skills/tinkerdown/) skill, whose default action **is** generation: it teaches an assistant the constrained attribute vocabulary and source types. Then it runs the loop: read the approved surface (a `tinkerdown.yaml` [`generation:` block](../reference/config.md#the-generation-block), if present) → write `app.md` using only approved sources/actions → `tinkerdown validate` and self-correct on its diagnostics → check the operation summary if the app is privileged → serve. You describe what you want in plain language; the assistant does the rest.
 
 ### Example: Creating an App with Natural Language
 
-Simply describe what you want:
+Describe what you want:
 
 ```
 Create a task management app with:
@@ -40,7 +40,7 @@ policies, house style — not any individual screen.
 
 But some workflows recur. When a generated UI is worth keeping, you don't just save the
 `app.md` — you **capture the whole workflow as a re-runnable skill**, so it stands up
-again in seconds with no LLM generation at all. This is **opt-in and on request** —
+again in seconds with no LLM generation. This is **opt-in and on request** —
 never automatic; ephemeral is the default. The captured skill bundles the manifest,
 the golden `app.md`, and the fixtures (or, when they already live at a committed path,
 points at them), plus the steps to seed and serve — see the
@@ -195,8 +195,8 @@ Always review the generated markdown to understand:
 # Validate the generated app
 tinkerdown validate
 
-# Run with debug logging
-tinkerdown serve --debug
+# Run it: serve writes its log to the terminal
+tinkerdown serve
 ```
 
 ## Next Steps

@@ -2,28 +2,9 @@
 
 Troubleshoot issues with your Tinkerdown apps.
 
-## Debug Mode
+## Server Log
 
-Enable debug logging:
-
-```bash
-tinkerdown serve --debug
-```
-
-This shows:
-
-- WebSocket messages
-- Source fetch operations
-- Template rendering times
-- State changes
-
-## Verbose Mode
-
-For even more detail:
-
-```bash
-tinkerdown serve --verbose
-```
+`tinkerdown serve` writes its log to the terminal it runs in. Each line starts with where it comes from, such as `[WS]` for a page's connection and the blocks it sets up, `[API]` for source reads and writes, `[Config]` for config warnings and `[Schedule]` for scheduled actions. Source and action errors show there too. There is no separate debug level: the log is always on.
 
 ## Common Issues
 
@@ -46,11 +27,7 @@ tinkerdown serve --verbose
 
 1. Check the source configuration in `tinkerdown.yaml`
 2. Verify the data source is accessible (database, API, file)
-3. Use debug mode to see fetch errors:
-
-```bash
-tinkerdown serve --debug
-```
+3. Read the fetch error in the [server log](#server-log).
 
 4. Test the source directly:
 
@@ -132,26 +109,7 @@ This checks:
 
 ### Server Logs
 
-```bash
-# JSON format for log aggregation
-tinkerdown serve --log-format=json
-
-# Include request correlation IDs
-tinkerdown serve --debug --correlation-ids
-```
-
-### Sample Log Output
-
-```json
-{
-  "time": "2024-01-15T10:30:00Z",
-  "level": "debug",
-  "msg": "source fetch",
-  "source": "tasks",
-  "duration_ms": 12,
-  "rows": 5
-}
-```
+The log is plain text, one line per event, as described in [Server Log](#server-log). To keep it, redirect it: `tinkerdown serve > serve.log 2>&1`.
 
 ## Performance Issues
 
@@ -159,7 +117,7 @@ tinkerdown serve --debug --correlation-ids
 
 1. Enable caching for data sources
 2. Check network latency to external APIs
-3. Profile source fetch times with debug mode
+3. Watch the [server log](#server-log) for slow or failing source fetches
 
 ### High Memory Usage
 
@@ -172,7 +130,7 @@ tinkerdown serve --debug --correlation-ids
 If you're still stuck:
 
 1. Check the [GitHub Issues](https://github.com/livetemplate/tinkerdown/issues)
-2. Include debug output when reporting issues
+2. Include the server log when reporting issues
 3. Provide a minimal reproduction case
 
 ## Next Steps

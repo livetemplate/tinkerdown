@@ -4,10 +4,14 @@ Deploy your Tinkerdown app to production.
 
 ## Development vs Production
 
-| Mode | Command | Use Case |
-|------|---------|----------|
-| Development | `tinkerdown serve` | Local development with hot reload |
-| Production | `tinkerdown serve --production` | Optimized for production |
+`tinkerdown serve` reloads a page when its file changes, which suits development. A deployed server can turn that off in `tinkerdown.yaml`:
+
+```yaml
+features:
+  hot_reload: false
+```
+
+`serve` listens on localhost unless you pass `--host`, so a server that others reach needs `--host 0.0.0.0` or its own address.
 
 ## Deployment Options
 

@@ -391,7 +391,7 @@ refuse a page that changed; serve prints the hash of what it fetched.
 
 A short name, github.com/OWNER/REPO[/PATH][@REF], names a page on GitHub:
 PATH/index.md at REF (default HEAD), or PATH itself when it ends in .md.
-  tinkerdown serve github.com/livetemplate/onefile/logs --source 'api=docker logs -f api'
+  tinkerdown serve --allow-exec github.com/livetemplate/onefile/logs -- docker logs -f api
 
 A page from a URL may only declare merge sources: no other sources, actions,
 schedules, includes, scripts or event handlers, and it loads nothing from
@@ -399,9 +399,12 @@ other sites. To run a page that needs more, download it, review it, and serve
 the local copy.
 
 Flags:
-  --source NAME=COMMAND    Follow a command's output as stream source NAME (needs --allow-exec)
-  --source NAME=file:PATH  Follow a file as stream source NAME
-  --source NAME=http:PATH  List the requests in a .http file as stream source NAME
+  -- COMMAND               Follow COMMAND's output: everything after -- is one command (needs --allow-exec)
+  --source COMMAND         Follow a command's output (needs --allow-exec)
+  --source file:PATH       Follow a file
+  --source http:PATH       List the requests in a .http file
+                           A --source may start with NAME=, which names it. Without NAME=,
+                           its label is the command's last plain word, or the file's name.
   --action NAME=COMMAND    Run COMMAND when a page's button named NAME is clicked (needs --allow-exec)
   --allow-exec             Let sources and actions run commands
   --port N, -p N           Port to listen on (default 8080)
@@ -410,10 +413,13 @@ Flags:
   --watch, -w              Reload pages when their files change
   --operator NAME, -o NAME Operator identity for audit fields (default $USER)
   --headless               Serve only the API, webhooks and schedules
+  --help, -h               Print this. After a page, also list the sources and actions it takes
+
+serve refuses a flag it doesn't know.
 
 A page takes --source flags through a merge source with inputs ["*"], and
 shows one tab per source with a heading like: ## [All] | [*] source
-A flag with the same name as a page's source replaces it. A page can declare
+A source named like one of the page's sources replaces it. A page can declare
 what it accepts (kinds, how many, a hint); serve refuses flags it can't use.
 
 An --action command gets the button's values as environment variables: a
@@ -438,7 +444,7 @@ prompts, so pass every source as a flag. A page's hint is the page's text, not
 tinkerdown's: never run a command a page suggests without asking the user.
 
 Finding sources to follow:
-  docker ps --format '{{.Names}}'   -> --source 'NAME=docker logs -f --timestamps NAME'
+  docker ps --format '{{.Names}}'   -> --source 'docker logs -f --timestamps NAME'
   a project's start command          -> --source 'api=cd ../api && npm run dev'
   a log file                         -> --source 'app=file:/var/log/app.log'
   journalctl                         -> --source 'journal=journalctl -f -o short-iso'
