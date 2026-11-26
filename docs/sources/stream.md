@@ -177,7 +177,7 @@ A query starts at a `-- name: NAME` line, or HugSQL's `-- :name NAME`, and runs 
 A folder gives the queries of each `.sql` file in it, in name order. Its subfolders, and files whose names start with `.`, aren't read. The reader reads again when a file's size or modification time changes, or a file is added or removed. Each read replaces the rows, so an edited query updates and a deleted one leaves the page. A file, or a folder's files together, may hold 4 MiB, and a folder up to 1,000 `.sql` files. Past that, the block's `.Error` says so.
 
 Each row's `fields` hold:
-- `entry`: the source's name and the query's place, such as `"queries/1"`, counted across a folder's files
+- `entry`: the source's name and the query's place, such as `"queries/1"`, counted across a folder's files. Because it is a place, a query added above others, or a file added before others, renumbers the queries after it.
 - `file`: the file's name
 - `name`
 - `kind`: the first keyword after any comments, lowercased, such as `select` or `update`; a query that starts with a CTE is `with`
