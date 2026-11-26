@@ -180,7 +180,7 @@ Each row's `fields` hold:
 - `entry`: the source's name and the query's place, such as `"queries/1"`, counted across a folder's files
 - `file`: the file's name
 - `name`
-- `kind`: the first keyword, lowercased, such as `select` or `update`
+- `kind`: the first keyword after any comments, lowercased, such as `select` or `update`; a query that starts with a CTE is `with`
 - `sql`: the query as written, trimmed
 - `line`: the header's line number, or 1 for a file with no header
 - `text`: name and SQL, for search

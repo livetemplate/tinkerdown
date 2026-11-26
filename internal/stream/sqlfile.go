@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"unicode"
 )
 
 // SQLQuery is one query in a .sql file, as written.
@@ -75,13 +76,31 @@ func firstSQLLine(sql string) string {
 }
 
 // queryKind returns a query's kind: its first SQL keyword, lowercased, such
-// as select, insert or update. A page uses it to mark the queries that write;
-// tinkerdown doesn't judge that, the database's read-only mode does.
-//
-// TODO(user): implement. sql is the query as written, trimmed, and may start
-// with -- line comments or /* */ block comments.
+// as select, insert or update, after any -- and /* */ comments. A page uses it
+// to mark the queries that write; tinkerdown doesn't judge that, the
+// database's read-only mode does. A query with a CTE is with: what follows
+// the CTE can only be found by matching its parentheses and quotes.
 func queryKind(sql string) string {
-	return ""
+	s := sql
+	for {
+		s = strings.TrimLeftFunc(s, unicode.IsSpace)
+		switch {
+		case strings.HasPrefix(s, "--"):
+			_, s, _ = strings.Cut(s, "\n") // a last-line comment leaves ""
+		case strings.HasPrefix(s, "/*"):
+			_, rest, ok := strings.Cut(s[2:], "*/")
+			if !ok {
+				return ""
+			}
+			s = rest
+		default:
+			end := strings.IndexFunc(s, func(r rune) bool { return (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') })
+			if end < 0 {
+				end = len(s)
+			}
+			return strings.ToLower(s[:end])
+		}
+	}
 }
 
 // kindWord is what a kind may be: a page puts it in a CSS class.

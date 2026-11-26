@@ -57,11 +57,15 @@ func TestParseSQLFile(t *testing.T) {
 
 func TestQueryKind(t *testing.T) {
 	for sql, want := range map[string]string{
-		"SELECT 1":                         "select",
-		"-- Everyone\nSELECT * FROM users": "select",
-		"/* the old ones */ DELETE FROM t": "delete",
-		"  update t set a = 1":             "update",
-		"-- a\n-- b\n\n  Insert INTO t":    "insert",
+		"SELECT 1":                             "select",
+		"-- Everyone\nSELECT * FROM users":     "select",
+		"/* the old ones */ DELETE FROM t":     "delete",
+		"  update t set a = 1":                 "update",
+		"-- a\n-- b\n\n  Insert INTO t":        "insert",
+		"WITH old AS (SELECT 1) DELETE FROM t": "with",
+		"SELECT(1)":                            "select",
+		"/* never closed SELECT 1":             "",
+		"-- only a comment":                    "",
 	} {
 		if got := queryKind(sql); got != want {
 			t.Errorf("queryKind(%q) = %q, want %q", sql, got, want)
