@@ -187,7 +187,9 @@ Each row's `fields` hold:
 
 The row's `msg` is the name, and its `line` is the query's first line of SQL. A click passes the query's SQL to the command as `TD_sql`; see [Runs a click starts](#runs-a-click-starts).
 
-tinkerdown never runs the SQL: the command you give does, such as `sqlite3 -safe -readonly app.db "$TD_sql"`. `kind` only says how a query starts, so a page can mark the queries that write, and a read-only connection is what refuses them.
+tinkerdown never runs the SQL: the command you give does, such as `sqlite3 -safe -readonly app.db " $TD_sql"`. `kind` only says how a query starts, so a page can mark the queries that write, and a read-only connection is what refuses them.
+
+Pass the SQL after a space, as in `" $TD_sql"`. A client reads an argument that starts with `-` as an option, so without the space a query that starts with a `--` comment fails. psql's `-c` runs text that is one backslash command, such as `\! rm …`, as its own command, and the space sends it to the server instead. SQL ignores the space.
 
 ## Runs a click starts
 

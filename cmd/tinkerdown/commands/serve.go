@@ -382,7 +382,7 @@ func printBanner(cfg *config.Config, absDir string) {
 		fmt.Printf("Mode: 🤖 Headless (API, webhooks, schedules only)\n")
 		return
 	}
-	fmt.Printf("📚 Livemdtools Development Server\n\n")
+	fmt.Printf("📚 tinkerdown Development Server\n\n")
 	fmt.Printf("Serving: %s\n", absDir)
 	if cfg.IsSiteMode() {
 		fmt.Printf("Mode: 📖 Multi-page documentation site\n")

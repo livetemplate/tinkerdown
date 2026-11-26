@@ -11,6 +11,17 @@ Earlier releases (v0.1.x) are documented in the
 
 ## [Unreleased]
 
+### Fixed
+
+- **`serve`'s banner says tinkerdown**, not "Livemdtools", the project's old
+  name.
+- **The `.sql` docs pass the query after a space**, as in `" $TD_sql"`.
+  Their example sent a query that starts with a `--` comment to sqlite3 as
+  an option, which failed. [Queries from a .sql file](docs/sources/stream.md#queries-from-a-sql-file)
+  says why, and why psql needs the space too.
+- **The CLI reference keeps the limits for a page from a URL in one list**,
+  and says a `<` in a page's CSS counts as markup.
+
 ## [v0.10.0] - 2026-11-26
 
 ### Added
