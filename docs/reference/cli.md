@@ -30,7 +30,8 @@ Because the page comes from someone else, it may only declare `merge` sources, s
 - any other kind of source, any action, or a schedule
 - frontmatter beyond `title`, `sources`, `styling`, `charts`, `blocks` and `features`
 - an include, a `wasm` or `embed-lvt` block, or a server block that isn't an `lvt` block
-- a `<script>`, `<meta>`, `<base>`, `<link>`, `<iframe>`, `<object>`, `<embed>`, `<svg>` or `<math>` element, markup inside a raw-text element such as `<style>`, including a `<` in its CSS as in `@media (width < 600px)`, an `on…` event handler, or a `javascript:` URL
+- a `<script>`, `<meta>`, `<base>`, `<link>`, `<iframe>`, `<object>`, `<embed>`, `<svg>` or `<math>` element, an `on…` event handler, or a `javascript:` URL
+- markup inside a raw-text element such as `<style>`, including a `<` in its CSS, as in `@media (width < 600px)`
 - a template action in a tag name, attribute name, comment or raw-text element such as `<textarea>`, as in `<{{.tag}}>`, and the trim markers `{{-` and `-}}`. Actions may appear in text and attribute values.
 - a merge `buffer` over 10,000 or a `flush` under 50ms
 

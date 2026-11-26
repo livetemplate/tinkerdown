@@ -189,7 +189,7 @@ The row's `msg` is the name, and its `line` is the query's first line of SQL. A 
 
 tinkerdown never runs the SQL: the command you give does, such as `sqlite3 -safe -readonly app.db " $TD_sql"`. `kind` only says how a query starts, so a page can mark the queries that write, and a read-only connection is what refuses them.
 
-Pass the SQL after a space, as in `" $TD_sql"`. A client reads an argument that starts with `-` as an option, so without the space a query that starts with a `--` comment fails. psql's `-c` runs text that is one backslash command, such as `\! rm …`, as its own command, and the space sends it to the server instead. SQL ignores the space.
+Pass the SQL after a space, inside the same quotes, as in `" $TD_sql"`: a space outside the quotes doesn't reach the client. A client reads an argument that starts with `-` as an option, so without the space a query that starts with a `--` comment fails. psql's `-c` runs text that is one backslash command, such as `\! rm …`, as its own command, and the space sends it to the server instead. SQL ignores the space.
 
 ## Runs a click starts
 
