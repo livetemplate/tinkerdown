@@ -30,6 +30,9 @@ var presentationPages = map[string]string{
 	"mixed.md": "---\ntitle: Mixed\n---\n\n## [All] | [Open] status = open\n\nTab body.\n\n## Later\n\nLater body.\n\n## Last\n\nLast body.\n",
 	// Ordinary ## sections, one slide each.
 	"sections.md": "---\ntitle: Sections\n---\n\n## First\n\nFirst body.\n\n## Second\n\nSecond body.\n",
+	// A <style>, a <script> and a hidden paragraph, which a slide must not
+	// show, and a grid, which must keep its layout.
+	"style.md": "---\ntitle: Style\n---\n\n## First\n\nFirst body.\n\n<style>\n.first { color: teal; }\n</style>\n\n<script>window.pmScript = \"script text\";</script>\n\n<p hidden>Hidden note.</p>\n\n<div id=\"pm-grid\" style=\"display: grid\">Grid cell.</div>\n",
 }
 
 // TestPresentationShowsContent_E2E enters presentation mode on each page and
@@ -81,13 +84,19 @@ func TestPresentationShowsContent_E2E(t *testing.T) {
 			.map(el => el.textContent.trim()).filter(Boolean).join(" ");
 	})()`
 
-	// Each page's first slide must show want, and not hide, which is on a
-	// later slide.
-	for page, c := range map[string]struct{ want, hidden string }{
+	// Each page's first slide must show want, and none of hidden, which is
+	// on a later slide, inside a <style> or <script>, or marked hidden.
+	// grid, when set, names an element whose display must stay grid.
+	for page, c := range map[string]struct {
+		want   string
+		hidden []string
+		grid   string
+	}{
 		"tabs":     {want: "Tab body"},
 		"plain":    {want: "Just a paragraph"},
-		"mixed":    {want: "Tab body", hidden: "Last body"},
-		"sections": {want: "First body", hidden: "Second body"},
+		"mixed":    {want: "Tab body", hidden: []string{"Last body"}},
+		"sections": {want: "First body", hidden: []string{"Second body"}},
+		"style":    {want: "First body", hidden: []string{"color: teal", "script text", "Hidden note"}, grid: "#pm-grid"},
 	} {
 		t.Run(page, func(t *testing.T) {
 			want, _ := json.Marshal(c.want)
@@ -109,9 +118,23 @@ func TestPresentationShowsContent_E2E(t *testing.T) {
 				dump()
 				t.Fatalf("presentation mode shows %q, want it to include %q (before: %q)", after, c.want, before)
 			}
-			if c.hidden != "" && strings.Contains(after, c.hidden) {
-				dump()
-				t.Fatalf("the first slide shows %q, which belongs on a later slide: %q", c.hidden, after)
+			for _, h := range c.hidden {
+				if strings.Contains(after, h) {
+					dump()
+					t.Fatalf("the first slide shows %q, which it should hide: %q", h, after)
+				}
+			}
+			if c.grid != "" {
+				sel, _ := json.Marshal(c.grid)
+				var display string
+				if err := chromedp.Run(actx, chromedp.Evaluate(`getComputedStyle(document.querySelector(`+string(sel)+`)).display`, &display)); err != nil {
+					dump()
+					t.Fatal(err)
+				}
+				if display != "grid" {
+					dump()
+					t.Fatalf("%s has display %q in presentation mode, want grid", c.grid, display)
+				}
 			}
 		})
 	}

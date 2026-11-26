@@ -2070,13 +2070,12 @@ func (s *Server) renderPage(page *tinkerdown.Page, currentPath string, host stri
             opacity: 1;
         }
 
-        /* Hide all H2 sections except current in presentation mode */
-        body.presentation-mode .content-wrapper > * {
-            display: none;
-        }
-
-        body.presentation-mode .presentation-current-section {
-            display: block !important;
+        /* Hide every direct child outside the current slide. The current
+           slide's elements keep their own display, so a <style> or <script>
+           stays hidden and a grid or flex block keeps its layout. The
+           !important beats page CSS and inline styles that set display. */
+        body.presentation-mode .content-wrapper > :not(.presentation-current-section) {
+            display: none !important;
         }
 
         body.presentation-mode .content-wrapper {
