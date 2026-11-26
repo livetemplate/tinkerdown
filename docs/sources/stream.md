@@ -172,7 +172,7 @@ SELECT id, name FROM users ORDER BY id DESC LIMIT 100;
 UPDATE orders SET status = 'closed' WHERE age > 30;
 ```
 
-A query starts at a `-- name: NAME` line, or HugSQL's `-- :name NAME`, and runs to the next one. NAME is the first word after the header. A word after it, such as sqlc's `:exec`, isn't part of the name, and neither are the operator characters aiosql puts at its end (`^ $ ! < * #`). Text before the first header, and a header with no SQL under it, are skipped. A file with no header is one query named after the file, so `users.sql` holding one query is `users`.
+A query starts at a `-- name: NAME` line, or HugSQL's `-- :name NAME`, and runs to the next one. NAME is the first word after the header. A word after it, such as sqlc's `:exec`, isn't part of the name, and neither are the operator characters aiosql puts at its end (`^ $ ! < * #`). Text before the first header, and a header with no SQL under it, are skipped. Any comment line that starts with `name:` is a header, also inside a query. A file with no header is one query named after the file, so `users.sql` holding one query is `users`.
 
 A folder gives the queries of each `.sql` file in it, in name order. Its subfolders, and files whose names start with `.`, aren't read. The reader reads again when a file's size or modification time changes, or a file is added or removed. Each read replaces the rows, so an edited query updates and a deleted one leaves the page. A file, or a folder's files together, may hold 4 MiB, and a folder up to 1,000 `.sql` files. Past that, the block's `.Error` says so.
 

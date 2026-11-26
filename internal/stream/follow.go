@@ -55,7 +55,9 @@ func followFiles(ctx context.Context, b *Buffer, path, ext string, parse func([]
 			seen = nil
 		case seen == nil || !slices.Equal(stats, seen):
 			seen = stats
-			last = readFilesOnce(ctx, b, stats, parse, last)
+			if last = readFilesOnce(ctx, b, stats, parse, last); last == nil {
+				seen = nil // a read that failed is tried again next poll
+			}
 		}
 		select {
 		case <-ctx.Done():
@@ -110,7 +112,8 @@ func statFiles(path, ext string) ([]fileStat, error) {
 }
 
 // readFilesOnce reads the files and, unless their content is last's,
-// replaces the rows with parse's. It returns the content it read.
+// replaces the rows with parse's. It returns the content it read, or nil when
+// a file couldn't be read.
 func readFilesOnce(ctx context.Context, b *Buffer, stats []fileStat, parse func([]textFile) ([]Row, []Private, error), last []textFile) []textFile {
 	files := make([]textFile, len(stats))
 	var total int

@@ -137,6 +137,33 @@ func TestSQLReaderFollowsTheFile(t *testing.T) {
 	}
 }
 
+func TestSQLReaderRetriesAFailedRead(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("root reads a file whatever its mode")
+	}
+	path := filepath.Join(t.TempDir(), "q.sql")
+	os.WriteFile(path, []byte("SELECT 1;\n"), 0o000)
+	_, m := sqlRows(t, InputSpec{Name: "q", SQL: path})
+	waitFor(t, "the read error", func() bool { return strings.Contains(m.Err(), "permission denied") })
+	// Only the mode changes: the size and modification time stay the same.
+	os.Chmod(path, 0o644)
+	waitFor(t, "the query after the retry", func() bool { return len(m.Snapshot()) == 1 && m.Err() == "" })
+}
+
+func TestSQLReaderIgnoresATouch(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "q.sql")
+	os.WriteFile(path, []byte("SELECT 1;\n"), 0o644)
+	_, m := sqlRows(t, InputSpec{Name: "q", SQL: path})
+	waitFor(t, "the query", func() bool { return len(m.Snapshot()) == 1 })
+	seq := m.Snapshot()[0]["seq"]
+	later := time.Now().Add(time.Minute)
+	os.Chtimes(path, later, later)
+	time.Sleep(10 * pollInterval)
+	if got := m.Snapshot()[0]["seq"]; got != seq {
+		t.Fatalf("a touch replaced the row: seq %v, was %v", got, seq)
+	}
+}
+
 func TestSQLReaderFollowsAFolder(t *testing.T) {
 	dir := t.TempDir()
 	write := func(name, text string) {
