@@ -2072,9 +2072,10 @@ func (s *Server) renderPage(page *tinkerdown.Page, currentPath string, host stri
 
         /* Hide every direct child outside the current slide. The current
            slide's elements keep their own display, so a <style> or <script>
-           stays hidden and a grid or flex block keeps its layout. */
+           stays hidden and a grid or flex block keeps its layout. The
+           !important beats page CSS and inline styles that set display. */
         body.presentation-mode .content-wrapper > :not(.presentation-current-section) {
-            display: none;
+            display: none !important;
         }
 
         body.presentation-mode .content-wrapper {
