@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -76,6 +77,9 @@ func statFiles(path, ext string) ([]fileStat, error) {
 		return nil, err
 	}
 	if !info.IsDir() {
+		if !info.Mode().IsRegular() {
+			return nil, fmt.Errorf("%s is not a regular file", path) // a FIFO would block the read
+		}
 		if info.Size() > MaxReadFile {
 			return nil, fmt.Errorf("%s is over %d bytes", path, MaxReadFile)
 		}
@@ -111,6 +115,16 @@ func statFiles(path, ext string) ([]fileStat, error) {
 	return stats, nil
 }
 
+// readAtMost reads up to n bytes of the file at path.
+func readAtMost(path string, n int) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return io.ReadAll(io.LimitReader(f, int64(n)))
+}
+
 // readFilesOnce reads the files and, unless their content is last's,
 // replaces the rows with parse's. It returns the content it read, or nil when
 // a file couldn't be read.
@@ -118,12 +132,13 @@ func readFilesOnce(ctx context.Context, b *Buffer, stats []fileStat, parse func(
 	files := make([]textFile, len(stats))
 	var total int
 	for i, st := range stats {
-		data, err := os.ReadFile(st.path)
+		// The file can grow between the stat and the read, so the read
+		// stops past what is left of the cap.
+		data, err := readAtMost(st.path, MaxReadFile-total+1)
 		if err != nil {
 			b.hub.setErr(ctx, b, err.Error())
 			return nil
 		}
-		// The file can grow between the stat and the read.
 		if total += len(data); total > MaxReadFile {
 			b.hub.setErr(ctx, b, fmt.Sprintf("%s is over %d bytes", st.path, MaxReadFile))
 			return nil

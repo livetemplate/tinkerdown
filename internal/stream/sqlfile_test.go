@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -215,6 +216,15 @@ func TestSQLReaderRefusesTooMuch(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "2.sql"), half, 0o644)
 	_, m = sqlRows(t, InputSpec{Name: "two", SQL: dir})
 	waitFor(t, "the folder size error", func() bool { return strings.Contains(m.Err(), "over 4194304 bytes together") })
+}
+
+func TestSQLReaderRefusesAFIFO(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "q.sql")
+	if err := syscall.Mkfifo(path, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, m := sqlRows(t, InputSpec{Name: "q", SQL: path})
+	waitFor(t, "the error", func() bool { return strings.Contains(m.Err(), "is not a regular file") })
 }
 
 func TestHTTPReaderRefusesAFolder(t *testing.T) {
