@@ -11,6 +11,8 @@ Earlier releases (v0.1.x) are documented in the
 
 ## [Unreleased]
 
+## [v0.10.0] - 2026-11-26
+
 ### Added
 
 - **Queries from a `.sql` file.** A stream with `sql: PATH`, or
