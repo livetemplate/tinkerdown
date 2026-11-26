@@ -35,6 +35,10 @@ Earlier releases (v0.1.x) are documented in the
 - **`on:` refuses a built-in action's name.** A button named `run`, `refresh`
   or another built-in runs the built-in, so a merge with `on: run` never
   started. Config validation now says so.
+- **Presentation mode no longer shows a page's CSS as text.** It set
+  `display: block` on every element of the current slide. A `<style>`
+  element then showed as text, and a grid lost its layout. Each element
+  now keeps its own `display`.
 
 ## [v0.9.1] - 2026-11-25
 

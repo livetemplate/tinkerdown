@@ -30,6 +30,8 @@ var presentationPages = map[string]string{
 	"mixed.md": "---\ntitle: Mixed\n---\n\n## [All] | [Open] status = open\n\nTab body.\n\n## Later\n\nLater body.\n\n## Last\n\nLast body.\n",
 	// Ordinary ## sections, one slide each.
 	"sections.md": "---\ntitle: Sections\n---\n\n## First\n\nFirst body.\n\n## Second\n\nSecond body.\n",
+	// A <style> element in the content, which a slide must not show as text.
+	"style.md": "---\ntitle: Style\n---\n\n## First\n\nFirst body.\n\n<style>\n.first { color: teal; }\n</style>\n",
 }
 
 // TestPresentationShowsContent_E2E enters presentation mode on each page and
@@ -81,13 +83,14 @@ func TestPresentationShowsContent_E2E(t *testing.T) {
 			.map(el => el.textContent.trim()).filter(Boolean).join(" ");
 	})()`
 
-	// Each page's first slide must show want, and not hide, which is on a
-	// later slide.
+	// Each page's first slide must show want, and not hidden, which is on a
+	// later slide or inside a <style>.
 	for page, c := range map[string]struct{ want, hidden string }{
 		"tabs":     {want: "Tab body"},
 		"plain":    {want: "Just a paragraph"},
 		"mixed":    {want: "Tab body", hidden: "Last body"},
 		"sections": {want: "First body", hidden: "Second body"},
+		"style":    {want: "First body", hidden: "color: teal"},
 	} {
 		t.Run(page, func(t *testing.T) {
 			want, _ := json.Marshal(c.want)
@@ -111,7 +114,7 @@ func TestPresentationShowsContent_E2E(t *testing.T) {
 			}
 			if c.hidden != "" && strings.Contains(after, c.hidden) {
 				dump()
-				t.Fatalf("the first slide shows %q, which belongs on a later slide: %q", c.hidden, after)
+				t.Fatalf("the first slide shows %q, which it should hide: %q", c.hidden, after)
 			}
 		})
 	}
