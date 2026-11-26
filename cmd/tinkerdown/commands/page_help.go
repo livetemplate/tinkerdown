@@ -75,9 +75,9 @@ func describeTakes(w io.Writer, cfg *config.Config, srv *server.Server, shown st
 }
 
 // wildcardForms is how to pass a ["*"] merge's sources, by the kinds it
-// accepts (all three by default).
+// accepts (every kind by default).
 func wildcardForms(a *config.SourceAccepts) string {
-	kinds := []string{"cmd", "file", "http"}
+	kinds := config.StreamKinds
 	if a != nil && len(a.Kinds) > 0 {
 		kinds = a.Kinds
 	}
@@ -86,7 +86,7 @@ func wildcardForms(a *config.SourceAccepts) string {
 		switch k {
 		case "cmd":
 			forms = append(forms, "-- COMMAND")
-		case "file", "http":
+		default:
 			forms = append(forms, "--source "+k+":PATH")
 		}
 	}

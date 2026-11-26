@@ -49,6 +49,26 @@ Content-Type: application/json
 GET {{host}}/slow
 `
 
+// browserSettles waits out the freeze a fresh Chrome profile has about a
+// second after its first page load: its timers stop and DevTools gets no
+// answers, 2 s without container limits and up to 10 s with them. Waiting
+// once lets short per-action deadlines measure the app. It wants four answers
+// in a row, 2 s in all, so a probe before the freeze starts doesn't count.
+func browserSettles(ctx context.Context) bool {
+	answers := 0
+	for deadline := time.Now().Add(60 * time.Second); answers < 4 && time.Now().Before(deadline); {
+		time.Sleep(500 * time.Millisecond)
+		pctx, cancel := context.WithTimeout(ctx, time.Second)
+		if chromedp.Run(pctx, chromedp.Evaluate(`1`, nil)) == nil {
+			answers++
+		} else {
+			answers = 0
+		}
+		cancel()
+	}
+	return answers == 4
+}
+
 func TestClickRun_E2E(t *testing.T) {
 	serverLog := captureServerLog(t)
 	config.SetAllowExec(true)
@@ -96,17 +116,7 @@ func TestClickRun_E2E(t *testing.T) {
 	logs.listen(ctx)
 	url := ConvertURLForDockerChrome(ts.URL)
 
-	dump := func() {
-		var html string
-		chromedp.Run(ctx, chromedp.OuterHTML("body", &html, chromedp.ByQuery))
-		logs.mu.Lock()
-		defer logs.mu.Unlock()
-		t.Logf("console:\n%s", strings.Join(logs.console, "\n"))
-		t.Logf("ws sent:\n%s", strings.Join(logs.wsSent, "\n"))
-		t.Logf("ws received: %d frames, last: %s", len(logs.wsRecv), strings.Join(logs.wsRecv[max(0, len(logs.wsRecv)-5):], "\n"))
-		t.Logf("rendered html: %.6000s", html)
-		t.Logf("server log tail: %s", tail(serverLog.String(), 4000))
-	}
+	dump := func() { logs.dump(t, ctx, serverLog) }
 	run := func(actions ...chromedp.Action) error {
 		actx, cancel := context.WithTimeout(ctx, 10*time.Second)
 		defer cancel()
@@ -126,37 +136,20 @@ func TestClickRun_E2E(t *testing.T) {
 	}
 
 	// The URL holds a valid entry, but opening the page must send nothing.
-	if err := chromedp.Run(ctx, network.Enable(), chromedp.Navigate(url+"/?entry=1"),
-		chromedp.WaitVisible(`[data-testid="send-2"]`, chromedp.ByQuery)); err != nil {
+	if err := chromedp.Run(ctx, network.Enable(), chromedp.Navigate(url+"/?entry=api/1"),
+		chromedp.WaitVisible(`[data-testid="send-api/2"]`, chromedp.ByQuery)); err != nil {
 		dump()
 		t.Fatal(err)
 	}
 
-	// A fresh Chrome profile freezes the page for a few seconds about a
-	// second after its first load: its timers stop and DevTools gets no
-	// answers, 2 s without container limits and up to 10 s with them. Wait
-	// that out once, so the 10 s per-action deadlines below measure the app.
-	// Four answers in a row, 2 s in all, so a probe before the freeze
-	// starts doesn't count.
-	answers := 0
-	for deadline := time.Now().Add(60 * time.Second); answers < 4 && time.Now().Before(deadline); {
-		time.Sleep(500 * time.Millisecond)
-		pctx, cancel := context.WithTimeout(ctx, time.Second)
-		if chromedp.Run(pctx, chromedp.Evaluate(`1`, nil)) == nil {
-			answers++
-		} else {
-			answers = 0
-		}
-		cancel()
-	}
-	if answers < 4 {
+	if !browserSettles(ctx) {
 		dump()
 		t.Fatal("the browser never answered after the first page load")
 	}
 
 	t.Run("the URL and a reload start nothing", func(t *testing.T) {
 		time.Sleep(time.Second)
-		if err := run(chromedp.Reload(), chromedp.WaitVisible(`[data-testid="send-2"]`, chromedp.ByQuery)); err != nil {
+		if err := run(chromedp.Reload(), chromedp.WaitVisible(`[data-testid="send-api/2"]`, chromedp.ByQuery)); err != nil {
 			dump()
 			t.Fatal(err)
 		}
@@ -168,7 +161,7 @@ func TestClickRun_E2E(t *testing.T) {
 	})
 
 	t.Run("a click runs the request once, with its filled-in values", func(t *testing.T) {
-		if err := run(chromedp.Click(`[data-testid="send-1"]`, chromedp.ByQuery)); err != nil {
+		if err := run(chromedp.Click(`[data-testid="send-api/1"]`, chromedp.ByQuery)); err != nil {
 			t.Fatal(err)
 		}
 		waitJS("the response", `document.querySelector('[data-testid="resp"]').innerText.includes("done")`)
@@ -211,12 +204,12 @@ func TestClickRun_E2E(t *testing.T) {
 
 	t.Run("a click mid-run starts it again and kills the first", func(t *testing.T) {
 		before := runCount()
-		if err := run(chromedp.Click(`[data-testid="send-2"]`, chromedp.ByQuery)); err != nil {
+		if err := run(chromedp.Click(`[data-testid="send-api/2"]`, chromedp.ByQuery)); err != nil {
 			t.Fatal(err)
 		}
 		waitJS("running", `document.querySelector('[data-testid="state"]').innerText === "running"`)
 		waitJS("the first run's line", `document.querySelector('[data-testid="resp"]').innerText.includes("GET https://api.test/slow")`)
-		if err := run(chromedp.Click(`[data-testid="send-2"]`, chromedp.ByQuery)); err != nil {
+		if err := run(chromedp.Click(`[data-testid="send-api/2"]`, chromedp.ByQuery)); err != nil {
 			t.Fatal(err)
 		}
 		waitJS("the second run to finish", `document.querySelector('[data-testid="resp"]').innerText.includes("done")`)
@@ -235,8 +228,8 @@ func TestClickRun_E2E(t *testing.T) {
 
 	t.Run("a hand-made click on an unlisted value runs nothing", func(t *testing.T) {
 		before := runCount()
-		if err := run(chromedp.Evaluate(`document.querySelector('[data-testid="send-1"]').dataset.entry = "99"`, nil),
-			chromedp.Click(`[data-testid="send-1"]`, chromedp.ByQuery)); err != nil {
+		if err := run(chromedp.Evaluate(`document.querySelector('[data-testid="send-api/1"]').dataset.entry = "api/99"`, nil),
+			chromedp.Click(`[data-testid="send-api/1"]`, chromedp.ByQuery)); err != nil {
 			t.Fatal(err)
 		}
 		waitJS("the refusal", `!!document.querySelector('[data-testid="resp-error"]')`)
@@ -252,30 +245,24 @@ func TestClickRun_E2E(t *testing.T) {
 
 	t.Run("editing the file updates the list", func(t *testing.T) {
 		os.WriteFile(filepath.Join(dir, "api.http"), []byte(clickRunHTTP+"\n### Third\nDELETE {{host}}/users/{{id}}\n"), 0o644)
-		waitJS("a third request", `!!document.querySelector('[data-testid="send-3"]')`)
+		waitJS("a third request", `!!document.querySelector('[data-testid="send-api/3"]')`)
 		// A URL that starts with {{ and ends with }} shows as written; the
 		// client once rendered any such value as empty.
 		var u string
-		run(chromedp.Evaluate(`document.querySelector('[data-testid="url-3"]').textContent`, &u))
+		run(chromedp.Evaluate(`document.querySelector('[data-testid="url-api/3"]').textContent`, &u))
 		if u != "{{host}}/users/{{id}}" {
 			dump()
 			t.Fatalf("the third request's URL shows %q, want {{host}}/users/{{id}}", u)
 		}
 		os.WriteFile(filepath.Join(dir, "api.http"), []byte(clickRunHTTP+"\n### Broken\nGET https://x\nnot a header\n"), 0o644)
 		waitJS("the parse error", `(document.querySelector('[data-testid="req-error"]')||{}).innerText?.includes("line 17:")`)
-		if err := run(chromedp.WaitVisible(`[data-testid="send-3"]`, chromedp.ByQuery)); err != nil {
+		if err := run(chromedp.WaitVisible(`[data-testid="send-api/3"]`, chromedp.ByQuery)); err != nil {
 			dump()
 			t.Fatal("a parse error dropped the last good rows")
 		}
 		os.WriteFile(filepath.Join(dir, "api.http"), []byte("### Only\nGET https://api.test/only\n"), 0o644)
-		waitJS("one request, no error", `!document.querySelector('[data-testid="send-2"]') && !document.querySelector('[data-testid="req-error"]')`)
+		waitJS("one request, no error", `!document.querySelector('[data-testid="send-api/2"]') && !document.querySelector('[data-testid="req-error"]')`)
 	})
 
-	logs.mu.Lock()
-	defer logs.mu.Unlock()
-	for _, c := range logs.console {
-		if strings.Contains(c, "[error]") || strings.Contains(c, "[exception]") {
-			t.Errorf("browser console: %s", c)
-		}
-	}
+	logs.checkConsole(t)
 }

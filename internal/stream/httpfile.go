@@ -1,7 +1,6 @@
 package stream
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -10,11 +9,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"time"
 )
-
-// MaxHTTPFile caps the size of a .http file the reader reads.
-const MaxHTTPFile = 4 * 1024 * 1024
 
 // HTTPRequest is one request in a .http file, as written.
 type HTTPRequest struct {
@@ -234,71 +229,38 @@ func (f *filler) value(name string) (string, error) {
 	return v, nil
 }
 
-// readHTTPFile follows a .http file: it reads it whole at start and whenever
-// its size or modification time changes, and each read replaces the input's
-// rows. A file that doesn't parse keeps the last good rows and reports why.
+// readHTTPFile follows a .http file, one row per request.
 func readHTTPFile(ctx context.Context, spec InputSpec, b *Buffer) {
-	tick := time.NewTicker(pollInterval)
-	defer tick.Stop()
-	var seen os.FileInfo
-	var last []byte // the content last read, so a touch changes nothing
-	for {
-		info, err := os.Stat(spec.HTTP)
-		switch {
-		case err != nil:
-			b.hub.setErr(ctx, b, "waiting for "+spec.HTTP)
-			seen = nil
-		case info.Size() > MaxHTTPFile:
-			b.hub.setErr(ctx, b, fmt.Sprintf("%s is over %d bytes", spec.HTTP, MaxHTTPFile))
-		case seen == nil || info.Size() != seen.Size() || !info.ModTime().Equal(seen.ModTime()):
-			seen = info
-			last = readHTTPOnce(ctx, spec, b, last)
+	followFiles(ctx, b, spec.HTTP, "", func(files []textFile) ([]Row, []Private, error) {
+		reqs, vars, err := ParseHTTPFile(string(files[0].data))
+		if err != nil {
+			return nil, nil, err
 		}
-		select {
-		case <-ctx.Done():
-			return
-		case <-tick.C:
+		now := b.hub.now()
+		rows := make([]Row, len(reqs))
+		privs := make([]Private, len(reqs))
+		vf := newFiller(vars) // one budget and one resolution for the whole file
+		for i, q := range reqs {
+			fields := map[string]interface{}{
+				"entry":   EntryID(spec.Name, i),
+				"name":    q.Name,
+				"method":  q.Method,
+				"url":     q.URL,
+				"headers": q.Headers,
+				"body":    q.Body,
+				"text":    strings.Join([]string{q.Name, q.Method, q.URL}, " "),
+			}
+			rows[i] = makeRow(now, "", q.Name, q.Method+" "+q.URL, false, fields)
+			privs[i] = fillRequest(q, vf)
 		}
-	}
+		return rows, privs, nil
+	})
 }
 
-// readHTTPOnce reads the file and, unless its content is last's, replaces
-// the rows. It returns the content it read.
-func readHTTPOnce(ctx context.Context, spec InputSpec, b *Buffer, last []byte) []byte {
-	data, err := os.ReadFile(spec.HTTP)
-	if err != nil {
-		b.hub.setErr(ctx, b, err.Error())
-		return nil
-	}
-	if last != nil && bytes.Equal(data, last) {
-		return last
-	}
-	reqs, vars, err := ParseHTTPFile(string(data))
-	if err != nil {
-		b.hub.setErr(ctx, b, err.Error())
-		return data
-	}
-	now := b.hub.now()
-	rows := make([]Row, len(reqs))
-	privs := make([]Private, len(reqs))
-	vf := newFiller(vars) // one budget and one resolution for the whole file
-	for i, q := range reqs {
-		fields := map[string]interface{}{
-			"entry":   strconv.Itoa(i + 1),
-			"name":    q.Name,
-			"method":  q.Method,
-			"url":     q.URL,
-			"headers": q.Headers,
-			"body":    q.Body,
-			"text":    strings.Join([]string{q.Name, q.Method, q.URL}, " "),
-		}
-		line := q.Method + " " + q.URL
-		rows[i] = makeRow(now, "", q.Name, line, false, fields)
-		privs[i] = fillRequest(q, vf)
-	}
-	b.hub.replace(ctx, b, "file", rows, privs)
-	b.hub.setErr(ctx, b, "")
-	return data
+// EntryID names a row a file reader made: its source's name, "/", and its
+// place from 1, so rows from two files differ and a click names one.
+func EntryID(source string, i int) string {
+	return source + "/" + strconv.Itoa(i+1)
 }
 
 // fillRequest fills a request's variables into the values a command gets.

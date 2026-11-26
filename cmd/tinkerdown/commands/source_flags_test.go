@@ -102,6 +102,7 @@ func TestServeRefusesBadSourceFlags(t *testing.T) {
 		{"command without --allow-exec", []string{dir, "--source", "api=echo hi"}, "--allow-exec"},
 		{"kind the page doesn't accept", []string{dir, "--allow-exec", "--source", "api=echo hi"}, "no page takes it"},
 		{"no page takes sources", []string{empty, "--source", "app=file:a.log"}, "no page takes it"},
+		{"sql the page doesn't accept", []string{dir, "--source", "q=sql:./q.sql"}, "no page takes it"},
 		{"name given twice", []string{dir, "--source", "a=file:x", "--source", "a=file:y"}, "twice"},
 		{"empty value", []string{dir, "--source", ""}, "want COMMAND"},
 		{"name missing before =", []string{dir, "--source", "=echo hi"}, "a name goes before"},
@@ -298,6 +299,28 @@ func TestHTTPSourceFlagAndAbsPaths(t *testing.T) {
 	}
 }
 
+func TestSQLSourceFlag(t *testing.T) {
+	name, src, err := parseSourceFlag("sql:./q.sql")
+	if err != nil || name != "" || src.SQL != "./q.sql" || src.Kind() != "sql" || sourceLabel(src) != "q" {
+		t.Fatalf("parseSourceFlag = %q, %+v, %v (label %q)", name, src, err, sourceLabel(src))
+	}
+	if got := sourceFlagValue("q", src); got != "q=sql:./q.sql" {
+		t.Fatalf("sourceFlagValue = %q", got)
+	}
+	if _, dir, _ := parseSourceFlag("sql:./reports/"); sourceLabel(dir) != "reports" {
+		t.Fatalf("a folder's label = %q", sourceLabel(dir))
+	}
+	if _, _, err := parseSourceFlag("q=sql:"); err == nil {
+		t.Fatal("sql: without a path was accepted")
+	}
+	wd, _ := os.Getwd()
+	flags := map[string]config.SourceConfig{"q": src, "abs": {Type: "stream", SQL: "/srv/q.sql"}}
+	rebase(flags, nil, wd)
+	if flags["q"].SQL != filepath.Join(wd, "q.sql") || flags["abs"].SQL != "/srv/q.sql" {
+		t.Fatalf("rebase = %+v", flags)
+	}
+}
+
 func TestRemoteConfigPathsFollowTheConfigFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "http.yaml")
@@ -459,6 +482,7 @@ func TestSourceLabelFallbacks(t *testing.T) {
 		{config.SourceConfig{Type: "stream", File: "/tmp/🙂.log"}, "file"},
 		{config.SourceConfig{Type: "stream", File: "/var/log/app.2024.log"}, "app2024"},
 		{config.SourceConfig{Type: "stream", HTTP: "/tmp/🙂.http"}, "http"},
+		{config.SourceConfig{Type: "stream", SQL: "/tmp/🙂.sql"}, "sql"},
 	} {
 		if got := sourceLabel(c.src); got != c.want {
 			t.Errorf("sourceLabel(%+v) = %q, want %q", c.src, got, c.want)

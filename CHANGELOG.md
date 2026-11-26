@@ -11,6 +11,31 @@ Earlier releases (v0.1.x) are documented in the
 
 ## [Unreleased]
 
+### Added
+
+- **Queries from a `.sql` file.** A stream with `sql: PATH`, or
+  `--source sql:PATH`, lists the queries in a `.sql` file or in a folder's
+  `.sql` files, one row per query, and reads them again when a file changes.
+  A `-- name: NAME` header, as sqlc, aiosql and yesql write it, or HugSQL's
+  `-- :name NAME`, starts each query, and a file with no header is one query
+  named after the file. A click passes the query to your command as
+  `TD_sql`; tinkerdown never runs the SQL itself. See
+  [Queries from a .sql file](docs/sources/stream.md#queries-from-a-sql-file).
+
+### Changed
+
+- **A `.http` row's `entry` starts with its source's name**, as in `api/1`,
+  where it was `1`. With two `.http` files on a page, Send ran the first
+  file's request of that number, and a merge keyed on `fields.entry` showed
+  one row for both. Markup that passes `{{.fields.entry}}` is unchanged; a
+  test or link that names an entry such as `1` needs the new form.
+
+### Fixed
+
+- **`on:` refuses a built-in action's name.** A button named `run`, `refresh`
+  or another built-in runs the built-in, so a merge with `on: run` never
+  started. Config validation now says so.
+
 ## [v0.9.1] - 2026-11-25
 
 ### Fixed

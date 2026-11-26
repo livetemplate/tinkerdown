@@ -1,11 +1,13 @@
 package config
 
 import (
+	"cmp"
 	"fmt"
 	"maps"
 	"regexp"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/livetemplate/tinkerdown/internal/stream"
@@ -55,6 +57,13 @@ func ValidateStreamSource(name string, src SourceConfig, lookup func(string) (So
 		if mergeOnly(src) {
 			return invalid("stream source %q: key, collect, collect_reset, drop, sort, params, on and line_max apply to merge sources", name)
 		}
+		// A click names a request or query by its entry, NAME/1, which must
+		// pass the value rules.
+		if k := src.Kind(); k == "http" || k == "sql" {
+			if err := CheckTDValue("entry", stream.EntryID(name, 0)); err != nil {
+				return invalid("stream source %q: an %s source's name can't start with - or hold a control character, since its rows' entries start with it", name, k)
+			}
+		}
 	case "merge":
 		if err := validateAccepts(name, src); err != nil {
 			return err
@@ -70,6 +79,9 @@ func ValidateStreamSource(name string, src SourceConfig, lookup func(string) (So
 		}
 		if src.On != "" && (len(src.Params) == 0 || !onName.MatchString(src.On)) {
 			return invalid("merge source %q: on %q needs params, and must be 1-32 lowercase letters, digits or _, starting with a letter", name, src.On)
+		}
+		if BuiltinActions[src.On] {
+			return invalid("merge source %q: on %q is a built-in action, so a button named %s runs that and never starts this merge; pick another name", name, src.On, src.On)
 		}
 		if len(src.Inputs) == 0 && !src.Wildcard {
 			return invalid("merge source %q: inputs lists no sources", name)
@@ -106,9 +118,9 @@ func (s SourceConfig) ParamsMerge() bool {
 }
 
 // StreamKinds lists a stream source's kinds: what it reads.
-var StreamKinds = []string{"cmd", "file", "http"}
+var StreamKinds = []string{"cmd", "file", "http", "sql"}
 
-// Kind is "cmd", "file" or "http" for a stream source, and "" otherwise.
+// Kind is "cmd", "file", "http" or "sql" for a stream source, and "" otherwise.
 func (s SourceConfig) Kind() string {
 	switch {
 	case s.Type != "stream":
@@ -117,9 +129,33 @@ func (s SourceConfig) Kind() string {
 		return "cmd"
 	case s.HTTP != "":
 		return "http"
+	case s.SQL != "":
+		return "sql"
 	default:
 		return "file"
 	}
+}
+
+// StreamPath is a file, http or sql stream's path, and "" for any other source.
+func (s SourceConfig) StreamPath() string {
+	return cmp.Or(s.File, s.HTTP, s.SQL)
+}
+
+// WithPath returns a stream source of kind, file, http or sql, that reads
+// path; ok is false for any other kind.
+func WithPath(kind, path string) (src SourceConfig, ok bool) {
+	src = SourceConfig{Type: "stream"}
+	switch kind {
+	case "file":
+		src.File = path
+	case "http":
+		src.HTTP = path
+	case "sql":
+		src.SQL = path
+	default:
+		return SourceConfig{}, false
+	}
+	return src, true
 }
 
 // ParseLineMax reads a line_max value: bytes, or a number with a KiB or MiB
@@ -150,6 +186,18 @@ var lineMaxValue = regexp.MustCompile(`^([0-9]{1,9})(KiB|MiB)?$`)
 // onName is what On may hold: a button name a page can't confuse with
 // another action.
 var onName = regexp.MustCompile(`^[a-z][a-z0-9_]{0,31}$`)
+
+// BuiltinActions are the lowercase action names the runtime handles for any
+// source, independent of the manifest: source affordances (refresh a view,
+// add or delete a row), not custom, governed actions. The policy lint doesn't
+// treat them as unapproved, since whether the source is approved and writable
+// governs them. A button with one of these names runs the built-in, so it
+// never starts a merge's on:. Kept in sync with runtime's HandleAction switch.
+var BuiltinActions = map[string]bool{
+	"refresh": true, "run": true, "filter": true, "edit": true, "canceledit": true,
+	"add": true, "toggle": true, "delete": true, "update": true,
+	"pause": true, "resume": true, "clear": true,
+}
 
 // AcceptsKind reports whether a merge's accepts block allows a stream source
 // of the given kind. A merge without accepts, or without kinds, takes both.
@@ -256,7 +304,7 @@ func validateAccepts(name string, src SourceConfig) error {
 	}
 	for _, k := range a.Kinds {
 		if !slices.Contains(StreamKinds, k) {
-			return invalid("merge source %q: accepts kind %q is not cmd, file or http", name, k)
+			return invalid("merge source %q: accepts kind %q is not one of %s", name, k, strings.Join(StreamKinds, ", "))
 		}
 	}
 	if a.Min < 0 {
@@ -273,6 +321,7 @@ func (s SourceConfig) StreamSpec(name string) stream.InputSpec {
 		Cmd:     s.Cmd,
 		File:    s.File,
 		HTTP:    s.HTTP,
+		SQL:     s.SQL,
 		Env:     s.Env,
 		Format:  s.Format,
 		Buffer:  s.Buffer,

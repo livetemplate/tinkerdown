@@ -341,6 +341,7 @@ type SourceConfig struct {
 	Restart string   `yaml:"restart,omitempty"` // For stream with cmd: on-exit (default) or never
 	Flush   string   `yaml:"flush,omitempty"`   // For stream/merge: minimum time between pushes to one page (default 100ms)
 	HTTP    string   `yaml:"http,omitempty"`    // For stream: a .http file, read whole on change, one row per request
+	SQL     string   `yaml:"sql,omitempty"`     // For stream: a .sql file or a folder of them, read on change, one row per query
 
 	// On, on a merge with params, makes a click start its inputs: a button
 	// named On sends the params as data-* values, checked like URL values.

@@ -24,9 +24,13 @@ import (
 // expressions (source = NAME), CSS classes and tab labels, so they stay plain.
 var sourceName = regexp.MustCompile(`^[A-Za-z0-9_-]{1,32}$`)
 
+// sourceForms is how a --source is written, for messages.
+const sourceForms = "COMMAND, file:PATH, http:PATH or sql:PATH, optionally after NAME="
+
 // parseSourceFlag parses a --source value: COMMAND for a stream source that
-// runs COMMAND, file:PATH for one that follows PATH, or http:PATH for one that
-// lists the requests in a .http file. Each may start with NAME=, which names
+// runs COMMAND, file:PATH for one that follows PATH, http:PATH for one that
+// lists the requests in a .http file, or sql:PATH for one that lists the
+// queries in a .sql file or a folder of them. Each may start with NAME=, which names
 // the source; without it the name is "" and addSource picks a label. NAME= is
 // the part before the first "=" when that part is a plain name, so a command
 // such as `grep a=b` is unnamed, and one that starts with an environment
@@ -41,18 +45,17 @@ func parseSourceFlag(v string) (string, config.SourceConfig, error) {
 		name, value = n, rest
 	}
 	if strings.TrimSpace(value) == "" {
-		return "", config.SourceConfig{}, fmt.Errorf("--source %q: want COMMAND, file:PATH or http:PATH, optionally after NAME=", v)
+		return "", config.SourceConfig{}, fmt.Errorf("--source %q: want %s", v, sourceForms)
 	}
-	if path, ok := strings.CutPrefix(value, "file:"); ok {
-		return name, config.SourceConfig{Type: "stream", File: path}, pathErr(v, "file", path)
-	}
-	if path, ok := strings.CutPrefix(value, "http:"); ok {
-		return name, config.SourceConfig{Type: "stream", HTTP: path}, pathErr(v, "http", path)
+	if kind, path, ok := strings.Cut(value, ":"); ok {
+		if src, ok := config.WithPath(kind, path); ok {
+			return name, src, pathErr(v, kind, path)
+		}
 	}
 	return name, config.SourceConfig{Type: "stream", Cmd: value}, nil
 }
 
-// pathErr refuses a file: or http: flag with no path.
+// pathErr refuses a KIND:PATH flag with no path.
 func pathErr(flag, kind, path string) error {
 	if path == "" {
 		return fmt.Errorf("--source %q: %s: needs a path", flag, kind)
@@ -60,7 +63,7 @@ func pathErr(flag, kind, path string) error {
 	return nil
 }
 
-// rebase points srcs and actions at base: each relative file and http path
+// rebase points srcs and actions at base: each relative file, http and sql path
 // becomes absolute from it, and each command runs in it. A page from a URL
 // lives in a temporary directory that holds only the page, so serve rebases
 // its flags on the directory it runs in and its --config file's sources and
@@ -68,7 +71,7 @@ func pathErr(flag, kind, path string) error {
 // in its own directory.
 func rebase(srcs map[string]config.SourceConfig, actions map[string]*config.Action, base string) {
 	for name, src := range srcs {
-		for _, p := range []*string{&src.File, &src.HTTP} {
+		for _, p := range []*string{&src.File, &src.HTTP, &src.SQL} {
 			if *p != "" && !filepath.IsAbs(*p) {
 				*p = filepath.Join(base, *p)
 			}
@@ -88,11 +91,8 @@ func rebase(srcs map[string]config.SourceConfig, actions map[string]*config.Acti
 // sourceLabel is the label of a source with no name: from its command, or
 // from its file's name without the extension, cleaned by cleanLabel.
 func sourceLabel(src config.SourceConfig) string {
-	switch {
-	case src.File != "":
-		return cmp.Or(cleanLabel(wordLabel(src.File)), "file")
-	case src.HTTP != "":
-		return cmp.Or(cleanLabel(wordLabel(src.HTTP)), "http")
+	if p := src.StreamPath(); p != "" {
+		return cmp.Or(cleanLabel(wordLabel(p)), src.Kind())
 	}
 	return defaultLabel(src.Cmd)
 }
@@ -186,11 +186,8 @@ func pageSourceNames(cfg *config.Config, srv *server.Server) map[string]bool {
 
 // sourceFlagValue turns a source back into the value parseSourceFlag reads.
 func sourceFlagValue(name string, src config.SourceConfig) string {
-	switch {
-	case src.File != "":
-		return name + "=file:" + src.File
-	case src.HTTP != "":
-		return name + "=http:" + src.HTTP
+	if p := src.StreamPath(); p != "" {
+		return name + "=" + src.Kind() + ":" + p
 	}
 	return name + "=" + src.Cmd
 }
@@ -377,7 +374,7 @@ func describeNeeds(w io.Writer, needs []sourceNeed) {
 // promptSources asks for sources until an empty line, and adds them to
 // flags. It returns the --source values the operator gave.
 func promptSources(in io.Reader, out io.Writer, flags map[string]config.SourceConfig, pageNames map[string]bool, allowExec bool) []string {
-	fmt.Fprintln(out, "Add one as a command, file:PATH or http:PATH, optionally after NAME=. Leave empty to finish.")
+	fmt.Fprintln(out, "Add one as "+sourceForms+". Leave empty to finish.")
 	scanner := bufio.NewScanner(in)
 	var given []string
 	for {

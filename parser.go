@@ -60,6 +60,7 @@ type SourceConfig struct {
 	Restart string   `yaml:"restart,omitempty"` // For cmd streams: on-exit (default) or never
 	Flush   string   `yaml:"flush,omitempty"`   // Minimum time between pushes to one page (default 100ms)
 	HTTP    string   `yaml:"http,omitempty"`    // For streams: a .http file, one row per request
+	SQL     string   `yaml:"sql,omitempty"`     // For streams: a .sql file or a folder of them, one row per query
 
 	// Accepts, on a merge with inputs ["*"], says which sources the page takes
 	Accepts *SourceAccepts `yaml:"accepts,omitempty"`

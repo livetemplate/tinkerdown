@@ -19,7 +19,23 @@ sources:
   all: {type: merge, inputs: [web, app], flush: 200ms}`, ""},
 		{"both cmd and file", `
 sources:
-  x: {type: stream, cmd: "true", file: a.log}`, "exactly one of cmd, file or http"},
+  x: {type: stream, cmd: "true", file: a.log}`, "exactly one of cmd, file, http or sql"},
+		{"both sql and cmd", `
+sources:
+  x: {type: stream, cmd: "true", sql: q.sql}`, "exactly one of cmd, file, http or sql"},
+		{"valid sql", `
+sources:
+  q: {type: stream, sql: ./queries/}
+  queries: {type: merge, inputs: [q], key: [fields.entry]}`, ""},
+		{"on a built-in action", `
+sources:
+  q: {type: stream, sql: q.sql}
+  queries: {type: merge, inputs: [q], key: [fields.entry]}
+  run: {type: stream, cmd: "true"}
+  result: {type: merge, inputs: [run], on: run, params: {entry: {in: queries.fields.entry}}}`, `on "run" is a built-in action`},
+		{"sql named to start with -", `
+sources:
+  -q: {type: stream, sql: q.sql}`, "can't start with -"},
 		{"bad format", `
 sources:
   x: {type: stream, file: a.log, format: yaml}`, "format"},
@@ -218,5 +234,12 @@ func TestValidateOnAndLineMax(t *testing.T) {
 	acc := SourceConfig{Type: "merge", Inputs: []string{"*"}, Accepts: &SourceAccepts{Kinds: []string{"http"}}}
 	if err := validateAccepts("requests", acc); err != nil {
 		t.Errorf("accepts http: %v", err)
+	}
+	if k := (SourceConfig{Type: "stream", SQL: "q.sql"}).Kind(); k != "sql" {
+		t.Errorf("Kind() = %q, want sql", k)
+	}
+	acc.Accepts.Kinds = []string{"sql", "csv"}
+	if err := validateAccepts("queries", acc); err == nil || !strings.Contains(err.Error(), `"csv" is not one of cmd, file, http, sql`) {
+		t.Errorf("accepts csv: %v", err)
 	}
 }
