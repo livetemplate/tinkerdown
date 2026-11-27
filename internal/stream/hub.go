@@ -14,6 +14,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -54,6 +55,14 @@ type Hub struct {
 
 	// IdleStop is how long an input runs after its last subscriber leaves.
 	IdleStop time.Duration
+
+	// WatchDir, when set before the first Subscribe, makes list inputs (see
+	// InputSpec.Every) run again when a file under it changes, in place of
+	// their timer.
+	WatchDir string
+	watchMu  sync.Mutex
+	watch    *dirWatch // the one watch over WatchDir, while a list input runs
+	watchErr error     // why the watch couldn't start; list inputs keep their timer
 }
 
 // NewHub returns an empty hub. Inputs start lazily on their first Subscribe.
@@ -100,6 +109,14 @@ type InputSpec struct {
 	Restart string `json:"restart"` // on-exit or never
 	// IdleStop, when set, replaces the hub's IdleStop for this input.
 	IdleStop time.Duration `json:"idle_stop"`
+	// Every makes a Cmd a list: each run's stdout replaces the rows the last
+	// run printed, and the next run starts Every after it exits, or with the
+	// hub's WatchDir when a file there changes. RerunLists starts it sooner.
+	Every time.Duration `json:"every"`
+	// Pattern, a regex with named groups, gives a line that matches it the
+	// groups as its fields.
+	Pattern string         `json:"pattern"`
+	re      *regexp.Regexp // Pattern, compiled by Normalize
 }
 
 // Formats lists the accepted values of InputSpec.Format.
@@ -116,6 +133,16 @@ func (s InputSpec) Normalize() (InputSpec, error) {
 			return s, fmt.Errorf("stream %q: only a cmd can be started by a click", s.Name)
 		}
 		s.Restart = "never"
+	}
+	if s.Every != 0 && (s.Cmd == "" || s.Manual || s.Every < 0) {
+		return s, fmt.Errorf("stream %q: only a cmd that a page starts can run every %s", s.Name, s.Every)
+	}
+	if s.Pattern != "" {
+		re, err := CompilePattern(s.Pattern)
+		if err != nil {
+			return s, fmt.Errorf("stream %q: %v", s.Name, err)
+		}
+		s.re = re
 	}
 	switch {
 	case s.LineMax == 0:
@@ -163,8 +190,13 @@ func (h *Hub) Input(spec InputSpec) (*Buffer, error) {
 	b := newBuffer(h, key, spec.Name, spec.Buffer)
 	b.idleStop = spec.IdleStop
 	b.manual = spec.Manual
+	if spec.Every > 0 {
+		b.kick = make(chan struct{}, 1)
+	}
 	b.run = func(ctx context.Context) {
 		switch {
+		case spec.Every > 0:
+			runList(ctx, spec, b)
 		case spec.Cmd != "":
 			runCmd(ctx, spec, b)
 		case spec.HTTP != "":
@@ -331,6 +363,52 @@ func (h *Hub) Restart(b *Buffer) {
 	}
 }
 
+// RerunLists starts the next run of every list input running now, without
+// waiting for its timer or a file change, since a click's command may have
+// changed what they print.
+func (h *Hub) RerunLists() {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	h.rerunListsLocked()
+}
+
+func (h *Hub) rerunListsLocked() {
+	for _, b := range h.buffers {
+		if b.kick != nil && b.stopRun != nil {
+			select {
+			case b.kick <- struct{}{}:
+			default: // a run is already due
+			}
+		}
+	}
+}
+
+// settle shows a finished run of a list input on the page, and returns the
+// lines the input's rows now hold, for the next run to compare against.
+// shown is what the last call returned: nil before the first run.
+//
+// A failed run keeps the rows, so a brief failure such as a lock held by
+// another command doesn't empty the page, and reports its exit status and
+// stderr. A run that exits 0 clears the error whatever it wrote to stderr,
+// where tools print hints and progress. A run that printed the same lines
+// as the rows hold sends nothing.
+func (b *Buffer) settle(ctx context.Context, run listRun, shown []string) []string {
+	if run.err != nil {
+		msg := run.err.Error()
+		if s := strings.TrimSpace(run.stderr); s != "" {
+			msg += ": " + s
+		}
+		b.hub.setErr(ctx, b, msg)
+		return shown
+	}
+	b.hub.setErr(ctx, b, "")
+	if shown != nil && slices.Equal(run.lines, shown) {
+		return shown
+	}
+	b.hub.replace(ctx, b, "stdout", run.rows(), nil)
+	return run.lines
+}
+
 // Running reports whether b's input, or any of a merge's inputs, is running
 // its command or reading its file.
 func (b *Buffer) Running() bool {
@@ -404,6 +482,7 @@ type Buffer struct {
 	idleStop time.Duration // overrides hub.IdleStop when set
 	dropped  bool          // a merge's rows went at an idle stop; reseed on the next holder
 	manual   bool          // starts only by Restart; see InputSpec.Manual
+	kick     chan struct{} // for a list input: a pending early run; see RerunLists
 	running  int           // runs in progress: 1, or briefly 2 while a restarted run winds down
 }
 
@@ -450,6 +529,10 @@ func (b *Buffer) startLocked() {
 			b.hub.mu.Lock()
 			b.running--
 			b.wakeAllLocked()
+			if b.manual {
+				// A click's command ended: what lists print may have changed.
+				b.hub.rerunListsLocked()
+			}
 			b.hub.mu.Unlock()
 		}()
 		// A bug in one input must not take down the server: report it on

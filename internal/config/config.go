@@ -350,6 +350,13 @@ type SourceConfig struct {
 	// LineMax, on a merge, caps each line its inputs read, in bytes or with a
 	// KiB or MiB suffix (default 16KiB).
 	LineMax string `yaml:"line_max,omitempty"`
+	// Every, on a merge, makes each input a list: its command runs again this
+	// long after it exits (or, with serve --watch-dir, when a file there
+	// changes), and each run's stdout replaces the rows the last run printed.
+	Every string `yaml:"every,omitempty"`
+	// Pattern, on a merge, is a regex with named groups. A line its inputs
+	// print that matches it gets the groups as its fields.
+	Pattern string `yaml:"pattern,omitempty"`
 
 	// Accepts, on a merge with inputs ["*"], says which sources the page takes.
 	Accepts *SourceAccepts `yaml:"accepts,omitempty"`

@@ -28,6 +28,8 @@ const (
 	maxRemoteRedirects = 3
 	maxRemoteBuffer    = 10000
 	minRemoteFlush     = 50 * time.Millisecond
+	minRemoteEvery     = time.Second
+	maxRemotePattern   = 1 << 10 // bytes
 )
 
 // pageArg is what serve's positional argument names: a directory, one local
@@ -254,6 +256,12 @@ func checkRemotePage(page *tinkerdown.Page) error {
 		}
 		if d, err := time.ParseDuration(src.Flush); err == nil && d < minRemoteFlush {
 			add("source %s: flush %s is under %s", name, src.Flush, minRemoteFlush)
+		}
+		if d, err := time.ParseDuration(src.Every); err == nil && d < minRemoteEvery {
+			add("source %s: every %s is under %s", name, src.Every, minRemoteEvery)
+		}
+		if len(src.Pattern) > maxRemotePattern {
+			add("source %s: pattern is over %d bytes", name, maxRemotePattern)
 		}
 	}
 	for key, set := range map[string]bool{

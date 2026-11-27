@@ -266,6 +266,11 @@ func (s *GenericState) executeCustomAction(action *config.Action, data map[strin
 	if err := validateParams(action, data); err != nil {
 		return err
 	}
+	if s.hub != nil {
+		// The action may have changed what list inputs print, whether it
+		// failed or not, so they run again once it ends.
+		defer s.hub.RerunLists()
+	}
 
 	switch action.Kind {
 	case "sql":

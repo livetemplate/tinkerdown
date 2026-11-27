@@ -26,6 +26,7 @@ func ServeCommand(args []string) error {
 	var port string
 	var host string
 	var watch *bool
+	var watchDir string
 	var operator string
 	var allowExec bool
 	var headless bool
@@ -38,6 +39,7 @@ func ServeCommand(args []string) error {
 		"--port": &port, "-p": &port, "--host": &host,
 		"--config": &configPath, "-c": &configPath,
 		"--operator": &operator, "-o": &operator,
+		"--watch-dir": &watchDir,
 	}
 
 	// Parse flags
@@ -191,6 +193,16 @@ func ServeCommand(args []string) error {
 
 	// Create server
 	srv := server.NewWithConfig(absDir, cfg)
+	if watchDir != "" {
+		dir, err := filepath.Abs(watchDir)
+		if err != nil {
+			return fmt.Errorf("--watch-dir: %w", err)
+		}
+		if info, err := os.Stat(dir); err != nil || !info.IsDir() {
+			return fmt.Errorf("--watch-dir %s is not a folder", watchDir)
+		}
+		srv.WatchFiles(dir)
+	}
 	if target.single != "" {
 		srv.ServeSinglePage(target.single, target.url != "")
 	}
@@ -422,6 +434,8 @@ Flags:
   --host ADDR              Address to listen on (default localhost)
   --config FILE, -c FILE   Config file (default: tinkerdown.yaml in directory)
   --watch, -w              Reload pages when their files change
+  --watch-dir DIR          Rerun a merge's every inputs when a file under DIR changes,
+                           in place of their timer
   --operator NAME, -o NAME Operator identity for audit fields (default $USER)
   --headless               Serve only the API, webhooks and schedules
   --help, -h               Print this. After a page, also list the sources and actions it

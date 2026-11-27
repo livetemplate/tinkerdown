@@ -113,6 +113,42 @@ func newRow(line string, truncated bool, format string, now time.Time) Row {
 	return makeRow(ts, level, msg, line, truncated, fields)
 }
 
+// row parses one line of s's input: in s.Format, then, when s.Pattern
+// matches the line, with the pattern's named groups in place of the fields.
+func (s InputSpec) row(line string, truncated bool, now time.Time) Row {
+	r := newRow(line, truncated, s.Format, now)
+	if s.re == nil {
+		return r
+	}
+	m := s.re.FindStringSubmatch(line)
+	if m == nil {
+		return r
+	}
+	fields := map[string]interface{}{}
+	for i, name := range s.re.SubexpNames() {
+		if name != "" {
+			fields[name] = m[i]
+		}
+	}
+	r["fields"] = fields
+	return r
+}
+
+// CompilePattern compiles a pattern: Go regex syntax (RE2, so it runs in
+// linear time) with at least one named group, (?P<name>...).
+func CompilePattern(p string) (*regexp.Regexp, error) {
+	re, err := regexp.Compile(p)
+	if err != nil {
+		return nil, fmt.Errorf("pattern doesn't compile: %v", err)
+	}
+	for _, name := range re.SubexpNames() {
+		if name != "" {
+			return re, nil
+		}
+	}
+	return nil, fmt.Errorf("pattern has no named group, such as (?P<name>...)")
+}
+
 // makeRow builds the row shape shared by parsed lines and system rows. A row
 // always has a fields map, empty for plain text and system rows, so a
 // template can read .fields.NAME on any row.

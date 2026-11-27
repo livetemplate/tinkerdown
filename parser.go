@@ -75,6 +75,8 @@ type SourceConfig struct {
 	Params       map[string]SourceParam `yaml:"params,omitempty"`
 	On           string                 `yaml:"on,omitempty"`       // On a params merge: the button whose click starts its inputs
 	LineMax      string                 `yaml:"line_max,omitempty"` // On a merge: the longest line its inputs read
+	Every        string                 `yaml:"every,omitempty"`    // On a merge: rerun each input this long after it exits
+	Pattern      string                 `yaml:"pattern,omitempty"`  // On a merge: a regex whose named groups become a line's fields
 }
 
 // SourceParam mirrors config.SourceParam for page frontmatter.

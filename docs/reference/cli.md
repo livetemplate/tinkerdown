@@ -33,7 +33,7 @@ Because the page comes from someone else, it may only declare `merge` sources, s
 - a `<script>`, `<meta>`, `<base>`, `<link>`, `<iframe>`, `<object>`, `<embed>`, `<svg>` or `<math>` element, an `on…` event handler, or a `javascript:` URL
 - markup inside a raw-text element such as `<style>`, including a `<` in its CSS, as in `@media (width < 600px)`
 - a template action in a tag name, attribute name, comment or raw-text element such as `<textarea>`, as in `<{{.tag}}>`, and the trim markers `{{-` and `-}}`. Actions may appear in text and attribute values.
-- a merge `buffer` over 10,000 or a `flush` under 50ms
+- a merge `buffer` over 10,000, a `flush` under 50ms, an `every` under 1s, or a `pattern` over 1 KiB
 
 The checks read the page's HTML and each template with an HTML tokenizer, the way a browser reads them.
 
@@ -56,6 +56,7 @@ To run a page that needs more, download it, review it, and serve the local copy 
 | `--host` | Server host | `localhost` |
 | `--config`, `-c` | Config file | `tinkerdown.yaml` in the directory |
 | `--watch`, `-w` | Reload pages when their files change | off |
+| `--watch-dir DIR` | Run a merge's `every` inputs again when a file under DIR changes, in place of their timer. See [lists a command prints](../sources/stream.md#lists-a-command-prints). | off |
 | `--operator`, `-o` | Operator identity for audit fields | `$USER` |
 | `--headless` | Serve only the API, webhooks and schedules | off |
 | `--help`, `-h` | Print serve's usage and exit. After a page, also list what the page takes: see [what a page takes](#what-a-page-takes) | |

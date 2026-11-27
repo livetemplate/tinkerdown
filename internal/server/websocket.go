@@ -501,6 +501,8 @@ func pageSourceConfig(src tinkerdown.SourceConfig) config.SourceConfig {
 		SQL:          src.SQL,
 		On:           src.On,
 		LineMax:      src.LineMax,
+		Every:        src.Every,
+		Pattern:      src.Pattern,
 	}
 	if a := src.Accepts; a != nil {
 		cfg.Accepts = &config.SourceAccepts{Kinds: a.Kinds, Min: a.Min, Hint: a.Hint}

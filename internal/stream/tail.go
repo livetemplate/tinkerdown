@@ -20,7 +20,7 @@ func tailFile(ctx context.Context, spec InputSpec, b *Buffer) {
 	t := &tailer{ctx: ctx, spec: spec, b: b, buf: make([]byte, readChunk)}
 	t.split.max = spec.LineMax
 	t.split.emit = func(line string, truncated bool) {
-		t.batch = append(t.batch, newRow(line, truncated, spec.Format, b.hub.now()))
+		t.batch = append(t.batch, spec.row(line, truncated, b.hub.now()))
 	}
 	defer t.close()
 	tick := time.NewTicker(pollInterval)

@@ -106,6 +106,7 @@ type GenericState struct {
 	sourceType   string
 	sourceName   string
 	siteDir      string
+	hub          *stream.Hub       // runs list inputs again after a click's command; nil without streams
 	elementType  string            // "table", "select", or "div"
 	tableColumns []string          // columns for datatable rendering
 	activeFilter string            // current filter expression (empty = show all)
@@ -239,6 +240,7 @@ func NewGenericStateWithMetadata(name string, cfg config.SourceConfig, siteDir, 
 		sourceType: cfg.Type,
 		sourceName: name,
 		siteDir:    siteDir,
+		hub:        o.hub,
 		Errors:     make(map[string]string),
 	}
 	s.Inputs, s.Accepts = cfg.Inputs, cfg.Accepts // set only on merges

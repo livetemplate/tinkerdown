@@ -36,6 +36,8 @@ A command needs `tinkerdown serve --allow-exec`, as an `exec` source does. A fil
 | `sort` | merge | With `key`: a field, or `-` and a field for descending, such as `-fields.createdAt`. Rows show in that field's order instead of first-seen order. |
 | `params` | merge | Values taken from the page URL's query, each with `in: MERGE.PATH`. See [Values from the page URL](#values-from-the-page-url). |
 | `on` | merge | With `params`: the name of the button whose click starts the inputs, instead of the URL. See [Runs a click starts](#runs-a-click-starts). |
+| `every` | merge | Runs each input's command again this long after it exits, at least `100ms`, and each run's output replaces the rows the last run printed. Every input must run a command. See [Lists a command prints](#lists-a-command-prints). |
+| `pattern` | merge | A regex with named groups, such as `^(?P<pid>\d+) (?P<cmd>.+)$`. A line that matches gets the groups as its `fields`. See [Lists a command prints](#lists-a-command-prints). |
 | `line_max` | merge | The longest line its inputs read, in bytes or with `KiB` or `MiB`, up to `16MiB` (default: `16KiB`). A longer line is cut and its row gets `truncated: true`. |
 | `accepts` | merge | With `inputs: ["*"]`: the sources the page takes. `kinds` lists any of `cmd`, `file`, `http` and `sql` (default: all), `min` is how many it needs, and `hint` is one line saying what to pass. |
 | `format` | stream | How to parse each line: `auto` (default), `json`, `logfmt` or `lines`. |
@@ -106,6 +108,34 @@ A row whose key matches an earlier one replaces it in place, and keeps the earli
 Some keys end for good, such as a container that was removed. `drop: fields.state=removed` takes a matching row as the end of its key, so the key's row leaves the list and the page gets a remove for it. A later row for the same key starts a new row at the end of the list.
 
 By default a keyed merge shows keys in the order it first saw them. `sort: -fields.createdAt` orders them by a field instead, newest first; without the `-` it's ascending. Numbers compare as numbers, and so does text that reads as a number (logfmt values are text), the same way a filter compares them. Numbers come before other text, which compares as text, so ISO times sort correctly. A row without the field goes last in either direction, and rows with equal values keep the order they arrived in. A new row reaches the page as an insert at its place, and a row whose value changes moves, so a list sorted by a creation time only ever grows at the top.
+
+## Lists a command prints
+
+Some commands print a whole list and exit, such as `ps`, `df` or `git status`. A merge with `every` runs such a command again and again, and each run's lines replace the rows the last run printed:
+
+```yaml
+sources:
+  procs:
+    type: merge
+    inputs: [ps]
+    every: 2s
+    key: [fields.pid]
+    pattern: '^\s*(?P<pid>\d+)\s+(?P<cpu>\S+)\s+(?P<cmd>.+)$'
+```
+
+```sh
+tinkerdown serve --allow-exec --source 'ps=ps -eo pid=,pcpu=,comm=' procs.md
+```
+
+The next run starts 2 seconds after the last one exits. With `key`, a process that ends leaves the page, a new one arrives, and one whose fields changed updates in place. The rows keep the order of the latest run. A run that prints the same lines as the last one sends the page nothing.
+
+A run that fails keeps the rows the page has, so a brief failure doesn't empty the list. The block's `.Error` holds the run's stderr and exit status until a run succeeds. Only stdout becomes rows.
+
+Because a button's command can change what the list prints, every `every` input runs again as soon as a click's command ends, whether an `--action` or an `on` merge's, and whether it failed or not.
+
+`tinkerdown serve --watch-dir DIR` replaces the timer with file events. Each `every` input then runs again 200ms after the last change to a file under `DIR`, including dot folders such as `.git`, and not otherwise. Leave it off where a watch can't keep up. A network file system can miss events, and on macOS each watched file holds an open file, so a folder of tens of thousands of files can reach the limit. When the watch can't start, the inputs keep their timer and the server log says why. A command that writes under `DIR` while it runs starts the next run itself, over and over; `git` needs `GIT_OPTIONAL_LOCKS=0` to avoid that.
+
+`pattern` splits a plain line into fields with Go's regex syntax, which runs in linear time. A line that matches gets the pattern's named groups as its `fields`, in place of what `format` parsed. A line that doesn't match keeps those. `pattern` works on any merge, not only one with `every`.
 
 ## Values from the page URL
 
@@ -290,7 +320,7 @@ Filter streams like any source, with a [tabs heading](../guides/data-sources.md#
 
 ## How inputs run
 
-Every page showing the same input shares one process and one buffer, so ten open tabs run `docker logs -f` once. An input starts when the first page opens. It keeps running for 5 minutes after the last page closes, so a page reopened within that time still has its history.
+Every page showing the same input shares one process and one buffer, so ten open tabs run `docker logs -f` once. An input starts when the first page opens. It keeps running for 5 minutes after the last page closes, so a page reopened within that time still has its history. An input of an `every` or `params` merge stops after 30 seconds instead, since it keeps no history worth holding.
 
 A command runs in its own process group. Stopping the server kills the whole group, including anything the command started.
 
