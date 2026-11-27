@@ -1547,6 +1547,8 @@ func (h *WebSocketHandler) getPageActions() map[string]*config.Action {
 	for name, action := range h.config.FlagActions {
 		if page, shadowed := result[name]; shadowed {
 			if page.ValuesOnly() {
+				// A copy, so the flag action shared by every page keeps no
+				// page's values; its maps are shared but never changed.
 				withValues := *action
 				withValues.Values = page.Values
 				action = &withValues
@@ -1556,9 +1558,13 @@ func (h *WebSocketHandler) getPageActions() map[string]*config.Action {
 		}
 		result[name] = action
 	}
-	// A wrong in surfaces now, not only when someone clicks.
+	// A wrong in, or values with no command, surfaces now, not only when
+	// someone clicks.
 	resolve := func(n string) (config.SourceConfig, bool) { return ResolveSource(h.config, h.page, n) }
 	for _, name := range slices.Sorted(maps.Keys(result)) {
+		if result[name].ValuesOnly() {
+			log.Printf("[WS] action %q sets only values; pass its command with --action %s=COMMAND", name, name)
+		}
 		for v, p := range result[name].Values {
 			if err := config.CheckIn(p, "", resolve); err != nil {
 				log.Printf("[WS] action %q value %s: %v; its clicks are refused", name, v, err)
