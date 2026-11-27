@@ -345,16 +345,31 @@ func (s *StreamSource) clickEnv(values map[string]interface{}) (env, params map[
 				env["TD_"+k] = pv
 			}
 		}
-		env["TD_"+g.param], params[g.param] = v, v
+		if err := setParam(env, params, g.param, v); err != nil {
+			return nil, nil, err
+		}
 	}
 	for _, p := range s.typed {
 		v, err := config.TDValue(values, p)
 		if err != nil {
 			return nil, nil, err
 		}
-		env["TD_"+p], params[p] = v, v
+		if err := setParam(env, params, p, v); err != nil {
+			return nil, nil, err
+		}
 	}
 	return env, params, nil
+}
+
+// setParam adds a click's param to the run's variables. A param named like a
+// value a gate row stands for is refused, so neither a typed text nor another
+// row's value can replace what the row holds, such as an http row's TD_url.
+func setParam(env, params map[string]string, name, v string) error {
+	if _, taken := env["TD_"+name]; taken {
+		return fmt.Errorf("value %s is named like a value the row stands for", name)
+	}
+	env["TD_"+name], params[name] = v, v
+	return nil
 }
 
 // Running reports whether the source's inputs are running.

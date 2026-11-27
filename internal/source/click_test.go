@@ -240,3 +240,16 @@ func TestTypedParamReachesTheCommand(t *testing.T) {
 		t.Fatalf("the command got %q", got)
 	}
 }
+
+// A typed param can't replace a value the gate row stands for: an http row's
+// TD_url stays the file's, whatever the click sends.
+func TestTypedParamCantReplaceARowsValue(t *testing.T) {
+	src, _, runs := clickSetup(t, "### a\nGET https://api.test/a\n")
+	src.typed = append(src.typed, "url")
+	if err := src.Click(map[string]interface{}{"entry": "api/1", "url": "https://evil.example"}); err == nil {
+		t.Fatal("a typed url replaced the row's")
+	}
+	if _, err := os.Stat(runs); err == nil {
+		t.Fatal("the command ran")
+	}
+}

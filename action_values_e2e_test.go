@@ -96,15 +96,26 @@ func TestActionValues_E2E(t *testing.T) {
 	}
 
 	// A value changed in the markup, as a hand-made message would send it,
-	// runs nothing.
-	for _, bad := range []string{"../outside", ":/"} {
-		if err := chromedp.Run(ctx,
-			chromedp.SetAttributeValue(`button[name="stage"]`, "data-path", bad, chromedp.ByQuery),
-			chromedp.Click(`button[name="stage"]`, chromedp.ByQuery)); err != nil {
-			dump()
-			t.Fatal(err)
+	// runs nothing. The block's next push clears its error, so the refusal
+	// is read from the server log (tinkerdown#359).
+	const refused = "Error handling action: action failed: value path is not listed"
+	for i, bad := range []string{"../outside", ":/"} {
+		// A click that lands while the last reply is applied is dropped, so
+		// click again until the server has refused it.
+		deadline := time.Now().Add(10 * time.Second)
+		for strings.Count(serverLog.String(), refused) < i+1 && time.Now().Before(deadline) {
+			if err := chromedp.Run(ctx,
+				chromedp.SetAttributeValue(`button[name="stage"]`, "data-path", bad, chromedp.ByQuery),
+				chromedp.Click(`button[name="stage"]`, chromedp.ByQuery)); err != nil {
+				dump()
+				t.Fatal(err)
+			}
+			time.Sleep(500 * time.Millisecond)
 		}
-		wait("the refusal of "+bad, `(document.querySelector('[data-testid="error"]')?.textContent || "").includes("is not listed")`)
+		if n := strings.Count(serverLog.String(), refused); n < i+1 {
+			dump()
+			t.Fatalf("no refusal of %q in the server log (%d so far)", bad, n)
+		}
 	}
 	time.Sleep(300 * time.Millisecond)
 	if got := staged(); got != "a b.txt\n" {
