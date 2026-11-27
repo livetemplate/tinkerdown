@@ -492,4 +492,8 @@ func TestValidateActionValuesOnly(t *testing.T) {
 	if err := validateAction("stage", Action{}); err == nil {
 		t.Fatal("an empty action passed")
 	}
+	// Any other field, even one that runs nothing, means it isn't values-only.
+	if (Action{Values: values, Confirm: "Sure?"}).ValuesOnly() || (Action{Values: values, Params: map[string]ParamDef{"x": {}}}).ValuesOnly() {
+		t.Fatal("an action with values and another field counts as values-only")
+	}
 }

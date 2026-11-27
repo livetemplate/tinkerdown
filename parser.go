@@ -7,6 +7,7 @@ import (
 	"html"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
@@ -131,8 +132,12 @@ type Action struct {
 // ValuesOnly reports whether a page action sets values and nothing that
 // runs; see config.Action.ValuesOnly.
 func (a Action) ValuesOnly() bool {
-	return len(a.Values) > 0 && a.Kind == "" && a.Cmd == "" && a.Statement == "" &&
-		a.URL == "" && a.Body == "" && a.Source == "" && len(a.Params) == 0
+	rest := a
+	rest.Values = nil
+	if len(rest.Params) == 0 {
+		rest.Params = nil
+	}
+	return len(a.Values) > 0 && reflect.DeepEqual(rest, Action{})
 }
 
 // ParamDef defines a parameter for an action.

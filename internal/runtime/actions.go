@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"maps"
@@ -269,7 +270,8 @@ func (s *GenericState) executeCustomAction(action *config.Action, data map[strin
 		return err
 	}
 	if action.ValuesOnly() {
-		return fmt.Errorf("an action that sets only values takes its command from serve --action")
+		s.Error = "an action that sets only values takes its command from serve --action"
+		return errors.New(s.Error)
 	}
 	if err := s.checkValues(action, data); err != nil {
 		s.Error = err.Error()

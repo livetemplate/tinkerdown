@@ -303,3 +303,16 @@ func TestValidateTypedParams(t *testing.T) {
 		t.Error("CheckIn accepted a typed value as a gate")
 	}
 }
+
+// A page action converted to config's Action has an empty Params map; it
+// still counts as values-only, or the --action that replaces it would drop
+// the page's checks.
+func TestValuesOnlyIgnoresEmptyMaps(t *testing.T) {
+	values := map[string]SourceParam{"path": {In: "files.fields.path"}}
+	if a := (&Action{Values: values, Params: map[string]ParamDef{}, Statements: []string{}}); !a.ValuesOnly() {
+		t.Fatal("empty Params and Statements made a values-only action count as running something")
+	}
+	if a := (&Action{Values: values, Confirm: "Sure?"}); a.ValuesOnly() {
+		t.Fatal("an action with confirm counts as values-only")
+	}
+}

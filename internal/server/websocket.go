@@ -1553,7 +1553,7 @@ func (h *WebSocketHandler) getPageActions() map[string]*config.Action {
 				withValues.Values = page.Values
 				action = &withValues
 			} else {
-				log.Printf("[WS] action %q is given with --action and replaces the page's definition", name)
+				log.Printf("[WS] action %q is given with --action and replaces the page's definition, values included", name)
 			}
 		}
 		result[name] = action

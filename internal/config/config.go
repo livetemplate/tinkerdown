@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"time"
@@ -577,9 +578,18 @@ type Action struct {
 
 // ValuesOnly reports whether the action sets values and nothing that runs:
 // a page's checks on the values of an --action command of the same name.
+// Every other field must be unset, so a field added later can't make an
+// action that runs something pass as one that only checks values.
 func (a *Action) ValuesOnly() bool {
-	return len(a.Values) > 0 && a.Kind == "" && a.Cmd == "" && a.Statement == "" && len(a.Statements) == 0 &&
-		a.URL == "" && a.Body == "" && a.Source == "" && len(a.Params) == 0
+	rest := *a
+	rest.Values = nil
+	if len(rest.Params) == 0 {
+		rest.Params = nil // a page action's conversion makes an empty map
+	}
+	if len(rest.Statements) == 0 {
+		rest.Statements = nil
+	}
+	return len(a.Values) > 0 && reflect.DeepEqual(rest, Action{})
 }
 
 // ParamDef defines a parameter for an action

@@ -139,7 +139,7 @@ actions:
       path: {in: files.fields.path}
 ```
 
-The `stage` command then runs only when `path` equals `fields.path` in a row of `files`, the merge the page shows. A message made by hand, with a path the page never listed, runs nothing and puts the reason in the block's `.Error`. The page still runs no command of its own, so a page from a URL may hold such an action.
+The `stage` command then runs only when `path` equals `fields.path` in a row of `files`, the merge the page shows. A message made by hand, with a path the page never listed, runs nothing and puts the reason in the block's `.Error`. The check reads the rows the merge holds when the click arrives, so a row past the merge's `buffer` counts as not listed. The page still runs no command of its own, so a page from a URL may hold such an action.
 
 `serve` refuses an `--action` named like a builtin action (`pause`, `delete`, `filter`, …), since the builtin would run instead, and one that would replace an action approved in `tinkerdown.yaml`. An `--action` replaces a local page's action of the same name, except one that sets only `values`: that one's checks still apply. Webhooks and the HTTP action API can't call it.
 
