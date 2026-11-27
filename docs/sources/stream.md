@@ -129,7 +129,7 @@ tinkerdown serve --allow-exec --source 'ps=ps -eo pid=,pcpu=,comm=' procs.md
 
 The next run starts 2 seconds after the last one exits. A run keeps at most `buffer` lines (default 2000), so raise `buffer` for a longer list. With `key`, a process that ends leaves the page, a new one arrives, and one whose fields changed updates in place. The rows keep the order of the latest run. A run that prints the same lines as the last one sends the page nothing.
 
-A run that fails keeps the rows the page has, so a brief failure doesn't empty the list. The block's `.Error` holds the run's stderr and exit status until a run succeeds. Only stdout becomes rows.
+A run that fails keeps the rows the page has, so a brief failure doesn't empty the list. A run that hasn't exited after 30 seconds, such as a command waiting on a lock, is stopped and counts as failed. The block's `.Error` holds the run's stderr and exit status until a run succeeds. Only stdout becomes rows.
 
 Because a button's action can change what the list prints, every `every` input runs again as soon as a click's action of any kind ends, or an `on` merge's run ends, whether it failed or not. That reruns every list running in the server, on every page. An `every` merge's `.Running` stays true while a page shows it, since its inputs keep running between runs.
 

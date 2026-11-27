@@ -77,7 +77,10 @@ func (d *dirWatch) addTree(dir string) error {
 		if !e.IsDir() {
 			return nil
 		}
-		return d.w.Add(path)
+		if err := d.w.Add(path); err != nil && !(path != dir && os.IsNotExist(err)) {
+			return err // a folder removed after the walk found it is skipped
+		}
+		return nil
 	})
 }
 
@@ -108,7 +111,10 @@ func (d *dirWatch) loop(changed func()) {
 			if !ok {
 				return
 			}
+			// An error, such as the kernel's event queue overflowing, can
+			// hide a change, so the lists run again.
 			log.Printf("[stream] file watch: %v", err)
+			quiet.Reset(WatchQuiet)
 		case <-quiet.C:
 			changed()
 		}

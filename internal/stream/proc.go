@@ -138,6 +138,8 @@ func (r listRun) rows() []Row {
 func runList(ctx context.Context, spec InputSpec, b *Buffer) {
 	var shown []string
 	watching := false
+	timer := time.NewTimer(spec.Every)
+	defer timer.Stop()
 	for first := true; ; first = false {
 		run := collectRun(ctx, spec, b.hub.now)
 		if ctx.Err() != nil {
@@ -161,18 +163,24 @@ func runList(ctx context.Context, spec InputSpec, b *Buffer) {
 				}
 			}
 		}
-		var timer <-chan time.Time
+		var tick <-chan time.Time
 		if !watching {
-			timer = time.After(spec.Every)
+			timer.Reset(spec.Every) // since Go 1.23, Reset drops a value not yet read
+			tick = timer.C
 		}
 		select {
 		case <-ctx.Done():
 			return
 		case <-b.kick: // RerunLists, from a click or the watch
-		case <-timer:
+			timer.Stop()
+		case <-tick:
 		}
 	}
 }
+
+// ListRunTimeout stops a list input's run that hasn't exited, such as a
+// command waiting on a lock, so the list goes on running and says why.
+var ListRunTimeout = 30 * time.Second
 
 // collectRun runs spec.Cmd once and gathers what it printed.
 func collectRun(ctx context.Context, spec InputSpec, now func() time.Time) listRun {
@@ -184,9 +192,14 @@ func collectRun(ctx context.Context, spec InputSpec, now func() time.Time) listR
 		}
 	}}
 	stderr := &tailWriter{max: MaxCollected}
-	cmd := shellCmd(ctx, spec)
+	runCtx, cancel := context.WithTimeout(ctx, ListRunTimeout)
+	defer cancel()
+	cmd := shellCmd(runCtx, spec)
 	cmd.Stdout, cmd.Stderr = split, stderr
 	run.err = cmd.Run()
+	if runCtx.Err() == context.DeadlineExceeded && ctx.Err() == nil {
+		run.err = fmt.Errorf("stopped after %s without exiting", ListRunTimeout)
+	}
 	split.Flush()
 	run.stderr, run.now = string(stderr.buf), now()
 	return run
