@@ -27,7 +27,7 @@ tinkerdown serve [directory | page.md | file:// URI | https:// URL | short name]
 
 Because the page comes from someone else, it may only declare `merge` sources, so it takes its sources from your `--source` flags and its commands from your `--action` flags. `serve` refuses a page from a URL that holds:
 
-- any other kind of source, any action, or a schedule
+- any other kind of source, any action except one that sets only `values`, or a schedule
 - frontmatter beyond `title`, `sources`, `styling`, `charts`, `blocks` and `features`
 - an include, a `wasm` or `embed-lvt` block, or a server block that isn't an `lvt` block
 - a `<script>`, `<meta>`, `<base>`, `<link>`, `<iframe>`, `<object>`, `<embed>`, `<svg>` or `<math>` element, an `on…` event handler, or a `javascript:` URL
@@ -130,7 +130,18 @@ Quote the variable: `"$TD_name"` stays one argument, while an unquoted `$TD_name
 
 A click runs nothing when a value is empty, longer than 256 bytes, starts with `-`, or holds a control character; the block shows the reason. An attribute whose name isn't 1-32 letters, digits or `_` is skipped. The command runs in the site directory with a 30-second timeout.
 
-`serve` refuses an `--action` named like a builtin action (`pause`, `delete`, `filter`, …), since the builtin would run instead, and one that would replace an action approved in `tinkerdown.yaml`. An `--action` replaces a local page's action of the same name. Webhooks and the HTTP action API can't call it.
+A page can say which values a button may send. An action that sets only `values` names, for each value, the merge whose rows list it:
+
+```yaml
+actions:
+  stage:
+    values:
+      path: {in: files.fields.path}
+```
+
+The `stage` command then runs only when `path` equals `fields.path` in a row of `files`, the merge the page shows. A message made by hand, with a path the page never listed, runs nothing and puts the reason in the block's `.Error`. The page still runs no command of its own, so a page from a URL may hold such an action.
+
+`serve` refuses an `--action` named like a builtin action (`pause`, `delete`, `filter`, …), since the builtin would run instead, and one that would replace an action approved in `tinkerdown.yaml`. An `--action` replaces a local page's action of the same name, except one that sets only `values`: that one's checks still apply. Webhooks and the HTTP action API can't call it.
 
 ### new
 

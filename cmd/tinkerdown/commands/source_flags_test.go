@@ -376,7 +376,7 @@ func TestUnnamedLabelsSkipPageNames(t *testing.T) {
 		t.Fatal(err)
 	}
 	pageNames := pageSourceNames(cfg, srv)
-	if got, want := slices.Sorted(maps.Keys(pageNames)), []string{"logs", "logview", "requests", "response", "send"}; !slices.Equal(got, want) {
+	if got, want := slices.Sorted(maps.Keys(pageNames)), []string{"logs", "logview", "note", "noted", "requests", "response", "send"}; !slices.Equal(got, want) {
 		t.Fatalf("page names %q, want %q", got, want)
 	}
 

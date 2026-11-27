@@ -297,18 +297,34 @@ func validateParams(name string, src SourceConfig, lookup func(string) (SourceCo
 		if !TDName.MatchString(p) {
 			return invalid("merge source %q: param %q must be 1-32 letters, digits or _", name, p)
 		}
-		gate, path := src.Params[p].Gate()
-		if !fieldPath.MatchString(path) {
-			return invalid("merge source %q: param %s needs in: MERGE.PATH, where PATH is NAME or fields.NAME", name, p)
+		if sp := src.Params[p]; sp.Typed {
+			if sp.In != "" || src.On == "" {
+				return invalid("merge source %q: param %s: typed takes no in, and needs on, since only a click can send what was typed", name, p)
+			}
+			continue
 		}
-		var g SourceConfig
-		ok := false
-		if lookup != nil {
-			g, ok = lookup(gate)
+		if err := CheckIn(src.Params[p], name, lookup); err != nil {
+			return invalid("merge source %q: param %s: %v", name, p, err)
 		}
-		if !ok || g.Type != "merge" || len(g.Params) > 0 || gate == name {
-			return invalid("merge source %q: param %s: in names %q, which must be another merge on the page without params", name, p, gate)
-		}
+	}
+	return nil
+}
+
+// CheckIn checks a value's in: MERGE.PATH, where PATH is a field path and
+// MERGE another merge on the page, without params of its own. self is the
+// merge holding the param, or "" for an action's value.
+func CheckIn(p SourceParam, self string, lookup func(string) (SourceConfig, bool)) error {
+	gate, path := p.Gate()
+	if p.Typed || !fieldPath.MatchString(path) {
+		return fmt.Errorf("needs in: MERGE.PATH, where PATH is NAME or fields.NAME")
+	}
+	var g SourceConfig
+	ok := false
+	if lookup != nil {
+		g, ok = lookup(gate)
+	}
+	if !ok || g.Type != "merge" || len(g.Params) > 0 || gate == self {
+		return fmt.Errorf("in names %q, which must be another merge on the page without params", gate)
 	}
 	return nil
 }

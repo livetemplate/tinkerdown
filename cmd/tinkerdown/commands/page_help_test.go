@@ -19,6 +19,8 @@ const takesPage = "---\ntitle: T\nsources:\n" +
 	"  requests: {type: merge, inputs: [\"*\"], key: [fields.entry], accepts: {kinds: [http], min: 1, hint: \"your .http file \\x1b[31m<script>\"}}\n" +
 	"  response: {type: merge, inputs: [send], on: send, params: {entry: {in: requests.fields.entry}}}\n" +
 	"  logview: {type: merge, inputs: [logs], params: {name: {in: requests.fields.name}}}\n" +
+	"  noted: {type: merge, inputs: [note], on: note, params: {text: {typed: true}}}\n" +
+	"actions:\n  stop: {values: {name: {in: requests.fields.name}}}\n" +
 	"---\n\n```lvt\n<main lvt-source=\"requests\">{{range .Data}}<li data-key=\"{{.key}}\">" +
 	"<button name=\"send\" data-entry=\"{{.fields.entry}}\">Send</button>" +
 	"<button name=\"stop\" data-name=\"{{.fields.name}}\">Stop</button>" +
@@ -44,7 +46,8 @@ func TestDescribeTakes(t *testing.T) {
 		"--source http:PATH\n      1 or more, shown in requests",
 		"--source send=…\n      run by the send button, shown in response",
 		"--source logs=…\n      run for the row you open, shown in logview",
-		"--action stop=COMMAND",
+		"--action stop=COMMAND\n      run by the stop button, with $TD_name from requests.fields.name",
+		"--source note=…\n      run by the note button, shown in noted, with $TD_text as typed",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %q in:\n%s", want, got)

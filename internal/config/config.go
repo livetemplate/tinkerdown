@@ -393,8 +393,11 @@ type SourceConfig struct {
 
 // SourceParam is one params value. In is MERGE.PATH: the value must equal
 // PATH (NAME or fields.NAME) in a row of merge MERGE on the same page.
+// Typed, on an on merge's param, takes the value from what the click sends,
+// such as a form field, with no In; it passes the value rules only.
 type SourceParam struct {
-	In string `yaml:"in"`
+	In    string `yaml:"in,omitempty"`
+	Typed bool   `yaml:"typed,omitempty"`
 }
 
 // Gate splits In into the merge and the field path.
@@ -557,6 +560,11 @@ type Action struct {
 	Cmd        string              `yaml:"cmd,omitempty"`        // For exec: command to run
 	Params     map[string]ParamDef `yaml:"params,omitempty"`     // Parameter definitions
 	Confirm    string              `yaml:"confirm,omitempty"`    // Confirmation message (triggers dialog)
+	// Values, by name, are the click values the action checks before it runs:
+	// each must be in a row of the merge its In names, as a params value
+	// must. A page may set only Values on an action whose command comes from
+	// serve --action.
+	Values map[string]SourceParam `yaml:"values,omitempty"`
 
 	// FromFlag marks an action from `serve --action`: it gets its values as
 	// TD_<name> environment variables, never pasted into Cmd. Only the
@@ -565,6 +573,13 @@ type Action struct {
 	// Dir is where Cmd runs; empty means the site directory, as for
 	// SourceConfig.Dir.
 	Dir string `yaml:"-" json:"-"`
+}
+
+// ValuesOnly reports whether the action sets values and nothing that runs:
+// a page's checks on the values of an --action command of the same name.
+func (a *Action) ValuesOnly() bool {
+	return len(a.Values) > 0 && a.Kind == "" && a.Cmd == "" && a.Statement == "" && len(a.Statements) == 0 &&
+		a.URL == "" && a.Body == "" && a.Source == "" && len(a.Params) == 0
 }
 
 // ParamDef defines a parameter for an action

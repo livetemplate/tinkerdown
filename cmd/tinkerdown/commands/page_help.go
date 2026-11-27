@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"fmt"
 	"io"
+	"maps"
 	"slices"
 	"strings"
 
@@ -50,7 +51,7 @@ func describeTakes(w io.Writer, cfg *config.Config, srv *server.Server, shown st
 				what := "shown in " + name
 				switch {
 				case src.On != "":
-					what = fmt.Sprintf("run by the %s button, shown in %s", src.On, name)
+					what = fmt.Sprintf("run by the %s button, shown in %s", src.On, name) + checkedValues(src.Params)
 				case len(src.Params) > 0:
 					what = fmt.Sprintf("run for the row you open, shown in %s", name)
 				}
@@ -62,7 +63,7 @@ func describeTakes(w io.Writer, cfg *config.Config, srv *server.Server, shown st
 		// --action, and an on: button starts a merge, not an action.
 		for _, a := range page.Refs().Actions {
 			if !onButtons[a] && !strings.Contains(a, "{{") {
-				add("--action "+a+"=COMMAND", "run by the "+a+" button")
+				add("--action "+a+"=COMMAND", "run by the "+a+" button"+checkedValues(server.ConfigParams(page.Config.Actions[a].Values)))
 			}
 		}
 		label := security.CleanPageText(cmp.Or(shown, route.FilePath))
@@ -101,4 +102,21 @@ func wildcardTakes(name string, a *config.SourceAccepts) string {
 		what += fmt.Sprintf(". The page says: %q", hint)
 	}
 	return what
+}
+
+// checkedValues says what a button's values are checked against: a row of
+// a merge, or, for a typed value, the value rules only. "" when none.
+func checkedValues(values map[string]config.SourceParam) string {
+	var parts []string
+	for _, v := range slices.Sorted(maps.Keys(values)) {
+		if p := values[v]; p.Typed {
+			parts = append(parts, "$TD_"+v+" as typed")
+		} else {
+			parts = append(parts, "$TD_"+v+" from "+p.In)
+		}
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return ", with " + strings.Join(parts, " and ")
 }

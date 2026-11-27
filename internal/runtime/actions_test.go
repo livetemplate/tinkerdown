@@ -8,10 +8,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/livetemplate/tinkerdown/internal/config"
 	"github.com/livetemplate/tinkerdown/internal/security"
 	"github.com/livetemplate/tinkerdown/internal/source"
+	"github.com/livetemplate/tinkerdown/internal/stream"
 )
 
 func TestSubstituteParams(t *testing.T) {
@@ -921,5 +923,66 @@ func TestExecSourceRunsInItsDir(t *testing.T) {
 	rows, err := src.Fetch(context.Background())
 	if err != nil || len(rows) != 1 || rows[0]["line"] != work {
 		t.Fatalf("rows %v (err %v), want one line %q", rows, err, work)
+	}
+}
+
+// An action whose values name a merge runs only for a value in that merge's
+// rows; any other value, or none, runs nothing and sets the block's error.
+func TestActionValuesCheckTheMerge(t *testing.T) {
+	origState := config.IsExecAllowed()
+	defer config.SetAllowExec(origState)
+	config.SetAllowExec(true)
+
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "files.jsonl"), []byte(`{"path":"a b.txt"}`+"\n"+`{"path":"c.txt"}`+"\n"), 0o644)
+	hub := stream.NewHub()
+	defer hub.Close()
+	sources := map[string]config.SourceConfig{
+		"list":  {Type: "stream", File: "files.jsonl", Format: "json"},
+		"files": {Type: "merge", Inputs: []string{"list"}, Key: []string{"fields.path"}},
+	}
+	lookup := func(n string) (config.SourceConfig, bool) { s, ok := sources[n]; return s, ok }
+	page := &source.Page{Resolve: lookup, InputLookup: func(string) func(string) (config.SourceConfig, bool) { return lookup }}
+	files, err := source.NewStreamSource(hub, "files", sources["files"], dir, lookup, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sub := files.Subscribe()
+	defer sub.Close()
+	deadline := time.Now().Add(5 * time.Second)
+	for rows, _ := files.Fetch(context.Background()); len(rows) < 2 && time.Now().Before(deadline); rows, _ = files.Fetch(context.Background()) {
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	out := filepath.Join(dir, "staged")
+	action := &config.Action{Kind: "exec", Cmd: `printf '%s\n' "$TD_path" >> staged`, FromFlag: true,
+		Values: map[string]config.SourceParam{"path": {In: "files.fields.path"}}}
+	state := &GenericState{siteDir: dir, hub: hub, page: page}
+	if err := state.executeCustomAction(action, map[string]interface{}{"path": "a b.txt"}); err != nil {
+		t.Fatalf("a listed value: %v", err)
+	}
+	for name, data := range map[string]map[string]interface{}{
+		"not listed":     {"path": "../outside"},
+		"pathspec magic": {"path": ":/"},
+		"missing":        {},
+		"option":         {"path": "-rf"},
+	} {
+		state.Error = ""
+		if err := state.executeCustomAction(action, data); err == nil || state.Error == "" {
+			t.Errorf("%s: ran, or left no block error (err %v)", name, err)
+		}
+	}
+	if got, _ := os.ReadFile(out); string(got) != "a b.txt\n" {
+		t.Fatalf("the command ran with %q, want only the listed value", got)
+	}
+
+	// A merge the page doesn't have refuses every value.
+	action.Values = map[string]config.SourceParam{"path": {In: "nope.fields.path"}}
+	if err := state.executeCustomAction(action, map[string]interface{}{"path": "c.txt"}); err == nil {
+		t.Fatal("a value checked against a missing merge ran")
+	}
+	// Values with no command say where the command comes from.
+	if err := state.executeCustomAction(&config.Action{Values: action.Values}, nil); err == nil || !strings.Contains(err.Error(), "serve --action") {
+		t.Fatalf("a values-only action: err = %v", err)
 	}
 }

@@ -23,6 +23,14 @@ Earlier releases (v0.1.x) are documented in the
   DIR changes, in place of their timer.
 - **`pattern`** on a merge splits a plain line into fields with a regex's
   named groups, such as `^(?P<pid>\d+) (?P<cmd>.+)$`.
+- **Actions that check their values.** A page action that sets only
+  `values: {path: {in: files.fields.path}}` makes the `--action` command of
+  the same name run only for a value listed in that merge's rows. A page from
+  a URL may hold such an action. See
+  [Actions from the command line](docs/reference/cli.md#actions-from-the-command-line).
+- **Typed params.** A param with `typed: true` on a merge with `on` takes the
+  click's value from a form field, such as a commit message, under the value
+  rules alone. See [Runs a click starts](docs/sources/stream.md#runs-a-click-starts).
 
 ### Fixed
 
