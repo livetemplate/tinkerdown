@@ -252,3 +252,18 @@ func TestListRunsOnlyWhileAPageShowsIt(t *testing.T) {
 	defer sub.Close()
 	waitFor(t, "runs once a page subscribes", func() bool { return runs() >= 2 })
 }
+
+func TestListRunTimesOut(t *testing.T) {
+	old := ListRunTimeout
+	ListRunTimeout = 300 * time.Millisecond
+	defer func() { ListRunTimeout = old }()
+	h := NewHub()
+	defer h.Close()
+	in, err := h.Input(InputSpec{Name: "stuck", Cmd: "sleep 10", Every: 50 * time.Millisecond})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sub := in.Subscribe()
+	defer sub.Close()
+	waitFor(t, "the timeout", func() bool { return strings.Contains(in.Err(), "stopped after 300ms") })
+}
