@@ -478,3 +478,18 @@ func TestParseFileInSite_AcceptsRelativeSiteRoot(t *testing.T) {
 		t.Errorf("relative siteRoot should resolve to abs path; rendered HTML missing snippet content")
 	}
 }
+
+// An action that sets only values passes validation: its command comes from
+// serve --action. One that sets values and runs something still needs a kind.
+func TestValidateActionValuesOnly(t *testing.T) {
+	values := map[string]SourceParam{"path": {In: "files.fields.path"}}
+	if err := validateAction("stage", Action{Values: values}); err != nil {
+		t.Fatalf("a values-only action: %v", err)
+	}
+	if err := validateAction("stage", Action{Values: values, Cmd: "git add -A"}); err == nil {
+		t.Fatal("an action with values and a cmd but no kind passed")
+	}
+	if err := validateAction("stage", Action{}); err == nil {
+		t.Fatal("an empty action passed")
+	}
+}
