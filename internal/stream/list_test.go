@@ -151,9 +151,6 @@ func TestListStopsWithoutSubscribers(t *testing.T) {
 }
 
 func TestWatchDirRunsOnFileChanges(t *testing.T) {
-	old := WatchQuiet
-	WatchQuiet = 50 * time.Millisecond
-	defer func() { WatchQuiet = old }()
 	dir := t.TempDir()
 	h := NewHub()
 	h.WatchDir = dir
@@ -175,13 +172,14 @@ func TestWatchDirRunsOnFileChanges(t *testing.T) {
 	os.WriteFile(filepath.Join(sub, "y"), []byte("1"), 0o644)
 	waitFor(t, "a run after a write in the new folder", func() bool { return f.runCount() == 5 })
 
-	// A burst of writes starts one run.
+	// A burst of writes, all inside WatchQuiet, starts one run. They go
+	// back to back: a slow CI runner under -race once spread 50 writes with
+	// 1 ms sleeps past a 50 ms window and counted two runs.
 	for i := range 50 {
 		os.WriteFile(filepath.Join(dir, "x"), []byte(fmt.Sprint(i)), 0o644)
-		time.Sleep(time.Millisecond)
 	}
 	waitFor(t, "a run after the burst", func() bool { return f.runCount() == 6 })
-	time.Sleep(200 * time.Millisecond)
+	time.Sleep(2 * WatchQuiet)
 	if n := f.runCount(); n != 6 {
 		t.Fatalf("runs after a burst of 50 writes = %d, want 6", n)
 	}
