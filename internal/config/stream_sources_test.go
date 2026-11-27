@@ -248,6 +248,7 @@ func TestValidateEveryAndPattern(t *testing.T) {
 	sources := map[string]SourceConfig{
 		"status": {Type: "stream", Cmd: "git status"},
 		"log":    {Type: "stream", File: "app.log"},
+		"deploy": {Type: "stream", Cmd: "./deploy.sh", Restart: "never"},
 		"diff":   {Type: "stream", Cmd: `git diff -- "$TD_path"`},
 		"files":  {Type: "merge", Inputs: []string{"status"}, Key: []string{"fields.path"}},
 	}
@@ -268,6 +269,7 @@ func TestValidateEveryAndPattern(t *testing.T) {
 		"every under 100ms":      {Type: "merge", Inputs: []string{"status"}, Every: "50ms"},
 		"every not a duration":   {Type: "merge", Inputs: []string{"status"}, Every: "often"},
 		"every over a file":      {Type: "merge", Inputs: []string{"log"}, Every: "2s"},
+		"every over run-once":    {Type: "merge", Inputs: []string{"deploy"}, Every: "2s"},
 		"every on a stream":      {Type: "stream", Cmd: "true", Every: "2s"},
 		"pattern on a stream":    {Type: "stream", Cmd: "true", Pattern: `(?P<a>.)`},
 		"pattern without a name": {Type: "merge", Inputs: []string{"status"}, Pattern: `(.+)`},

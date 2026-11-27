@@ -113,6 +113,9 @@ func ValidateStreamSource(name string, src SourceConfig, lookup func(string) (So
 				}
 				return invalid("merge source %q: input %q must run a command, since %s", name, in, why)
 			}
+			if every > 0 && inCfg.Restart == "never" {
+				return invalid("merge source %q: input %q has restart: never, so every can't run it again", name, in)
+			}
 		}
 	default:
 		return nil

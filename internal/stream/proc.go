@@ -153,6 +153,12 @@ func runList(ctx context.Context, spec InputSpec, b *Buffer) {
 			} else {
 				defer stop()
 				watching = true
+				// One more run catches a change made during the walk, which
+				// no event reports.
+				select {
+				case b.kick <- struct{}{}:
+				default:
+				}
 			}
 		}
 		var timer <-chan time.Time

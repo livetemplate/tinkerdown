@@ -159,28 +159,31 @@ func TestWatchDirRunsOnFileChanges(t *testing.T) {
 	h.WatchDir = dir
 	defer h.Close()
 	f := newList(t, h, time.Hour, "M a.txt\n")
-	waitFor(t, "first run", func() bool { return f.runCount() == 1 })
+	// The first run, then one more once the watch is up, for a change made
+	// during the walk.
+	waitFor(t, "the first run and the one after the walk", func() bool { return f.runCount() == 2 })
+	time.Sleep(50 * time.Millisecond)
 
 	os.WriteFile(filepath.Join(dir, "x"), []byte("1"), 0o644)
-	waitFor(t, "a run after a write", func() bool { return f.runCount() == 2 })
+	waitFor(t, "a run after a write", func() bool { return f.runCount() == 3 })
 
 	// A folder made after the watch started is watched too.
 	sub := filepath.Join(dir, "new", ".hidden")
 	os.MkdirAll(sub, 0o755)
-	waitFor(t, "a run after the mkdir", func() bool { return f.runCount() == 3 })
+	waitFor(t, "a run after the mkdir", func() bool { return f.runCount() == 4 })
 	time.Sleep(100 * time.Millisecond)
 	os.WriteFile(filepath.Join(sub, "y"), []byte("1"), 0o644)
-	waitFor(t, "a run after a write in the new folder", func() bool { return f.runCount() == 4 })
+	waitFor(t, "a run after a write in the new folder", func() bool { return f.runCount() == 5 })
 
 	// A burst of writes starts one run.
 	for i := range 50 {
 		os.WriteFile(filepath.Join(dir, "x"), []byte(fmt.Sprint(i)), 0o644)
 		time.Sleep(time.Millisecond)
 	}
-	waitFor(t, "a run after the burst", func() bool { return f.runCount() == 5 })
+	waitFor(t, "a run after the burst", func() bool { return f.runCount() == 6 })
 	time.Sleep(200 * time.Millisecond)
-	if n := f.runCount(); n != 5 {
-		t.Fatalf("runs after a burst of 50 writes = %d, want 5", n)
+	if n := f.runCount(); n != 6 {
+		t.Fatalf("runs after a burst of 50 writes = %d, want 6", n)
 	}
 }
 
@@ -213,6 +216,7 @@ func TestSpecRejectsBadEveryAndPattern(t *testing.T) {
 	for _, spec := range []InputSpec{
 		{Name: "f", File: "/tmp/x", Every: time.Second},
 		{Name: "m", Cmd: "true", Manual: true, Every: time.Second},
+		{Name: "n", Cmd: "true", Restart: "never", Every: time.Second},
 		{Name: "p", Cmd: "true", Pattern: `(.+)`},
 		{Name: "q", Cmd: "true", Pattern: `(?P<a>`},
 	} {
@@ -227,10 +231,10 @@ func TestWatchDirTurnsTheTimerOff(t *testing.T) {
 	h.WatchDir = t.TempDir()
 	defer h.Close()
 	f := newList(t, h, 20*time.Millisecond, "M a.txt\n")
-	waitFor(t, "first run", func() bool { return f.runCount() == 1 })
+	waitFor(t, "the first run and the one after the walk", func() bool { return f.runCount() == 2 })
 	time.Sleep(200 * time.Millisecond) // ten timer periods
-	if n := f.runCount(); n != 1 {
-		t.Fatalf("runs with --watch-dir and no file change = %d, want 1", n)
+	if n := f.runCount(); n != 2 {
+		t.Fatalf("runs with --watch-dir and no file change = %d, want 2", n)
 	}
 }
 

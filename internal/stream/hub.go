@@ -137,6 +137,11 @@ func (s InputSpec) Normalize() (InputSpec, error) {
 	if s.Every != 0 && (s.Cmd == "" || s.Manual || s.Every < 0) {
 		return s, fmt.Errorf("stream %q: only a cmd that a page starts can run every %s", s.Name, s.Every)
 	}
+	if s.Every != 0 && s.Restart == "never" {
+		// The source's author said to run it once; a merge, which may come
+		// from a page at a URL, can't make it run again and again.
+		return s, fmt.Errorf("stream %q: has restart: never, so a merge can't run it every %s", s.Name, s.Every)
+	}
 	if s.Pattern != "" {
 		re, err := CompilePattern(s.Pattern)
 		if err != nil {
