@@ -1546,14 +1546,17 @@ func (h *WebSocketHandler) getPageActions() map[string]*config.Action {
 	// flag's command runs, so the flag action keeps them.
 	for name, action := range h.config.FlagActions {
 		if page, shadowed := result[name]; shadowed {
-			if page.ValuesOnly() {
-				// A copy, so the flag action shared by every page keeps no
-				// page's values; its maps are shared but never changed.
+			if !page.ValuesOnly() {
+				log.Printf("[WS] action %q is given with --action and replaces the page's definition", name)
+			}
+			if len(page.Values) > 0 {
+				// The page's checks stay, whatever else it set: dropping
+				// them would run the command with any value. A copy, so the
+				// flag action shared by every page keeps no page's values;
+				// its maps are shared but never changed.
 				withValues := *action
 				withValues.Values = page.Values
 				action = &withValues
-			} else {
-				log.Printf("[WS] action %q is given with --action and replaces the page's definition, values included", name)
 			}
 		}
 		result[name] = action
