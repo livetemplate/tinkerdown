@@ -131,7 +131,7 @@ The next run starts 2 seconds after the last one exits. A run keeps at most `buf
 
 A run that fails keeps the rows the page has, so a brief failure doesn't empty the list. The block's `.Error` holds the run's stderr and exit status until a run succeeds. Only stdout becomes rows.
 
-Because a button's action can change what the list prints, every `every` input running in the server runs again as soon as a click's action ends, on every page, of any kind, or an `on` merge's run ends, whether it failed or not. An `every` merge's `.Running` stays true while a page shows it, since its inputs keep running between runs.
+Because a button's action can change what the list prints, every `every` input runs again as soon as a click's action of any kind ends, or an `on` merge's run ends, whether it failed or not. That reruns every list running in the server, on every page. An `every` merge's `.Running` stays true while a page shows it, since its inputs keep running between runs.
 
 `tinkerdown serve --watch-dir DIR` replaces the timer with file events. Each `every` input then runs again 200ms after the last change to a file under `DIR`, including dot folders such as `.git`, and after a click, but not on a timer. Leave it off where a watch can't keep up. A network file system can miss events, and on macOS each watched file holds an open file, so a folder of tens of thousands of files can reach the limit. When the watch can't start, the inputs keep their timer until the server restarts, and the server log says why. A command that writes under `DIR` while it runs starts the next run itself, over and over; `git` needs `GIT_OPTIONAL_LOCKS=0` to avoid that.
 
