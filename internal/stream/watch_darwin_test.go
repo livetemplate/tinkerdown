@@ -18,12 +18,14 @@ func TestFailedWatchClosesItsFiles(t *testing.T) {
 	}
 	t.Cleanup(func() { syscall.Setrlimit(syscall.RLIMIT_NOFILE, &limit) })
 
+	const dirs, files = 10, 60
+	entries := dirs*files + dirs + 1 // the files, their folders and the root
 	h := NewHub()
 	defer h.Close()
-	h.WatchDir = fileTree(t, 10, 60)
+	h.WatchDir = fileTree(t, dirs, files)
 	before := openFiles(t)
 	low := limit
-	low.Cur = uint64(before + 200) // fewer than the tree's 611 files and folders
+	low.Cur = uint64(before + entries/3) // too few for the tree
 	if err := syscall.Setrlimit(syscall.RLIMIT_NOFILE, &low); err != nil {
 		t.Fatal(err)
 	}
@@ -32,7 +34,7 @@ func TestFailedWatchClosesItsFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !errors.Is(err, syscall.EMFILE) {
-		t.Fatalf("watch over 611 entries with %d files allowed: err %v, want EMFILE", low.Cur, err)
+		t.Fatalf("watch over %d entries with %d files allowed: err %v, want EMFILE", entries, low.Cur, err)
 	}
 	waitForOpenFiles(t, before, "after the watch failed")
 }

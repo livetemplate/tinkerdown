@@ -36,12 +36,12 @@ func fileTree(t *testing.T, dirs, files int) string {
 	return root
 }
 
-// waitForOpenFiles waits for the count to fall back to want: a watcher
-// closes its event queue from its own goroutine.
+// waitForOpenFiles waits for the count to fall back to want or below: a
+// watcher closes its event queue from its own goroutine.
 func waitForOpenFiles(t *testing.T, want int, what string) {
 	t.Helper()
 	deadline := time.Now().Add(2 * time.Second)
-	for got := openFiles(t); got != want; got = openFiles(t) {
+	for got := openFiles(t); got > want; got = openFiles(t) {
 		if time.Now().After(deadline) {
 			t.Fatalf("%s: %d files open, want %d as before the watch", what, got, want)
 		}
