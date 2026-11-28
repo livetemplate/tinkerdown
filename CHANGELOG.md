@@ -11,6 +11,14 @@ Earlier releases (v0.1.x) are documented in the
 
 ## [Unreleased]
 
+### Changed
+
+- **Mermaid 12.3.0.** Diagrams render with Mermaid 12.3.0 instead of 10.9.5,
+  so a page can animate an edge (`a e1@--> b` with `e1@{ animate: true }`) and
+  use the diagram types added since 10.x. `classDef`, `style` and `%%{init}%%`
+  work as before. The bundle grows from 3.3 MB to 5.5 MB, and only pages with
+  a ` ```mermaid ` block load it.
+
 ## [v0.11.1] - 2026-11-28
 
 ### Fixed

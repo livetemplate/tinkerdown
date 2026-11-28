@@ -47,6 +47,7 @@ func TestMermaidDiagramsRendering(t *testing.T) {
 	var html string
 	var mermaidDivCount int
 	var svgCount int
+	var animatedEdges, errorDiagrams int
 
 	// Use host.docker.internal for Docker Chrome to access host server
 	url := GetChromeTestURL(port)
@@ -65,6 +66,11 @@ func TestMermaidDiagramsRendering(t *testing.T) {
 
 		// Count how many SVG elements exist (rendered diagrams)
 		chromedp.Evaluate(`document.querySelectorAll('svg').length`, &svgCount),
+
+		// Edge animation (`e1@--> ...` with `e1@{ animate: true }`) needs
+		// Mermaid 11.6+; the "Animated Flowchart" section exercises it.
+		chromedp.Evaluate(`document.querySelectorAll('.mermaid [class*="edge-animation"]').length`, &animatedEdges),
+		chromedp.Evaluate(`document.querySelectorAll('.mermaid [aria-roledescription="error"]').length`, &errorDiagrams),
 	)
 
 	if err != nil {
@@ -94,6 +100,12 @@ func TestMermaidDiagramsRendering(t *testing.T) {
 	// Note: Mermaid.js transforms div.mermaid elements, so we check SVGs which are the rendered output
 	if svgCount < 3 {
 		t.Errorf("Expected at least 3 SVG diagrams to render, got %d", svgCount)
+	}
+	if errorDiagrams > 0 {
+		t.Errorf("%d diagram(s) rendered Mermaid's syntax-error output", errorDiagrams)
+	}
+	if animatedEdges < 1 {
+		t.Error("No animated edge rendered; edge animation needs the bundled Mermaid to be 11.6 or later")
 	}
 
 	t.Logf("Mermaid diagrams rendered successfully: %d divs, %d SVGs", mermaidDivCount, svgCount)

@@ -60,7 +60,7 @@ func TestRenderedPageScriptTagsAreDeferred(t *testing.T) {
 }
 
 // G4: Mermaid is conditional on HasMermaid — pages without mermaid blocks
-// must not pay the ~3.3MB Mermaid runtime cost.
+// must not pay the ~5.5MB Mermaid runtime cost.
 func TestMermaidScriptOmittedFromPagesWithoutMermaidBlocks(t *testing.T) {
 	tmpDir := t.TempDir()
 

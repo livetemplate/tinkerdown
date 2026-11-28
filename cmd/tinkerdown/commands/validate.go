@@ -366,7 +366,7 @@ func validateMermaidDiagrams(filePath string) ([]string, error) {
 <!DOCTYPE html>
 <html>
 <head>
-	<script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.5/dist/mermaid.min.js"></script>
+	<script src="https://cdn.jsdelivr.net/npm/mermaid@12.3.0/dist/mermaid.min.js"></script>
 	<script>
 		mermaid.initialize({ startOnLoad: true });
 	</script>

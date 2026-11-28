@@ -890,7 +890,7 @@ type FeaturesConfig struct {
 
 	// PrerenderDiagrams enables server-side mermaid pre-rendering via
 	// Kroki. When true, ```mermaid blocks are converted to inline SVG at
-	// parse time and the ~3.3MB client-side mermaid runtime is skipped on
+	// parse time and the ~5.5MB client-side mermaid runtime is skipped on
 	// pages where ALL blocks pre-rendered successfully. Blocks that fail
 	// to render fall back to the client-side runtime. Default: false.
 	PrerenderDiagrams bool `yaml:"prerender_diagrams,omitempty"`
