@@ -11,6 +11,8 @@ Earlier releases (v0.1.x) are documented in the
 
 ## [Unreleased]
 
+## [v0.11.2] - 2026-11-28
+
 ### Changed
 
 - **Mermaid 12.3.0.** Diagrams render with Mermaid 12.3.0 instead of 10.9.5,
