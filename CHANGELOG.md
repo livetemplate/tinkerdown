@@ -11,6 +11,8 @@ Earlier releases (v0.1.x) are documented in the
 
 ## [Unreleased]
 
+## [v0.11.1] - 2026-11-28
+
 ### Fixed
 
 - **`--watch-dir` closes its files on macOS.** A watch that stopped, or
