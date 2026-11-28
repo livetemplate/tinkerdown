@@ -1023,8 +1023,13 @@ func autoGenerateListTemplate(content string) string {
 }
 
 // validateAction validates an action configuration.
-// Returns an error if required fields are missing for the action kind.
+// Returns an error if required fields are missing for the action kind. An
+// action that sets only values runs nothing itself: its command comes from
+// serve --action, so it needs no kind.
 func validateAction(name string, action Action) error {
+	if action.ValuesOnly() {
+		return nil
+	}
 	switch action.Kind {
 	case "sql":
 		if action.Source == "" {

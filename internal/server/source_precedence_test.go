@@ -2,11 +2,11 @@ package server
 
 import (
 	"context"
-	"reflect"
 	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -397,5 +397,30 @@ func TestLiveQueryMeta(t *testing.T) {
 	page.ServerBlocks["lvt-1"] = &tinkerdown.ServerBlock{Metadata: map[string]string{"lvt-source": "logview"}}
 	if got := liveQueryMeta(cfg, page); !strings.Contains(got, `name="tinkerdown-live-query"`) {
 		t.Errorf("a block shows logview, got %q", got)
+	}
+}
+
+// An --action that replaces a page's action keeps the page's values, whatever
+// else the page set, so the checks never drop away: with a confirm, say, the
+// page action isn't values-only, and its values must still apply. The flag
+// action itself, shared by every page, is left without them.
+func TestFlagActionKeepsThePagesValues(t *testing.T) {
+	values := map[string]tinkerdown.SourceParam{"path": {In: "files.fields.path"}}
+	flag := &config.Action{Kind: "exec", Cmd: `git add -- "$TD_path"`, FromFlag: true}
+	for name, page := range map[string]tinkerdown.Action{
+		"values only":        {Values: values},
+		"values and confirm": {Values: values, Confirm: "Stage it?"},
+	} {
+		h := &WebSocketHandler{
+			config: &config.Config{FlagActions: map[string]*config.Action{"stage": flag}},
+			page:   &tinkerdown.Page{Config: tinkerdown.PageConfig{Actions: map[string]tinkerdown.Action{"stage": page}}},
+		}
+		got := h.getPageActions()["stage"]
+		if got == nil || got.Cmd != flag.Cmd || got.Values["path"].In != "files.fields.path" {
+			t.Errorf("%s: the --action lost the page's values: %+v", name, got)
+		}
+	}
+	if flag.Values != nil {
+		t.Error("the shared flag action took a page's values")
 	}
 }

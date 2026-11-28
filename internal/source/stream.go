@@ -78,7 +78,8 @@ type StreamSource struct {
 	flush time.Duration
 
 	mu       sync.Mutex
-	gates    []gate                                              // one per param, sorted by name; nil unless params
+	gates    []gate                                              // one per param with in, sorted by name
+	typed    []string                                            // the params a click's typed values fill, sorted
 	build    func(env map[string]string) (*stream.Buffer, error) // a gated source's buffer, on first open
 	env      map[string]string                                   // TD_ values; nil while a param is missing or refused
 	params   map[string]string                                   // env by param name, without TD_; nil with env
@@ -123,7 +124,7 @@ func (s *StreamSource) Name() string { return s.name }
 // rows wake the page's subscription, and every wake-up refreshes, so Fetch
 // runs each time a gate may have opened or closed.
 func (s *StreamSource) Fetch(ctx context.Context) ([]map[string]interface{}, error) {
-	if s.gates == nil { // gates, and buf when there are none, never change
+	if !s.gated() { // buf never changes without params
 		if s.buf == nil {
 			return nil, nil
 		}
@@ -158,7 +159,7 @@ func (s *StreamSource) Fetch(ctx context.Context) ([]map[string]interface{}, err
 func (s *StreamSource) SetQuery(q url.Values) bool {
 	// A merge started by a click ignores the URL: a reload, Back or a shared
 	// link must not show, or start, a run nobody clicked here.
-	if s.gates == nil || s.on != "" {
+	if !s.gated() || s.on != "" {
 		return false
 	}
 	var env map[string]string // stays nil while a value is missing or refused
@@ -241,13 +242,16 @@ func (s *StreamSource) openLocked() bool {
 		return false
 	}
 	for _, g := range s.gates {
-		m := stream.Match{Path: g.path, Values: []string{s.env["TD_"+g.param]}}
-		if !slices.ContainsFunc(g.buf.Snapshot(), m.Matches) {
+		if _, err := g.find(s.env["TD_"+g.param]); err != nil {
 			return false
 		}
 	}
 	return true
 }
+
+// gated reports whether the merge has params, so its buffer depends on
+// their values.
+func (s *StreamSource) gated() bool { return len(s.gates) > 0 || len(s.typed) > 0 }
 
 // On returns the name of the button whose click starts the inputs, or "".
 func (s *StreamSource) On() string { return s.on }
@@ -316,20 +320,15 @@ func (s *StreamSource) clickLater() {
 func (s *StreamSource) clickEnv(values map[string]interface{}) (env, params map[string]string, err error) {
 	env, params = map[string]string{}, map[string]string{}
 	for _, g := range s.gates {
-		v := ""
-		if values[g.param] != nil {
-			v = fmt.Sprint(values[g.param])
-		}
-		if err := config.CheckTDValue(g.param, v); err != nil {
+		v, err := config.TDValue(values, g.param)
+		if err != nil {
 			return nil, nil, err
 		}
-		m := stream.Match{Path: g.path, Values: []string{v}}
-		rows := g.buf.Snapshot()
-		i := slices.IndexFunc(rows, m.Matches)
-		if i < 0 {
-			return nil, nil, fmt.Errorf("value %s is not listed", g.param)
+		row, err := g.find(v)
+		if err != nil {
+			return nil, nil, err
 		}
-		if p, ok := s.hub.Private(rows[i]); ok {
+		if p, ok := s.hub.Private(row); ok {
 			if p.Err != "" {
 				return nil, nil, errors.New(p.Err)
 			}
@@ -346,9 +345,31 @@ func (s *StreamSource) clickEnv(values map[string]interface{}) (env, params map[
 				env["TD_"+k] = pv
 			}
 		}
-		env["TD_"+g.param], params[g.param] = v, v
+		if err := setParam(env, params, g.param, v); err != nil {
+			return nil, nil, err
+		}
+	}
+	for _, p := range s.typed {
+		v, err := config.TDValue(values, p)
+		if err != nil {
+			return nil, nil, err
+		}
+		if err := setParam(env, params, p, v); err != nil {
+			return nil, nil, err
+		}
 	}
 	return env, params, nil
+}
+
+// setParam adds a click's param to the run's variables. A param named like a
+// value a gate row stands for is refused, so neither a typed text nor another
+// row's value can replace what the row holds, such as an http row's TD_url.
+func setParam(env, params map[string]string, name, v string) error {
+	if _, taken := env["TD_"+name]; taken {
+		return fmt.Errorf("value %s is named like a value the row stands for", name)
+	}
+	env["TD_"+name], params[name] = v, v
+	return nil
 }
 
 // Running reports whether the source's inputs are running.
@@ -378,7 +399,7 @@ func (s *StreamSource) Close() error {
 func (s *StreamSource) Subscribe() *stream.Subscription {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.gates == nil {
+	if !s.gated() {
 		if s.buf == nil {
 			return nil
 		}
@@ -431,7 +452,11 @@ func NewStreamSource(hub *stream.Hub, name string, cfg config.SourceConfig, site
 			return nil, fmt.Errorf("merge source %q: params need a page", name)
 		}
 		for _, p := range slices.Sorted(maps.Keys(cfg.Params)) {
-			gateName, path := cfg.Params[p].Gate()
+			if cfg.Params[p].Typed {
+				src.typed = append(src.typed, p)
+				continue
+			}
+			gateName, _ := cfg.Params[p].Gate()
 			gateCfg, _ := page.Resolve(gateName)
 			// The gate this merge was validated against is the one lookup
 			// resolves; the page's own resolution must be that same merge,
@@ -439,11 +464,11 @@ func NewStreamSource(hub *stream.Hub, name string, cfg config.SourceConfig, site
 			if want, _ := lookup(gateName); !sameMerge(want, gateCfg) {
 				return nil, &ValidationError{Source: name, Field: "params", Reason: fmt.Sprintf("param %s: gate %q is not the merge this source was checked against", p, gateName)}
 			}
-			g, err := NewStreamSource(hub, gateName, gateCfg, siteDir, page.InputLookup(gateName), nil)
+			g, err := newGate(hub, page, siteDir, p, cfg.Params[p])
 			if err != nil {
 				return nil, fmt.Errorf("merge source %q: param %s: %w", name, p, err)
 			}
-			src.gates = append(src.gates, gate{param: p, buf: g.buf, path: path})
+			src.gates = append(src.gates, g)
 		}
 	}
 	build := func(env map[string]string) (*stream.Buffer, error) {
@@ -458,7 +483,7 @@ func NewStreamSource(hub *stream.Hub, name string, cfg config.SourceConfig, site
 		}
 		return hub.Merge(name, inputs, cfg.Buffer, cfg.KeySpec())
 	}
-	if src.gates != nil {
+	if src.gated() {
 		// Check the inputs now, so a misconfigured input fails at page load
 		// rather than when the first value opens.
 		for _, in := range cfg.Inputs {
@@ -476,6 +501,46 @@ func NewStreamSource(hub *stream.Hub, name string, cfg config.SourceConfig, site
 		return nil, err
 	}
 	return src, nil
+}
+
+// Listed checks a click value against in (MERGE.PATH): the value must pass
+// the value rules and equal PATH in a row of MERGE, as the page resolves
+// MERGE, so it is the buffer the page's own block shows.
+func Listed(hub *stream.Hub, page *Page, siteDir, name string, in config.SourceParam, value string) error {
+	if hub == nil || page == nil || page.Resolve == nil || page.InputLookup == nil {
+		return fmt.Errorf("value %s: checking it needs a page", name)
+	}
+	if err := config.CheckIn(in, "", page.Resolve); err != nil {
+		return fmt.Errorf("value %s: %v", name, err)
+	}
+	g, err := newGate(hub, page, siteDir, name, in)
+	if err != nil {
+		return fmt.Errorf("value %s: %w", name, err)
+	}
+	_, err = g.find(value)
+	return err
+}
+
+// newGate resolves in's merge as the page does, so the gate shares the
+// buffer the page's own block shows.
+func newGate(hub *stream.Hub, page *Page, siteDir, param string, in config.SourceParam) (gate, error) {
+	gateName, path := in.Gate()
+	gateCfg, _ := page.Resolve(gateName)
+	g, err := NewStreamSource(hub, gateName, gateCfg, siteDir, page.InputLookup(gateName), nil)
+	if err != nil {
+		return gate{}, err
+	}
+	return gate{param: param, buf: g.buf, path: path}, nil
+}
+
+// find returns the gate merge's row whose field at path is value.
+func (g gate) find(value string) (stream.Row, error) {
+	m := stream.Match{Path: g.path, Values: []string{value}}
+	rows := g.buf.Snapshot()
+	if i := slices.IndexFunc(rows, m.Matches); i >= 0 {
+		return rows[i], nil
+	}
+	return nil, fmt.Errorf("value %s is not listed", g.param)
 }
 
 // sameMerge reports whether got, a merge as the page resolves it, is the

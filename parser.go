@@ -7,6 +7,7 @@ import (
 	"html"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
@@ -81,7 +82,8 @@ type SourceConfig struct {
 
 // SourceParam mirrors config.SourceParam for page frontmatter.
 type SourceParam struct {
-	In string `yaml:"in"`
+	In    string `yaml:"in,omitempty"`
+	Typed bool   `yaml:"typed,omitempty"`
 }
 
 // SourceAccepts mirrors config.SourceAccepts for page frontmatter.
@@ -122,6 +124,20 @@ type Action struct {
 	Cmd       string              `yaml:"cmd,omitempty"`       // For exec: command to run
 	Params    map[string]ParamDef `yaml:"params,omitempty"`    // Parameter definitions
 	Confirm   string              `yaml:"confirm,omitempty"`   // Confirmation message (triggers dialog)
+	// Values are click values checked against a merge's rows before the
+	// action runs; see config.Action.Values.
+	Values map[string]SourceParam `yaml:"values,omitempty"`
+}
+
+// ValuesOnly reports whether a page action sets values and nothing that
+// runs; see config.Action.ValuesOnly.
+func (a Action) ValuesOnly() bool {
+	rest := a
+	rest.Values = nil
+	if len(rest.Params) == 0 {
+		rest.Params = nil
+	}
+	return len(a.Values) > 0 && reflect.DeepEqual(rest, Action{})
 }
 
 // ParamDef defines a parameter for an action.

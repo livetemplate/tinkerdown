@@ -507,12 +507,7 @@ func pageSourceConfig(src tinkerdown.SourceConfig) config.SourceConfig {
 	if a := src.Accepts; a != nil {
 		cfg.Accepts = &config.SourceAccepts{Kinds: a.Kinds, Min: a.Min, Hint: a.Hint}
 	}
-	if src.Params != nil {
-		cfg.Params = make(map[string]config.SourceParam, len(src.Params))
-		for name, p := range src.Params {
-			cfg.Params[name] = config.SourceParam{In: p.In}
-		}
-	}
+	cfg.Params = ConfigParams(src.Params)
 	return cfg
 }
 
@@ -1547,13 +1542,51 @@ func (h *WebSocketHandler) getPageActions() map[string]*config.Action {
 	}
 	// Flag actions rank above a page's own: the command line is the user's
 	// choice. They can't collide with approved actions; serve refuses that.
+	// A page action that sets only values is what the page checks before the
+	// flag's command runs, so the flag action keeps them.
 	for name, action := range h.config.FlagActions {
-		if _, shadowed := result[name]; shadowed {
-			log.Printf("[WS] action %q is given with --action and replaces the page's definition", name)
+		if page, shadowed := result[name]; shadowed {
+			if !page.ValuesOnly() {
+				log.Printf("[WS] action %q is given with --action and replaces the page's definition", name)
+			}
+			if len(page.Values) > 0 {
+				// The page's checks stay, whatever else it set: dropping
+				// them would run the command with any value. A copy, so the
+				// flag action shared by every page keeps no page's values;
+				// its maps are shared but never changed.
+				withValues := *action
+				withValues.Values = page.Values
+				action = &withValues
+			}
 		}
 		result[name] = action
 	}
+	// A wrong in, or values with no command, surfaces now, not only when
+	// someone clicks.
+	resolve := func(n string) (config.SourceConfig, bool) { return ResolveSource(h.config, h.page, n) }
+	for _, name := range slices.Sorted(maps.Keys(result)) {
+		if result[name].ValuesOnly() {
+			log.Printf("[WS] action %q sets only values; pass its command with --action %s=COMMAND", name, name)
+		}
+		for v, p := range result[name].Values {
+			if err := config.CheckIn(p, "", resolve); err != nil {
+				log.Printf("[WS] action %q value %s: %v; its clicks are refused", name, v, err)
+			}
+		}
+	}
 	return result
+}
+
+// ConfigParams converts a page's params, or an action's values, to config's.
+func ConfigParams(in map[string]tinkerdown.SourceParam) map[string]config.SourceParam {
+	if in == nil {
+		return nil
+	}
+	out := make(map[string]config.SourceParam, len(in))
+	for name, p := range in {
+		out[name] = config.SourceParam{In: p.In, Typed: p.Typed}
+	}
+	return out
 }
 
 // pageAndApprovedActions merges the page's frontmatter actions with the
@@ -1589,6 +1622,7 @@ func (h *WebSocketHandler) pageAndApprovedActions() map[string]*config.Action {
 			Cmd:       action.Cmd,
 			Params:    params,
 			Confirm:   action.Confirm,
+			Values:    ConfigParams(action.Values),
 		}
 	}
 

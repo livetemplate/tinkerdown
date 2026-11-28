@@ -43,14 +43,21 @@ func TDEnv(values map[string]interface{}) ([]string, error) {
 		if !TDName.MatchString(name) {
 			continue
 		}
-		v := ""
-		if values[name] != nil {
-			v = fmt.Sprint(values[name])
-		}
-		if err := CheckTDValue(name, v); err != nil {
+		v, err := TDValue(values, name)
+		if err != nil {
 			return nil, err
 		}
 		env = append(env, "TD_"+name+"="+v)
 	}
 	return env, nil
+}
+
+// TDValue reads a click's value by name as text, missing as empty, and
+// checks it with CheckTDValue.
+func TDValue(values map[string]interface{}, name string) (string, error) {
+	v := ""
+	if values[name] != nil {
+		v = fmt.Sprint(values[name])
+	}
+	return v, CheckTDValue(name, v)
 }

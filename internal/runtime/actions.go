@@ -4,11 +4,14 @@ import (
 	"bytes"
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"os"
 	"os/exec"
+	"slices"
 	"sort"
 	"strings"
 	"text/template"
@@ -266,6 +269,14 @@ func (s *GenericState) executeCustomAction(action *config.Action, data map[strin
 	if err := validateParams(action, data); err != nil {
 		return err
 	}
+	if action.ValuesOnly() {
+		s.Error = "an action that sets only values takes its command from serve --action"
+		return errors.New(s.Error)
+	}
+	if err := s.checkValues(action, data); err != nil {
+		s.Error = err.Error()
+		return err
+	}
 	if s.hub != nil {
 		// The action may have changed what list inputs print, whether it
 		// failed or not, so they run again once it ends.
@@ -285,6 +296,22 @@ func (s *GenericState) executeCustomAction(action *config.Action, data map[strin
 	default:
 		return fmt.Errorf("unknown action kind: %s", action.Kind)
 	}
+}
+
+// checkValues refuses a click whose values an action checks (Values) aren't
+// each in a row of the merge named, so a hand-made message can't run the
+// command with a value the page never listed.
+func (s *GenericState) checkValues(action *config.Action, data map[string]interface{}) error {
+	for _, name := range slices.Sorted(maps.Keys(action.Values)) {
+		v, err := config.TDValue(data, name)
+		if err != nil {
+			return err
+		}
+		if err := source.Listed(s.hub, s.page, s.siteDir, name, action.Values[name], v); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // validateParams checks that required parameters are present.

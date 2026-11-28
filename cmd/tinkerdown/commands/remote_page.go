@@ -276,8 +276,12 @@ func checkRemotePage(page *tinkerdown.Page) error {
 			add("frontmatter %s: only title, sources, styling, charts, blocks and features are allowed", key)
 		}
 	}
-	for name := range page.Config.Actions {
-		add("action %s: actions are not allowed", name)
+	for name, a := range page.Config.Actions {
+		// An action that sets only values runs nothing itself: it checks the
+		// values of an --action command the operator passes.
+		if !a.ValuesOnly() {
+			add("action %s: actions are not allowed, except ones that set only values", name)
+		}
 	}
 	if len(page.Schedules) > 0 || len(page.Imperatives) > 0 {
 		add("schedules are not allowed")

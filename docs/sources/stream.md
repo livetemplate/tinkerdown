@@ -34,7 +34,7 @@ A command needs `tinkerdown serve --allow-exec`, as an `exec` source does. A fil
 | `collect_reset` | merge | With `collect`: `PATH=VALUE`, where VALUE may list alternatives as `a\|b`. A row that matches starts its key's `collected` over, such as `fields.Action=run\|start` for a test's or package's next run. |
 | `drop` | merge | With `key`: `PATH=VALUE`, where VALUE may list alternatives as `a\|b` (a value can't contain `\|`, and a number matches as it prints). A row that matches removes its key's row and isn't stored, such as `fields.state=removed` for a removed container. |
 | `sort` | merge | With `key`: a field, or `-` and a field for descending, such as `-fields.createdAt`. Rows show in that field's order instead of first-seen order. |
-| `params` | merge | Values taken from the page URL's query, each with `in: MERGE.PATH`. See [Values from the page URL](#values-from-the-page-url). |
+| `params` | merge | Values taken from the page URL's query, each with `in: MERGE.PATH`, or, on a merge with `on`, `typed: true` for a value the click sends. See [Values from the page URL](#values-from-the-page-url) and [Runs a click starts](#runs-a-click-starts). |
 | `on` | merge | With `params`: the name of the button whose click starts the inputs, instead of the URL. See [Runs a click starts](#runs-a-click-starts). |
 | `every` | merge | Runs each input's command again this long after it exits, at least `100ms`, and each run's output replaces the rows the last run printed. Every input must run a command, without `restart: never`. See [Lists a command prints](#lists-a-command-prints). |
 | `pattern` | merge | A regex with named groups, such as `^(?P<pid>\d+) (?P<cmd>.+)$`. A line that matches gets the groups as its `fields`. See [Lists a command prints](#lists-a-command-prints). |
@@ -246,6 +246,23 @@ sources:
 The button can be in any block on the page. Its `data-*` values are the params, checked like URL values: each must pass the value rules and be in its `in` merge. The command then gets each param as `TD_<name>`, plus the values the row stands for, which the browser never sees. For an `http` row these are `TD_method`, `TD_url`, `TD_headers` and `TD_body`, with variables filled in. For a `sql` row it is `TD_sql`. These values may span lines. Each may be up to 128 KiB, counted as the whole `TD_name=value`, since Linux refuses a longer environment string. A request with an unset variable, a longer value, or a value holding a NUL byte is refused with the reason in the block's `.Error`, and nothing runs.
 
 The inputs run once per click: an input isn't restarted when it exits, and has no timeout of its own, so give the command one (`curl --max-time 30`). A click while it runs stops the run, clears its rows and starts again. A click within 250 ms of the last run a page started waits until 250 ms have passed, and a later click in that time replaces it. Clicks sent in a loop then repeat a request at most four times a second, and the last click still runs. The block's `.Running` is true while it runs. Everyone who clicks the same values shares one run. A clean exit adds no row, and a failed one adds a `system` row with the exit status.
+
+A param with `typed: true` takes its value from what the click sends, such as a form field, and has no `in`. A form's fields go with the click of a button inside it, so a box and a button make a message the command gets as `TD_message`:
+
+```yaml
+  committed:
+    type: merge
+    inputs: [commit]
+    on: commit
+    params:
+      message: {typed: true}
+```
+
+```html
+<form><input name="message" maxlength="256"><button name="commit">Commit</button></form>
+```
+
+A typed value passes the value rules only: one line, up to 256 bytes, not starting with `-`. Any such text can reach the command, so quote it (`"$TD_message"`). Only a merge with `on` takes a typed param, since only a click can send what was typed.
 
 A merge with `on` ignores the page URL's query, and its inputs must run a command. `on` is 1-32 lowercase letters, digits or `_`. It can't be a built-in action's name, such as `run` or `refresh`, because a button with that name runs the built-in.
 

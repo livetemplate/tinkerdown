@@ -207,20 +207,25 @@ func TestCheckRemotePage(t *testing.T) {
 	if got := p.Config.Sources["files"]; got.Every != "1s" || got.Pattern != `^(?P<x>.)(?P<y>.) (?P<path>.+)$` {
 		t.Fatalf("every and pattern from the frontmatter = %q, %q", got.Every, got.Pattern)
 	}
+	withValues := "---\ntitle: git\nsources:\n  files:\n    type: merge\n    inputs: [status]\n    key: [fields.path]\nactions:\n  stage:\n    values:\n      path: {in: files.fields.path}\n---\n\n```lvt\n<ol lvt-source=\"files\">{{range .Data}}<li data-key=\"{{.key}}\"><button name=\"stage\" data-path=\"{{.fields.path}}\">{{.fields.path}}</button></li>{{end}}</ol>\n```\n"
+	if err := checkRemotePage(parse(withValues)); err != nil {
+		t.Fatalf("an action that sets only values: %v", err)
+	}
 	cases := map[string]string{
-		"an every under 1s":               "---\nsources:\n  all:\n    type: merge\n    inputs: [\"*\"]\n    every: 500ms\n---\n# X\n",
-		"a 2 KiB pattern":                 "---\nsources:\n  all:\n    type: merge\n    inputs: [\"*\"]\n    pattern: '(?P<a>" + strings.Repeat("a", 2048) + ")'\n---\n# X\n",
-		"a stream source":                 "---\nsources:\n  x:\n    type: stream\n    cmd: id\n---\n# X\n",
-		"a json source":                   "---\nsources:\n  x:\n    type: json\n    file: ~/.aws/credentials\n---\n# X\n",
-		"an action":                       "---\nactions:\n  wipe:\n    kind: sql\n    statement: DELETE FROM t\n---\n# X\n",
-		"a big buffer":                    "---\nsources:\n  all:\n    type: merge\n    inputs: [\"*\"]\n    buffer: 100000\n---\n# X\n",
-		"a script":                        "# X\n\n<script>fetch('https://evil.example')</script>\n",
-		"an event handler":                "# X\n\n<img src=x onerror=\"alert(1)\">\n",
-		"a javascript URL":                "# X\n\n<a href=\"javascript:alert(1)\">x</a>\n",
-		"a meta refresh":                  "# X\n\n<meta http-equiv=\"refresh\" content=\"0;url=https://evil.example\">\n",
-		"a description":                   "---\ndescription: x\n---\n# X\n",
-		"a source repo":                   "---\nsource_repo: https://github.com/a/b\n---\n# X\n",
-		"a template action in a tag name": "---\nsources:\n  all:\n    type: merge\n    inputs: [\"*\"]\n---\n\n```lvt\n<p lvt-source=\"all\"><{{\"meta\"}} http-equiv=\"refresh\"></p>\n```\n",
+		"an action with values and a cmd":         "---\nactions:\n  stage:\n    kind: exec\n    cmd: git add -A\n    values:\n      path: {in: files.fields.path}\n---\n# X\n",
+		"an every under 1s":                       "---\nsources:\n  all:\n    type: merge\n    inputs: [\"*\"]\n    every: 500ms\n---\n# X\n",
+		"a 2 KiB pattern":                         "---\nsources:\n  all:\n    type: merge\n    inputs: [\"*\"]\n    pattern: '(?P<a>" + strings.Repeat("a", 2048) + ")'\n---\n# X\n",
+		"a stream source":                         "---\nsources:\n  x:\n    type: stream\n    cmd: id\n---\n# X\n",
+		"a json source":                           "---\nsources:\n  x:\n    type: json\n    file: ~/.aws/credentials\n---\n# X\n",
+		"an action":                               "---\nactions:\n  wipe:\n    kind: sql\n    statement: DELETE FROM t\n---\n# X\n",
+		"a big buffer":                            "---\nsources:\n  all:\n    type: merge\n    inputs: [\"*\"]\n    buffer: 100000\n---\n# X\n",
+		"a script":                                "# X\n\n<script>fetch('https://evil.example')</script>\n",
+		"an event handler":                        "# X\n\n<img src=x onerror=\"alert(1)\">\n",
+		"a javascript URL":                        "# X\n\n<a href=\"javascript:alert(1)\">x</a>\n",
+		"a meta refresh":                          "# X\n\n<meta http-equiv=\"refresh\" content=\"0;url=https://evil.example\">\n",
+		"a description":                           "---\ndescription: x\n---\n# X\n",
+		"a source repo":                           "---\nsource_repo: https://github.com/a/b\n---\n# X\n",
+		"a template action in a tag name":         "---\nsources:\n  all:\n    type: merge\n    inputs: [\"*\"]\n---\n\n```lvt\n<p lvt-source=\"all\"><{{\"meta\"}} http-equiv=\"refresh\"></p>\n```\n",
 		"a template action in a raw-text element": "---\nsources:\n  all:\n    type: merge\n    inputs: [\"*\"]\n---\n\n```lvt\n<div lvt-source=\"all\"><textarea>{{range .Data}}{{.msg}}{{end}}</textarea></div>\n```\n",
 	}
 	for name, src := range cases {

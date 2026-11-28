@@ -280,3 +280,39 @@ func TestValidateEveryAndPattern(t *testing.T) {
 		}
 	}
 }
+
+func TestValidateTypedParams(t *testing.T) {
+	sources := map[string]SourceConfig{
+		"commit": {Type: "stream", Cmd: `git commit -m "$TD_message"`},
+		"files":  {Type: "merge", Inputs: []string{"commit"}},
+	}
+	lookup := func(n string) (SourceConfig, bool) { s, ok := sources[n]; return s, ok }
+	typed := map[string]SourceParam{"message": {Typed: true}}
+	if err := ValidateStreamSource("committed", SourceConfig{Type: "merge", Inputs: []string{"commit"}, On: "commit", Params: typed}, lookup); err != nil {
+		t.Fatalf("a typed param on an on merge: %v", err)
+	}
+	for name, src := range map[string]SourceConfig{
+		"typed without on": {Type: "merge", Inputs: []string{"commit"}, Params: typed},
+		"typed with in":    {Type: "merge", Inputs: []string{"commit"}, On: "commit", Params: map[string]SourceParam{"message": {Typed: true, In: "files.fields.x"}}},
+	} {
+		if err := ValidateStreamSource("x", src, lookup); err == nil {
+			t.Errorf("%s: want an error", name)
+		}
+	}
+	if err := CheckIn(SourceParam{Typed: true}, "", lookup); err == nil {
+		t.Error("CheckIn accepted a typed value as a gate")
+	}
+}
+
+// A page action converted to config's Action has an empty Params map; it
+// still counts as values-only, or the --action that replaces it would drop
+// the page's checks.
+func TestValuesOnlyIgnoresEmptyMaps(t *testing.T) {
+	values := map[string]SourceParam{"path": {In: "files.fields.path"}}
+	if a := (&Action{Values: values, Params: map[string]ParamDef{}, Statements: []string{}}); !a.ValuesOnly() {
+		t.Fatal("empty Params and Statements made a values-only action count as running something")
+	}
+	if a := (&Action{Values: values, Confirm: "Sure?"}); a.ValuesOnly() {
+		t.Fatal("an action with confirm counts as values-only")
+	}
+}

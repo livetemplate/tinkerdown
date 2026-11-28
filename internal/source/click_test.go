@@ -194,3 +194,62 @@ func TestClickMergeIgnoresTheQuery(t *testing.T) {
 		t.Fatal("a click merge took values from the URL")
 	}
 }
+
+// A typed param takes the click's value, such as a form field, under the
+// value rules alone: there is no merge it must be listed in.
+func TestTypedParamReachesTheCommand(t *testing.T) {
+	orig := config.IsExecAllowed()
+	config.SetAllowExec(true)
+	t.Cleanup(func() { config.SetAllowExec(orig) })
+	hub := stream.NewHub()
+	t.Cleanup(func() { hub.Close() })
+	dir := t.TempDir()
+	runs := filepath.Join(dir, "runs")
+	sources := map[string]config.SourceConfig{
+		"commit":    {Type: "stream", Format: "lines", Cmd: `echo run >> ` + runs + `; printf 'committed %s\n' "$TD_message"`},
+		"committed": {Type: "merge", Inputs: []string{"commit"}, On: "commit", Params: map[string]config.SourceParam{"message": {Typed: true}}},
+	}
+	lookup := func(n string) (config.SourceConfig, bool) { s, ok := sources[n]; return s, ok }
+	page := &Page{Resolve: lookup, InputLookup: func(string) func(string) (config.SourceConfig, bool) { return lookup }}
+	src, err := NewStreamSource(hub, "committed", sources["committed"], dir, lookup, page)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sub := src.Subscribe()
+	t.Cleanup(sub.Close)
+
+	for name, v := range map[string]interface{}{
+		"empty":      "",
+		"two lines":  "fix\nmore",
+		"too long":   strings.Repeat("a", 257),
+		"an option":  "--amend",
+		"no message": nil,
+	} {
+		if err := src.Click(map[string]interface{}{"message": v}); err == nil {
+			t.Errorf("%s: the click was accepted", name)
+		}
+	}
+	if _, err := os.Stat(runs); err == nil {
+		t.Fatal("a refused message ran the command")
+	}
+	if err := src.Click(map[string]interface{}{"message": `fix "the" typo; $(id)`}); err != nil {
+		t.Fatal(err)
+	}
+	rows := rowsOf(t, src, 1)
+	if got := rows[0]["line"]; got != `committed fix "the" typo; $(id)` {
+		t.Fatalf("the command got %q", got)
+	}
+}
+
+// A typed param can't replace a value the gate row stands for: an http row's
+// TD_url stays the file's, whatever the click sends.
+func TestTypedParamCantReplaceARowsValue(t *testing.T) {
+	src, _, runs := clickSetup(t, "### a\nGET https://api.test/a\n")
+	src.typed = append(src.typed, "url")
+	if err := src.Click(map[string]interface{}{"entry": "api/1", "url": "https://evil.example"}); err == nil {
+		t.Fatal("a typed url replaced the row's")
+	}
+	if _, err := os.Stat(runs); err == nil {
+		t.Fatal("the command ran")
+	}
+}
