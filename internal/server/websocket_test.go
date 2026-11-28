@@ -465,37 +465,43 @@ func BenchmarkMessageEnvelopeUnmarshal(b *testing.B) {
 
 // TestProtocolPerformance verifies message processing is fast
 func TestProtocolPerformance(t *testing.T) {
-	// This test verifies that basic protocol operations complete quickly
-	// Target: < 50ms for 1000 message encode/decode cycles (< 200ms in short mode for CI)
+	// Target: < 50ms for 1000 message encode/decode cycles (< 200ms in short
+	// mode for CI). The race detector slows the loop several times over, so
+	// it gets 10 times the time. The fastest of 3 runs counts, since another
+	// package's tests running at once only ever add time.
 	threshold := 50 * time.Millisecond
 	if testing.Short() {
-		// Use relaxed threshold for CI environments which may be slower
 		threshold = 200 * time.Millisecond
 	}
-
-	start := time.Now()
-
-	iterations := 1000
-	for i := 0; i < iterations; i++ {
-		// Simulate message send
-		env := MessageEnvelope{
-			BlockID: "lvt-0",
-			Action:  "Toggle",
-			Data:    json.RawMessage(`{"id":"1"}`),
-		}
-		data, err := json.Marshal(env)
-		if err != nil {
-			t.Fatalf("Marshal failed: %v", err)
-		}
-
-		// Simulate message receive
-		var received MessageEnvelope
-		if err := json.Unmarshal(data, &received); err != nil {
-			t.Fatalf("Unmarshal failed: %v", err)
-		}
+	if raceDetector {
+		threshold *= 10
 	}
 
-	elapsed := time.Since(start)
+	const iterations = 1000
+	elapsed := time.Duration(1<<63 - 1)
+	for run := 0; run < 3; run++ {
+		start := time.Now()
+		for i := 0; i < iterations; i++ {
+			// Simulate message send
+			env := MessageEnvelope{
+				BlockID: "lvt-0",
+				Action:  "Toggle",
+				Data:    json.RawMessage(`{"id":"1"}`),
+			}
+			data, err := json.Marshal(env)
+			if err != nil {
+				t.Fatalf("Marshal failed: %v", err)
+			}
+
+			// Simulate message receive
+			var received MessageEnvelope
+			if err := json.Unmarshal(data, &received); err != nil {
+				t.Fatalf("Unmarshal failed: %v", err)
+			}
+		}
+		elapsed = min(elapsed, time.Since(start))
+	}
+
 	if elapsed > threshold {
 		t.Errorf("Protocol operations too slow: %v for %d iterations (target: <%v)", elapsed, iterations, threshold)
 	}
