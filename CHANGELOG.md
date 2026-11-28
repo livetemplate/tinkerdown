@@ -11,6 +11,15 @@ Earlier releases (v0.1.x) are documented in the
 
 ## [Unreleased]
 
+### Fixed
+
+- **`--watch-dir` closes its files on macOS.** A watch that stopped, or
+  failed to start in a large folder, kept one open file for every file it
+  watched, since fsnotify 1.9 never closed them. In a 100,000-file repo a
+  failed watch held 10,240 files, so every command the page ran failed with
+  `too many open files` instead of running on its timer. tinkerdown now uses
+  fsnotify 1.10.1, which fixes it.
+
 ## [v0.11.0] - 2026-11-28
 
 ### Added
