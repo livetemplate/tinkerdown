@@ -38,3 +38,13 @@ classDiagram
     Duck : +swim()
     Fish : +swim()
 ```
+
+## Animated Flowchart
+
+```mermaid
+flowchart TD
+    A[Click] e1@--> B[Render]
+    e1@{ animate: true }
+    classDef you fill:#E3EAF2,stroke:#2F5D8A
+    class A you
+```

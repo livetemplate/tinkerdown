@@ -1,0 +1,8 @@
+mermaid 12.3.0
+source:  https://registry.npmjs.org/mermaid/-/mermaid-12.3.0.tgz  (package/dist/mermaid.min.js)
+npm integrity: sha512-4113TdXeLAsMruJ79OpFL5O8+LTFXhQqZ260rF3tgUmiNAtRm4Uume04I+65PRN6yZ69J4f8rVYWW8zRk65UYw==
+sha256 (mermaid.min.js): 336df803d87a38b70a01e736e666c8f7601d2ce42f5e47c8fafe5d721074b9a3
+
+mermaid.min.js is byte-identical to the tarball's dist/mermaid.min.js. To
+upgrade: npm pack mermaid@<version>, copy package/dist/mermaid.min.js here,
+update this file and the CDN reference in cmd/tinkerdown/commands/validate.go.

@@ -1130,7 +1130,7 @@ func (s *Server) renderPage(page *tinkerdown.Page, currentPath string, host stri
 	// Falls back to site-level config when frontmatter fields are absent.
 	seoTags := s.buildSEOTags(page, currentPath) + liveQueryMeta(s.config, page)
 
-	// Conditionally include Mermaid (~3.3MB) only when the page has
+	// Conditionally include Mermaid (~5.5MB) only when the page has
 	// ```mermaid fenced blocks. HasMermaid is set by the parser AST walk.
 	mermaidScript := ""
 	if page.HasMermaid {

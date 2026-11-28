@@ -57,7 +57,7 @@ type Page struct {
 	HasCharts bool
 
 	// HasMermaid indicates the page contains ```mermaid fenced blocks
-	// requiring the Mermaid runtime (~3.3MB). Used by the server to
+	// requiring the Mermaid runtime (~5.5MB). Used by the server to
 	// conditionally inject the script and avoid penalising pages without
 	// any diagrams.
 	HasMermaid bool
