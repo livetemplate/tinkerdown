@@ -55,7 +55,7 @@ func ValidateStreamSource(name string, src SourceConfig, lookup func(string) (So
 			return invalid("%v", err)
 		}
 		if mergeOnly(src) {
-			return invalid("stream source %q: key, collect, collect_reset, drop, sort, params, on and line_max apply to merge sources", name)
+			return invalid("stream source %q: key, collect, collect_reset, drop, sort, params, on, line_max, every and pattern apply to merge sources", name)
 		}
 		// A click names a request or query by its entry, NAME/1, which must
 		// pass the value rules.
@@ -77,6 +77,18 @@ func ValidateStreamSource(name string, src SourceConfig, lookup func(string) (So
 		if _, err := ParseLineMax(src.LineMax); err != nil {
 			return invalid("merge source %q: %v", name, err)
 		}
+		every, err := src.EveryInterval()
+		if err != nil {
+			return invalid("merge source %q: %v", name, err)
+		}
+		if every > 0 && src.On != "" {
+			return invalid("merge source %q: every can't be set with on, since a click starts an on merge's inputs", name)
+		}
+		if src.Pattern != "" {
+			if _, err := stream.CompilePattern(src.Pattern); err != nil {
+				return invalid("merge source %q: %v", name, err)
+			}
+		}
 		if src.On != "" && (len(src.Params) == 0 || !onName.MatchString(src.On)) {
 			return invalid("merge source %q: on %q needs params, and must be 1-32 lowercase letters, digits or _, starting with a letter", name, src.On)
 		}
@@ -94,8 +106,15 @@ func ValidateStreamSource(name string, src SourceConfig, lookup func(string) (So
 			if inCfg.Type != "stream" {
 				return invalid("merge source %q: input %q is a %s source, not a stream", name, in, inCfg.Type)
 			}
-			if src.On != "" && inCfg.Cmd == "" {
-				return invalid("merge source %q: input %q must run a command, since a click starts it", name, in)
+			if (src.On != "" || every > 0) && inCfg.Cmd == "" {
+				why := "a click starts it"
+				if every > 0 {
+					why = "every reruns it"
+				}
+				return invalid("merge source %q: input %q must run a command, since %s", name, in, why)
+			}
+			if every > 0 && inCfg.Restart == "never" {
+				return invalid("merge source %q: input %q has restart: never, so every can't run it again", name, in)
 			}
 		}
 	default:
@@ -265,7 +284,7 @@ func validSort(s string) bool {
 
 // mergeOnly reports whether src sets an option that only a merge uses.
 func mergeOnly(src SourceConfig) bool {
-	return len(src.Key) > 0 || src.Collect != "" || src.CollectReset != "" || src.Drop != "" || src.Sort != "" || len(src.Params) > 0 || src.On != "" || src.LineMax != ""
+	return len(src.Key) > 0 || src.Collect != "" || src.CollectReset != "" || src.Drop != "" || src.Sort != "" || len(src.Params) > 0 || src.On != "" || src.LineMax != "" || src.Every != "" || src.Pattern != ""
 }
 
 // validateParams checks a merge's params: each name is a TD_ name, and each
@@ -342,6 +361,21 @@ func (s SourceConfig) FlushInterval() (time.Duration, error) {
 	d, err := time.ParseDuration(s.Flush)
 	if err != nil || d <= 0 {
 		return 0, fmt.Errorf("flush %q is not a positive duration", s.Flush)
+	}
+	return d, nil
+}
+
+// MinEvery is the shortest every a merge may set.
+const MinEvery = 100 * time.Millisecond
+
+// EveryInterval returns the parsed every value, or 0 when unset.
+func (s SourceConfig) EveryInterval() (time.Duration, error) {
+	if s.Every == "" {
+		return 0, nil
+	}
+	d, err := time.ParseDuration(s.Every)
+	if err != nil || d < MinEvery {
+		return 0, fmt.Errorf("every %q is not a duration of at least %s", s.Every, MinEvery)
 	}
 	return d, nil
 }

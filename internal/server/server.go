@@ -3730,6 +3730,12 @@ func (s *Server) StartSchedules(ctx context.Context) error {
 	return nil
 }
 
+// WatchFiles makes every merge's list inputs (every) run again when a file
+// under dir changes, in place of their timer. Call it before serving.
+func (s *Server) WatchFiles(dir string) {
+	s.streams.WatchDir = dir
+}
+
 // StopStreams stops every stream input and kills the processes they run.
 func (s *Server) StopStreams() error {
 	return s.streams.Close()

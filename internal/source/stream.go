@@ -99,9 +99,10 @@ type gate struct {
 	path  string
 }
 
-// MergeParamIdle is how long a params merge's inputs run after the last page
-// showing them leaves: each value opened starts its own commands.
-const MergeParamIdle = 30 * time.Second
+// MergeIdle is how long a params merge's inputs, and an every merge's,
+// run after the last page showing them leaves: each value opened starts its
+// own commands, and a list keeps no history worth holding.
+const MergeIdle = 30 * time.Second
 
 // Page is what a gated merge needs from the page showing it: the query its
 // params come from, and how the page resolves a gate merge and that merge's
@@ -420,12 +421,15 @@ func NewStreamSource(hub *stream.Hub, name string, cfg config.SourceConfig, site
 		}
 		return src, nil
 	}
+	every, _ := cfg.EveryInterval() // ValidateStreamSource checked it
 	idle := time.Duration(0)
+	if every > 0 || len(cfg.Params) > 0 {
+		idle = MergeIdle
+	}
 	if len(cfg.Params) > 0 {
 		if page == nil || page.Resolve == nil || page.InputLookup == nil {
 			return nil, fmt.Errorf("merge source %q: params need a page", name)
 		}
-		idle = MergeParamIdle
 		for _, p := range slices.Sorted(maps.Keys(cfg.Params)) {
 			gateName, path := cfg.Params[p].Gate()
 			gateCfg, _ := page.Resolve(gateName)
@@ -446,7 +450,7 @@ func NewStreamSource(hub *stream.Hub, name string, cfg config.SourceConfig, site
 		inputs := make([]*stream.Buffer, 0, len(cfg.Inputs))
 		for _, in := range cfg.Inputs {
 			inCfg, _ := lookup(in) // ValidateStreamSource checked it exists and is a stream
-			b, err := streamInput(hub, in, inCfg, dir, env, inputOpts{idle: idle, lineMax: lineMax, manual: cfg.On != ""})
+			b, err := streamInput(hub, in, inCfg, dir, env, inputOpts{idle: idle, lineMax: lineMax, manual: cfg.On != "", every: every, pattern: cfg.Pattern})
 			if err != nil {
 				return nil, fmt.Errorf("merge source %q: %w", name, err)
 			}
@@ -495,7 +499,7 @@ func sameMerge(want, got config.SourceConfig) bool {
 // the input a buffer of its own. opts are what the merge sets on its inputs.
 func streamInput(hub *stream.Hub, name string, cfg config.SourceConfig, dir string, params map[string]string, opts inputOpts) (*stream.Buffer, error) {
 	spec := cfg.StreamSpec(name)
-	spec.LineMax, spec.Manual = opts.lineMax, opts.manual
+	spec.LineMax, spec.Manual, spec.Every, spec.Pattern = opts.lineMax, opts.manual, opts.every, opts.pattern
 	switch {
 	case spec.HTTP != "":
 		spec.HTTP = resolveSitePath(dir, spec.HTTP)
@@ -520,4 +524,6 @@ type inputOpts struct {
 	idle    time.Duration // replaces the hub's idle stop when set
 	lineMax int           // replaces the 16 KiB line cap when set
 	manual  bool          // a click starts the input (on)
+	every   time.Duration // reruns the input's command, replacing its rows (every)
+	pattern string        // named groups that become a line's fields (pattern)
 }

@@ -243,3 +243,40 @@ func TestValidateOnAndLineMax(t *testing.T) {
 		t.Errorf("accepts csv: %v", err)
 	}
 }
+
+func TestValidateEveryAndPattern(t *testing.T) {
+	sources := map[string]SourceConfig{
+		"status": {Type: "stream", Cmd: "git status"},
+		"log":    {Type: "stream", File: "app.log"},
+		"deploy": {Type: "stream", Cmd: "./deploy.sh", Restart: "never"},
+		"diff":   {Type: "stream", Cmd: `git diff -- "$TD_path"`},
+		"files":  {Type: "merge", Inputs: []string{"status"}, Key: []string{"fields.path"}},
+	}
+	lookup := func(n string) (SourceConfig, bool) { s, ok := sources[n]; return s, ok }
+	params := map[string]SourceParam{"path": {In: "files.fields.path"}}
+	for name, src := range map[string]SourceConfig{
+		"every and pattern":  {Type: "merge", Inputs: []string{"status"}, Every: "2s", Key: []string{"fields.path"}, Pattern: `^(?P<x>.)(?P<y>.) (?P<path>.+)$`},
+		"every with params":  {Type: "merge", Inputs: []string{"diff"}, Every: "2s", Params: params},
+		"pattern on a file":  {Type: "merge", Inputs: []string{"log"}, Pattern: `^(?P<level>\w+) `},
+		"the shortest every": {Type: "merge", Inputs: []string{"status"}, Every: "100ms"},
+	} {
+		if err := ValidateStreamSource("x", src, lookup); err != nil {
+			t.Errorf("%s: %v", name, err)
+		}
+	}
+	for name, src := range map[string]SourceConfig{
+		"every with on":          {Type: "merge", Inputs: []string{"diff"}, Every: "2s", On: "show", Params: params},
+		"every under 100ms":      {Type: "merge", Inputs: []string{"status"}, Every: "50ms"},
+		"every not a duration":   {Type: "merge", Inputs: []string{"status"}, Every: "often"},
+		"every over a file":      {Type: "merge", Inputs: []string{"log"}, Every: "2s"},
+		"every over run-once":    {Type: "merge", Inputs: []string{"deploy"}, Every: "2s"},
+		"every on a stream":      {Type: "stream", Cmd: "true", Every: "2s"},
+		"pattern on a stream":    {Type: "stream", Cmd: "true", Pattern: `(?P<a>.)`},
+		"pattern without a name": {Type: "merge", Inputs: []string{"status"}, Pattern: `(.+)`},
+		"pattern that fails":     {Type: "merge", Inputs: []string{"status"}, Pattern: `(?P<a>`},
+	} {
+		if err := ValidateStreamSource("x", src, lookup); err == nil {
+			t.Errorf("%s: want an error", name)
+		}
+	}
+}

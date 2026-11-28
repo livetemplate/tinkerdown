@@ -11,6 +11,19 @@ Earlier releases (v0.1.x) are documented in the
 
 ## [Unreleased]
 
+### Added
+
+- **Lists a command prints.** A merge with `every: 2s` runs its inputs'
+  commands again 2 seconds after each run exits, and each run's lines
+  replace the rows the last run printed. A run that prints the same lines
+  sends nothing, and one that fails keeps the rows and sets `.Error`. A
+  click's command ending runs them again at once. See
+  [Lists a command prints](docs/sources/stream.md#lists-a-command-prints).
+- **`serve --watch-dir DIR`** runs `every` inputs again when a file under
+  DIR changes, in place of their timer.
+- **`pattern`** on a merge splits a plain line into fields with a regex's
+  named groups, such as `^(?P<pid>\d+) (?P<cmd>.+)$`.
+
 ### Fixed
 
 - **`serve`'s banner says tinkerdown**, not "Livemdtools", the project's old

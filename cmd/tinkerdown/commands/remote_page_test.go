@@ -199,7 +199,17 @@ func TestCheckRemotePage(t *testing.T) {
 	if err := checkRemotePage(parse(withParams)); err != nil {
 		t.Fatalf("a merge-only page with drop and params: %v", err)
 	}
+	withEvery := "---\ntitle: git\nsources:\n  files:\n    type: merge\n    inputs: [status]\n    every: 1s\n    key: [fields.path]\n    pattern: '^(?P<x>.)(?P<y>.) (?P<path>.+)$'\n---\n\n```lvt\n<ol lvt-source=\"files\">{{range .Data}}<li data-key=\"{{.key}}\">{{.fields.path}}</li>{{end}}</ol>\n```\n"
+	p := parse(withEvery)
+	if err := checkRemotePage(p); err != nil {
+		t.Fatalf("a merge with every and a pattern: %v", err)
+	}
+	if got := p.Config.Sources["files"]; got.Every != "1s" || got.Pattern != `^(?P<x>.)(?P<y>.) (?P<path>.+)$` {
+		t.Fatalf("every and pattern from the frontmatter = %q, %q", got.Every, got.Pattern)
+	}
 	cases := map[string]string{
+		"an every under 1s":               "---\nsources:\n  all:\n    type: merge\n    inputs: [\"*\"]\n    every: 500ms\n---\n# X\n",
+		"a 2 KiB pattern":                 "---\nsources:\n  all:\n    type: merge\n    inputs: [\"*\"]\n    pattern: '(?P<a>" + strings.Repeat("a", 2048) + ")'\n---\n# X\n",
 		"a stream source":                 "---\nsources:\n  x:\n    type: stream\n    cmd: id\n---\n# X\n",
 		"a json source":                   "---\nsources:\n  x:\n    type: json\n    file: ~/.aws/credentials\n---\n# X\n",
 		"an action":                       "---\nactions:\n  wipe:\n    kind: sql\n    statement: DELETE FROM t\n---\n# X\n",
