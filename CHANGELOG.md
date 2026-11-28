@@ -11,6 +11,8 @@ Earlier releases (v0.1.x) are documented in the
 
 ## [Unreleased]
 
+## [v0.11.0] - 2026-11-28
+
 ### Added
 
 - **Lists a command prints.** A merge with `every: 2s` runs its inputs'
